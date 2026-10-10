@@ -1,15 +1,16 @@
 # JobSearcher: design- og arkitekturdokument
 
-> Status: v0.3 (2026-10-10). Fase 0 (spikes) er gjennomført, se `docs/spikes/`. Ingen kode er skrevet ennå.
+> Status: v0.4 (2026-10-10). Fase 0 (spikes) er gjennomført, se `docs/spikes/`. Ingen kode er skrevet ennå.
 > Dokumentet er "source of truth" for designet. Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
-| Versjon | Dato | Endring |
-|---|---|---|
-| v0.3 | 2026-10-10 | Finn-varsler er forhåndsfiltrert og regnes som gyldige (to tillitsnivåer i hardfilteret). Automatisk berikelse av Finn-jobber via `enricher` i stedet for manuell import. Ingen manuelle steg. Stillinger uten oppgitt senioritet vises med maks score 65. Geografi per jobbtype. |
-| v0.2 | 2026-10-10 | Finn via e-postvarsler i stedet for skraping (spike 01). NAV er egen kilde, ikke fallback (spike 02). `claude_code` er standard backend (spike 03). Strengt senioritetsfilter. Frister og kontakter som egne felt. Konkrete design for agenter, drift og eval. |
-| v0.1 | 2026-10-09 | Første utkast etter intervju |
+| Versjon | Dato       | Endring                                                                                                                                                                                                                                                                           |
+| ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v0.4    | 2026-10-10 | Finn hentes direkte fra mobil-API-et (reverse engineering av Android-APK, HMAC-signering med `finnsig`), ikke via e-postvarsler. Søk defineres i `config/sources.yaml`. IMAP for Finn er droppet; Gmail brukes bare til SMTP-digest. Egen `enricher` for Finn-jobber er droppet — API-et gir full annonsetekst. Se spike 04. |
+| v0.3    | 2026-10-10 | Finn-varsler er forhåndsfiltrert og regnes som gyldige (to tillitsnivåer i hardfilteret). Automatisk berikelse av Finn-jobber via `enricher` i stedet for manuell import. Ingen manuelle steg. Stillinger uten oppgitt senioritet vises med maks score 65. Geografi per jobbtype. |
+| v0.2    | 2026-10-10 | Finn via e-postvarsler i stedet for skraping (spike 01). NAV er egen kilde, ikke fallback (spike 02). `claude_code` er standard backend (spike 03). Strengt senioritetsfilter. Frister og kontakter som egne felt. Konkrete design for agenter, drift og eval.                    |
+| v0.1    | 2026-10-09 | Første utkast etter intervju                                                                                                                                                                                                                                                      |
 
 ---
 
@@ -54,15 +55,15 @@ Et frittstående Python-program som kjører lokalt og automatiserer jobbsøkinge
 | Planlegging | Windows Task Scheduler (daglig 07:00) og "Kjør nå" i dashboardet |
 | Dashboard | FastAPI + Jinja2 + HTMX, bundet til `127.0.0.1` |
 | Database | SQLite via SQLModel, migrasjoner med Alembic |
-| E-post | Gmail: SMTP for utsending, IMAP for å lese Finn-varsler (samme app-passord) |
+| E-post | Gmail SMTP for utsending av digest. Ingen IMAP. |
 | LLM | Claude. Standard: `claude_code` (abonnement via `claude -p`). Alternativ: `anthropic_api`. |
-| Finn | Lagrede søk med e-postvarsel → IMAP. Annonsetekst importeres fra brukerens nettleser. |
+| Finn | Mobil-API med HMAC-signering (`finnsig`). Søk defineres i `config/sources.yaml`. Endepunkter reverse-engineeres fra Android-APK. Se spike 04. |
 | NAV | pam-stilling-feed med privat token |
 | Trainee/graduate | NAV + Teamtailor-RSS + kuratert selskapsliste med sideovervåker |
 | Volum | 10–20 søknader per uke |
 | Senioritet | Bare junior, trainee, graduate, nyutdannet, internship og sommerjobb. Krav om 1+ års erfaring forkastes. |
 | Geografi | Per jobbtype: fast stilling i `oslo_omegn` (Oslo med nærområder, inkl. Nittedal). Trainee, graduate og sommerjobb i hele `norge`. `nittedal` finnes som alternativ. |
-| Kildetillit | Finn-varsler er forhåndsfiltrert av brukerens Finn-filtre (ingen erfaring/junior, ingen utdanning/bachelor) og regnes som gyldige. Andre kilder filtreres med strengmatching + LLM. |
+| Kildetillit | Finn-API-kall sendes med `experience`- og `education`-filtre (ingen erfaring/junior, ingen/bachelor) og regnes som forhåndsfiltrert. Andre kilder filtreres med strengmatching + LLM. |
 | Søknad | Ett vanlig søknadsbrev per stilling. Eksport til `.docx`. |
 | Tracking | Søknadsfrist er viktigst. Kontaktpersoner og nøkkelinfo lagres når de finnes. |
 | Kostnad | Tak $25/mnd. E-postvarsel ved score ≥ 70. |
@@ -74,11 +75,10 @@ Et frittstående Python-program som kjører lokalt og automatiserer jobbsøkinge
 ## 3. Systemoversikt
 
 ```
-  Finn (lagrede søk)        NAV pam-stilling-feed      Teamtailor RSS / karrieresider
-        │ daglig e-post              │ API                        │ RSS / sideovervåker
-        ▼                            │                            │
-  Gmail (etikett) ── IMAP ──┐        │                            │
-                            ▼        ▼                            ▼
+  Finn mobil-API            NAV pam-stilling-feed      Teamtailor RSS / karrieresider
+        │ HMAC-signert HTTP          │ API                        │ RSS / sideovervåker
+        │ (finnsig)                  │                            │
+        ▼                            ▼                            ▼
         ┌────────────────────────────────────────────────────────────────┐
         │                Pipeline-orkestrator (kode)                     │ ← Task Scheduler / "Kjør nå"
         │ hent → normaliser → dedupe/repost → hardfilter → score (batch) │   (lock-fil)
@@ -111,7 +111,7 @@ class JobSource(Protocol):
     # CollectResult: list[RawJob], ny cursor, helsestatus (antall, feil)
 ```
 
-- Hver kilde lagrer sin egen cursor i `source_state` (IMAP UID, NAV `next_url`/ETag, RSS ETag, sidehash).
+- Hver kilde lagrer sin egen cursor i `source_state` (Finn-API: siste `publishedAt` per søk, NAV `next_url`/ETag, RSS ETag, sidehash).
 - Kildene returnerer `RawJob` med så mange strukturerte felt som kilden har. Felles normalisering tar resten.
 - Felles HTTP-lag (`sources/http.py`):
   - rate-limiting per domene
@@ -120,34 +120,34 @@ class JobSource(Protocol):
   - respekt for `robots.txt`
   - rå respons lagres i `data/cache/`
 
-### 4.2 Finn via e-postvarsler (spike 01)
+### 4.2 Finn via mobil-API (spike 04)
 
-Finn forbyr automatisert innhenting uten skriftlig samtykke. Derfor:
+Finn har ikke et offisielt tredjeparts-API, men mobilappen snakker med et HMAC-signert HTTP-API som kan brukes direkte. Endepunktene reverse-engineeres fra Android-APK-en (`FINN.no_*.apk`, i prosjektrot, gitignored). Forespørsler signeres med `FINN-GW-KEY`-headeren via biblioteket [`finnsig`](https://github.com/newis/finnsig). Dette er en bevisst gråsone — risikoen og tiltakene står i spike 04.
 
-1. **Brukeren har lagrede søk på Finn med e-postvarsel**, og alle bruker Finns egne filtre:
+1. **Søk defineres i `config/sources.yaml`**, ikke i Finns UI. Hvert søk setter Finns egne filtre som API-parametere:
    - *Utdanning:* ingen utdanning, høyskole/universitet lavere nivå
    - *Arbeidserfaring:* ingen erfaring, junior
 
-   | Lagret søk | Jobbtype-hint | Geografi |
+   | Søk-id | Jobbtype-hint | Geografi |
    |---|---|---|
-   | `JS – IT utvikling Oslo` | — | `oslo_omegn` |
-   | `JS – IT utvikling Norge` | — | `norge` |
-   | `JS – Trainee Norge` | `trainee` | `norge` |
-   | `JS – Graduate Norge` | `graduate` | `norge` |
-   | `JS – Summer Internship Norge` | `summer` | `norge` |
+   | `it_oslo` | — | `oslo_omegn` |
+   | `it_norge` | — | `norge` |
+   | `trainee` | `trainee` | `norge` |
+   | `graduate` | `graduate` | `norge` |
+   | `summer` | `summer` | `norge` |
 
-   Koblingen fra søk til hint står i `config/sources.yaml`. Om e-posten viser hvilket lagret søk en annonse kommer fra, avklares med en ekte e-post. Ellers klassifiserer filteret jobbtypen.
-2. **Et Gmail-filter** legger varslene under etiketten `JobSearcher/Finn` (opprettet og verifisert via IMAP 2026-10-10).
-3. **Finn-annonser er forhåndsfiltrert og regnes som gyldige.** Finn har allerede filtrert på erfaring og utdanning, så de slipper senioritetsfilteret (§5.1) og blir aldri skjult på grunn av senioritet. Står det likevel et eksplisitt erfaringskrav i teksten (f.eks. etter berikelse), legges det inn som en `concern`, men jobben vises. Rolle-ekskludering (f.eks. cybersikkerhet) og geografi gjelder fortsatt.
-4. **`FinnEmailSource`** leser nye e-poster under etiketten via IMAP (bare lesing, bare den etiketten). Den parser hver annonse i e-posten til tittel, bedrift, sted, Finn-kode, lenke og (hvis mulig) navnet på det lagrede søket. Samme Finn-kode fra flere søk blir én jobb.
-5. Jobben opprettes med `ad_text_status = missing` og `prefiltered = true`.
-6. **Automatisk berikelse**, uten manuelt steg. Kjøres i rekkefølge til full annonsetekst er funnet:
-   1. **Krysskilde-match:** Dedupe (§4.5) finner samme stilling fra NAV, Teamtailor eller sideovervåkeren. Den teksten brukes.
-   2. **Søk etter annonsen hos arbeidsgiver:** En billig agent (`enricher`, Haiku + websøk) søker etter "bedrift + tittel" og henter annonsen fra arbeidsgivers egen karriereside, ATS-side eller andre jobbtavler. **`finn.no` er blokkert som domene** i verktøyene.
-   3. **Ingen tekst funnet:** Jobben scores på tittel, bedrift og sted med `confidence: low`. Det lages ingen beskrivelse av innhold som ikke er lest, for å unngå oppdiktede krav. I dashboardet vises "Bare tittel kjent" med lenke til Finn.
-7. **Åpent problem (§19 #1):** Hvor stor andel av Finn-jobbene havner i steg iii, må måles etter et par ukers drift. Er andelen høy, er alternativene å be Finn om skriftlig samtykke (da kan en adapter for enkeltannonser legges til), eller å la brukeren lime inn tekst som valgfri reserve.
+   Eksakte parameternavn kommer fra APK-dekompileringen (spike 04).
+2. **`FinnApiSource`** gjør to steg per søk:
+   1. `GET /search/jobs?...` → liste med annonse-stubs (Finn-kode, tittel, bedrift, sted, publisert).
+   2. For hver ny Finn-kode: `GET /ad/<finnkode>` → full annonsetekst, krav, frist, kontakter og søknadslenke.
+   Begge kall signeres med `FINN-GW-KEY`. Samme Finn-kode fra flere søk blir én jobb.
+3. **Cursor** per søk-id lagres i `source_state` som høyeste sette `publishedAt`. Ved neste kjøring hentes bare nyere annonser. Rate-limit og retry håndteres av det felles HTTP-laget (§4.1).
+4. **Finn-annonser er forhåndsfiltrert og regnes som gyldige.** API-kallet filtrerer serverside på erfaring og utdanning, så de slipper senioritetsfilteret (§5.1) og blir aldri skjult på grunn av senioritet. Står det likevel et eksplisitt erfaringskrav i teksten, legges det inn som en `concern`, men jobben vises. Rolle-ekskludering (f.eks. cybersikkerhet) og geografi gjelder fortsatt.
+5. Jobben opprettes med `ad_text_status = present` og `prefiltered = true`. Ingen separat berikelse trengs — API-et gir hele annonsen.
+6. **App-identitet:** `User-Agent` og `X-FINN-APP-VERSION` låses til en konkret appversjon (fra APK-en), slik at trafikken ser realistisk ut og endepunkter ikke flyter mellom versjoner.
+7. **Fallback om API-et blir ubrukelig** (signaturen brytes, endepunkt forsvinner): brukeren limer inn annonsetekst via `manual`-kilden (§4.1 / §9 `job_sources.source`). IMAP-flyten er ikke en lett vei tilbake.
 
-### 4.3 NAV pam-stilling-feed (spike 02)
+### 4.3 NAV pam-stilling-feed (spike 01)
 
 - Hendelsesfeed. Leser fra lagret `next_url` med `ETag`, og henter detaljer for nye eller endrede annonser.
 - Første kjøring: start 30 dager tilbake i tid.
@@ -156,17 +156,17 @@ Finn forbyr automatisert innhenting uten skriftlig samtykke. Derfor:
 - Inaktive annonser → `jobs.active = false` (påkrevd etter vilkårene).
 - Privat token i `.env` (`NAV_FEED_TOKEN`).
 
-### 4.4 Trainee, graduate og sommerjobb (spike 04)
+### 4.4 Trainee, graduate og sommerjobb (spike 03)
 
 - **NAV** dekker mange ATS-annonser allerede.
 - **`TeamtailorSource`:** `https://<karriereside>/jobs.rss` per selskap i `config/sources.yaml`.
 - **`PageWatcherSource`:** for karrieresider uten feed. Henter én side per selskap per dag og hasher hovedinnholdet (valgfri CSS-selektor). Ved endring trekker en billig LLM-modell ut stillinger fra siden. Respekterer `robots.txt`.
-- Startliste i spike 04. Kildene evalueres etter 2–4 uker i drift.
+- Startliste i spike 03. Kildene evalueres etter 2–4 uker i drift.
 
 ### 4.5 Normalisering, dedupe og reposts
 
 - **Fingerprint:** normalisert `bedrift | tittel | kommune` (små bokstaver, uten tegnsetting og vanlige suffiks som "AS"/"ASA").
-- **Samme stilling fra flere kilder:** fuzzy-match (rapidfuzz ≥ 90) innen samme bedrift → én `Job` med flere `job_sources`. Kilden med mest strukturert data blir primær (NAV > ATS > Finn-e-post).
+- **Samme stilling fra flere kilder:** fuzzy-match (rapidfuzz ≥ 90) innen samme bedrift → én `Job` med flere `job_sources`. Kilden med mest strukturert data blir primær (NAV > Finn-API > ATS).
 - **Repost:** Samme fingerprint som en inaktiv jobb, eller en jobb eldre enn 30 dager → ny `Job` med `reposted_from_id`. Jobben merkes "lagt ut på nytt", og tidligere status og søknad vises.
 - **Frist:** lagres som `deadline` (dato) og/eller `deadline_text` ("snarest", "fortløpende"). Kildens strukturerte felt har forrang. Ellers trekker filteret ut fristen.
 
@@ -186,8 +186,8 @@ Konfigurert i `config/settings.yaml`. Kildene har to tillitsnivåer:
 
 | Tillit | Kilder | Behandling |
 |---|---|---|
-| **Forhåndsfiltrert** | Finn-varsler (Finns egne filtre for erfaring og utdanning) | Bare geografi og rolle-ekskludering. Antas å passe på nivå. |
-| **Ufiltrert** | NAV, Teamtailor, sideovervåker, berikelse | Alle regler under, med strengmatching som første ledd og LLM som andre |
+| **Forhåndsfiltrert** | Finn-API (serverside-filtre for erfaring og utdanning) | Bare geografi og rolle-ekskludering. Antas å passe på nivå. |
+| **Ufiltrert** | NAV, Teamtailor, sideovervåker | Alle regler under, med strengmatching som første ledd og LLM som andre |
 
 Forkaster hvis:
 
@@ -208,7 +208,7 @@ Hardfilteret logger *hvorfor* noe ble forkastet, slik at det kan justeres. Dashb
   - `experienced` skjules.
   - `unspecified` (ingen krav om erfaring, men heller ikke uttalt junior) **vises med lavere score**: maks 65, altså under e-postterskelen på 70. Disse havner i dashboardet, men utløser ikke varsel.
   - Taket på 65 settes av koden etter LLM-kallet (`search.unspecified_seniority_max_score`), slik at det gjelder uansett hva modellen svarer.
-- Finn-annonser uten tekst (berikelsen fant ingenting) får `confidence: low`, og skjules ikke på grunn av lav score alene. De er forhåndsfiltrert, så det er grunn til å tro at de passer.
+- Finn-API-et gir alltid full annonsetekst, så `confidence: low` er ikke lenger normalt for Finn-jobber. Faller API-et ut og en jobb havner inn via manuell innliming uten tekst, gjelder samme regel som før: `confidence: low` skjules ikke på grunn av lav score alene.
 
 ### 5.3 Geografi-moduser (`config/locations.yaml`)
 
@@ -400,7 +400,6 @@ Systemprompter ligger i `context/prompts/*.md`. Hver har en `version` i frontmat
 | Writer | Opus | "Lag søknad" | Se §6.2 | `DraftResult` |
 | Reviser | Sonnet | Hver chatmelding i editoren | Se §6.2 | `RevisionResult` |
 | Extractor | Haiku | Sideovervåker oppdaget endring | Rensket side | Liste over stillinger |
-| Enricher | Haiku + web (uten finn.no) | Finn-jobb uten tekst og uten krysskilde-match | Tittel, bedrift, sted | Annonsetekst + kilde-URL, eller "ikke funnet" |
 
 ### 7.2 Output-skjemaer (Pydantic, i `agents/schemas.py`)
 
@@ -476,7 +475,7 @@ Ugyldig output → ett nytt forsøk med valideringsfeilen i prompten → derette
 
 ## 8. LLM-laget
 
-### 8.1 Backends (spike 03)
+### 8.1 Backends (spike 02)
 
 ```python
 class LLMBackend(Protocol):
@@ -526,7 +525,7 @@ jobs                 id, fingerprint, title, company, company_slug, location_tex
                      published_at, expires_at, deadline, deadline_text, application_url,
                      first_seen, last_seen, active, content_hash, reposted_from_id
 
-job_sources          id, job_id, source (finn_email|nav|teamtailor|page_watch|manual),
+job_sources          id, job_id, source (finn_api|nav|teamtailor|page_watch|manual),
                      source_id, url, raw_path, fetched_at
 
 job_contacts         id, job_id, name, role, email, phone, source (feed|llm|manual)
@@ -620,7 +619,7 @@ Filnavn: `Soknad_<Bedrift>_<Stilling>.docx` i `data/exports/`.
   2. Nye jobber med score ≥ 70, per jobbtype
   3. Oppfølginger som forfaller
   4. Kildehelse (f.eks. "NAV-feeden svarte 401: token utløpt?") og kostnadsvarsel
-- **IMAP:** leser bare etiketten `JobSearcher/Finn`. Behandlede e-poster merkes som lest, og flyttes ikke eller slettes.
+- **Gmail SMTP** sender digest til brukeren selv. Ingen IMAP — Finn-flyten går via mobil-API-et (§4.2).
 
 ---
 
@@ -634,7 +633,7 @@ Filnavn: `Soknad_<Bedrift>_<Stilling>.docx` i `data/exports/`.
 | Migrasjoner | Alembic fra start |
 | Backup | Etter hver kjøring: SQLite backup-API → `data/backups/jobsearcher-YYYY-MM-DD.db`, beholder 14 |
 | Nettverk | Uvicorn bundet til `127.0.0.1` |
-| Hemmeligheter | `.env`: `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD`, `NAV_FEED_TOKEN`, valgfri `ANTHROPIC_API_KEY` |
+| Hemmeligheter | `.env`: `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD` (bare SMTP), `NAV_FEED_TOKEN`, valgfri `ANTHROPIC_API_KEY`. Finn-API-nøkkelen er bakt inn i `finnsig` og trenger ingen env-variabel. |
 | Personvern | Kontaktpersoner fra annonser slettes 90 dager etter at jobben er inaktiv, med mindre det finnes en søknad. Rå cache slettes etter 30 dager. |
 
 ---
@@ -657,7 +656,7 @@ Filnavn: `Soknad_<Bedrift>_<Stilling>.docx` i `data/exports/`.
 | `config/settings.yaml` | Søk (roller, ekskluderinger, jobbtyper, senioritet, geo-modus), terskler, planlegging, LLM-backend, kostnadstak | Ja |
 | `config/agents.yaml` | Kontekstmanifest, modell-tier og effort per agent | Ja |
 | `config/locations.yaml` | Geo-moduser → kommuner | Ja |
-| `config/sources.yaml` | Aktive kilder, IMAP-etikett, Teamtailor-feeder, sideovervåkede selskaper | Ja |
+| `config/sources.yaml` | Aktive kilder, Finn-søk (parametere per søk-id), Teamtailor-feeder, sideovervåkede selskaper | Ja |
 | `config/tech_aliases.yaml` | Teknologisynonymer | Ja |
 | `.env` | Hemmeligheter | **Nei** |
 
@@ -683,7 +682,7 @@ JobSearcher/
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── HANDOVER.md                    Status og neste steg for neste agent
-│   └── spikes/                        01-finn, 02-nav-feed, 03-claude-subscription, 04-trainee-sources
+│   └── spikes/                        01-nav-feed, 02-claude-subscription, 03-trainee-sources, 04-finn-mobile-api
 │
 ├── config/
 │   ├── settings.yaml
@@ -702,7 +701,6 @@ JobSearcher/
 │       ├── writer.md
 │       ├── reviser.md
 │       ├── distiller.md
-│       ├── enricher.md
 │       └── extractor.md
 │
 ├── src/jobsearcher/
@@ -713,7 +711,8 @@ JobSearcher/
 │   ├── sources/
 │   │   ├── base.py
 │   │   ├── http.py
-│   │   ├── finn_email.py              IMAP + parser for Finn-varsler
+│   │   ├── finn_api.py                Finn mobil-API (HMAC-signert, bruker finnsig)
+│   │   ├── finn_sig.py                Vendret kopi av finnsig (eller tynn wrapper)
 │   │   ├── nav_feed.py
 │   │   ├── teamtailor.py
 │   │   ├── page_watch.py
@@ -722,6 +721,7 @@ JobSearcher/
 │   ├── context/       loader.py, slices.py, builder.py, budget.py, projects.py
 │   ├── agents/        base.py, schemas.py, filter.py, researcher.py, writer.py, reviser.py,
 │   │                  distiller.py, extractor.py
+│   │   (ingen enricher — Finn-API gir full annonsetekst)
 │   ├── llm/           base.py, claude_code.py, anthropic_api.py, mock.py, costs.py
 │   ├── tracking/      status.py
 │   ├── notify/        email.py, templates/digest.html
@@ -742,7 +742,8 @@ JobSearcher/
 │
 └── tests/
     ├── fixtures/                      Finn-varsel-e-post, NAV-feedside og -annonse, Teamtailor-RSS, eksempelprofil
-    ├── test_finn_email.py
+    ├── test_finn_api.py
+    ├── test_finn_sig.py
     ├── test_nav_feed.py
     ├── test_teamtailor.py
     ├── test_clean.py
@@ -765,7 +766,8 @@ JobSearcher/
 | DB | `sqlmodel`, `alembic` |
 | Konfig | `pydantic-settings`, `pyyaml`, `python-frontmatter` |
 | HTTP og parsing | `httpx`, `selectolax`, `markdownify`, `feedparser` |
-| E-post | `imaplib` / `smtplib` (stdlib), `email` (stdlib) |
+| Finn-signering | `finnsig` (vendret eller pin-nad versjon) |
+| E-post | `smtplib` + `email` (stdlib). Ingen IMAP. |
 | Fuzzy-match | `rapidfuzz` |
 | LLM | Claude Code CLI (`claude -p`), `anthropic` |
 | CLI | `typer` |
@@ -779,25 +781,25 @@ JobSearcher/
 | Fase | Innhold | Ferdig når |
 |---|---|---|
 | ~~0. Spikes~~ | Finn, NAV, Claude-abonnement, trainee-kilder | ✅ `docs/spikes/` |
-| **1. Fundament** | Repo-oppsett, config, DB + Alembic, HTTP-lag, NAV-kilde, Finn-e-postkilde, normalisering, dedupe, hardfilter, `jobsearcher run` uten LLM | Daglig kjøring fyller DB med filtrerte jobber |
-| **2. Scoring + dashboard v1** | LLM-backends, destiller, filter i batch, enricher for Finn-jobber, oversikt (frister), jobbliste, jobbdetalj | Rangerte jobber med frister i dashboardet |
+| **1. Fundament** | Repo-oppsett, config, DB + Alembic, HTTP-lag, NAV-kilde, APK-dekompilering + Finn-API-kilde (med `finnsig`), normalisering, dedupe, hardfilter, `jobsearcher run` uten LLM | Daglig kjøring fyller DB med filtrerte jobber |
+| **2. Scoring + dashboard v1** | LLM-backends, destiller, filter i batch, oversikt (frister), jobbliste, jobbdetalj | Rangerte jobber med frister i dashboardet |
 | **3. Søknader** | Research, writer, editor med versjoner og revisjonschat, `.docx`-eksport | Brev kan lages, itereres og lastes ned |
 | **4. Tracking + varsling** | Statusflyt, kanban, oppfølging, e-postdigest, Task Scheduler, backup | Hele flyten går uten manuelt arbeid |
 | **5. Flere kilder** | Teamtailor, sideovervåker + extractor, kuratert selskapsliste | Trainee-programmer fanges opp |
-| **6. Polering** | Filter-eval, kostnadsside, måling av Finn-dekning (§19 #1) | Recall ≥ 90 % |
+| **6. Polering** | Filter-eval, kostnadsside | Recall ≥ 90 % |
 
 ---
 
 ## 18. Brukerens oppgaver før/under fase 1
 
 - [x] Installere Claude Code CLI og logge inn (verifisert: v2.1.296, `claude -p` fungerer)
-- [x] Sette opp lagrede søk på Finn med e-postvarsel (5 søk, §4.2)
-- [x] Lage Gmail-filter og etikett `JobSearcher/Finn` (verifisert via IMAP)
-- [ ] Lagre ett Finn-varsel som `tests/fixtures/private/finn-varsel-1.eml`
-- [x] Lage Gmail-app-passord → `.env` (verifisert: IMAP-innlogging OK)
+- [x] Laste ned Finns Android-APK til prosjektrot (`FINN.no_*.apk`, gitignored)
+- [x] Lage Gmail-app-passord → `.env` (brukes nå bare til SMTP-digest)
 - [ ] Bestille privat token for NAV-feeden (e-post til nav.team.arbeidsplassen@nav.no)
-- [ ] Gå gjennom selskapslisten i spike 04
+- [ ] Gå gjennom selskapslisten i spike 03
 - [x] Fylle ut kontekstprofilen
+
+Finns lagrede søk og Gmail-etiketten `JobSearcher/Finn` trengs ikke lenger — de kan slettes.
 
 ---
 
@@ -805,9 +807,10 @@ JobSearcher/
 
 | # | Spørsmål / risiko | Håndtering |
 |---|---|---|
-| 1 | **ÅPENT:** Finn-varslene inneholder trolig bare tittel, bedrift og sted. Brukeren ønsker ingen manuelle steg. | Automatisk berikelse (§4.2 steg 5). Andelen jobber uten tekst måles etter 2 uker. Mulige løsninger: be Finn om skriftlig samtykke, eller valgfri manuell innliming. |
-| 2 | Anthropic kan endre vilkår eller fakturering for `claude -p` | `anthropic_api` er klar som alternativ. Byttet er én linje i config. |
-| 3 | Strengt senioritetsfilter kan gå glipp av gode stillinger | Stillinger uten oppgitt senioritet vises med maks score 65. Hardfilteret følges opp via "Forkastet i dag". |
-| 4 | NAV-token roterer eller utløper | Privat token, og kildehelsevarsel ved 401 |
-| 5 | Karrieresider endrer struktur og gir støy i sideovervåkeren | Hash av hovedinnhold med CSS-selektor, og LLM-uttrekk bare ved endring |
-| 6 | Skrive-agenten finner på fakta | Faktaregel og `claims_to_verify` i editoren |
+| 1 | **Finn-API-et er en gråsone.** Finns ToS forbyr automatisert innhenting uten skriftlig samtykke. Mobil-API-et er uoffisielt for tredjepart. | Bevisst risiko. Privat, lokal, lavvolum (1 bruker, ~5 søk per døgn). Realistiske headere og rate-limit. Verktøyet publiseres ikke. Detaljer i spike 04. |
+| 2 | **Finn-signaturen eller endepunktene brytes** (nøkkelrotasjon, format- eller endepunktsendring, deteksjon). | Pin appversjon fra APK-en. Oppdater `finnsig` eller dekompiler ny APK. Kildehelse (§12) oppdager 401/403 raskt. Manuell innliming (`manual`-kilden) som siste fallback. |
+| 3 | Anthropic kan endre vilkår eller fakturering for `claude -p` | `anthropic_api` er klar som alternativ. Byttet er én linje i config. |
+| 4 | Strengt senioritetsfilter kan gå glipp av gode stillinger | Stillinger uten oppgitt senioritet vises med maks score 65. Hardfilteret følges opp via "Forkastet i dag". |
+| 5 | NAV-token roterer eller utløper | Privat token, og kildehelsevarsel ved 401 |
+| 6 | Karrieresider endrer struktur og gir støy i sideovervåkeren | Hash av hovedinnhold med CSS-selektor, og LLM-uttrekk bare ved endring |
+| 7 | Skrive-agenten finner på fakta | Faktaregel og `claims_to_verify` i editoren |
