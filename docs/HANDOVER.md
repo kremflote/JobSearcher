@@ -3,7 +3,7 @@
 > Keep this file short. Update it at the end of every session: status, next task, open questions, and one line in the log.
 
 **Last updated:** 2026-10-10
-**Phase:** 0, 0b and frontend F0 done → **next: frontend F1 (daily loop) against mocks.** F0 is merged to main (PR #4).
+**Phase:** 0, 0b, frontend F0, F1 and F2 done → **next: F3 (søknadseditor).** F1 and F2 are on `feat/frontend-f1` (uncommitted until the user commits).
 
 ## Status
 
@@ -27,6 +27,19 @@
   - Invented fixture set in `web/src/mocks/fixtures/*.ts`: 41 jobs over all types, all 10 statuses, reposts, title-only, unknown deadlines, 8 discarded, runs/agent runs, profile files, settings. Dates are relative to today. MSW serves all read endpoints; mutations return 501 until their wave.
   - Tests: Vitest 24 (format, fixtures, shell), Playwright 8 (2 viewports: navigation, layout, theme, manifest). `npm run build` OK.
 
+- **Frontend F1 (daily loop) done** (2026-10-10), see FRONTEND v0.5:
+  - Oversikt (`features/overview/`): frister ≤ 14 d, nye siden sist, oppfølginger, kildestatus + kostnad (PC; under "Mer" på mobil).
+  - Jobber (`features/jobs/`): typefaner, filtre i URL-en (rad på PC, handlingsark på mobil), cursor-paging med uendelig scroll, sveip-triage (< 768 px), tastatur (`j/k/i/x/u/o/Enter`), angre-toast, master-detalj ≥ 1024 px, egen detaljskjerm med fast handlingsrad på mobil.
+  - Bakgrunnsjobber: `useTask`/`useActiveTasks`, indikator med "Avbryt", "Kjør nå". Mock: `PUT /api/jobs/{id}/status`, `POST /api/runs`, `GET /api/tasks?active`, `POST /api/tasks/{id}/cancel`.
+  - Contract: `role` in `GET /api/jobs` is now `RoleCategory` (openapi.json re-exported).
+  - Tests: Vitest 34, Playwright 13 (+3 skipped per viewport). `npm run build` and `uv run pytest` OK.
+
+- **Frontend F2 (tracker) done** (2026-10-10), see FRONTEND v0.6 §5.4 and ARCHITECTURE v0.10 §9.1:
+  - `features/tracker/`: kanban ≥ 1024 px with `@dnd-kit/core` (legal columns lit, illegal dimmed + toast, Avsluttet collapsed, chooser when several closed statuses fit), status menu on each card; grouped list < 1024 px with chips (`?vis=`) and an action sheet; panel at `?app=<id>` (right side panel / full screen) with next step, follow-up, notes and event log. Undo toast on every move.
+  - Contract: `ApplicationCard.allowed_next` + `previous_status` (backend owns the transition table; undo = PATCH back to `previous_status`, deletes the last event). Mock `PATCH /api/applications/{id}` with 409 `invalid_transition`. openapi.json re-exported.
+  - Oversikt follow-ups and the job detail ("Endre status i Tracker") link to the panel.
+  - Tests: Vitest 44, Playwright 17 (+7 skipped across viewports). `npm run build` and `uv run pytest` OK.
+
 ### Waiting on the user
 - [ ] NAV private token → `NAV_FEED_TOKEN` in `.env`. Blocks live NAV runs only. Development can use the public token from the NAV docs.
 - [x] Geography per job type (ARCHITECTURE §5.3) confirmed: permanent = `oslo_omegn`, trainee/graduate/summer = `norge`.
@@ -39,14 +52,10 @@
 ## Next task
 Frontend first (ARCHITECTURE §17 v0.8): build the whole UI against mocks, let the user try it, then build the backend.
 
-### Frontend wave F1 (daily loop), see FRONTEND §5.1–5.3 and §8
-1. Oversikt (§5.1) from `GET /api/overview`, replacing the placeholder in `web/src/features/placeholders.tsx`.
-2. Jobber (§5.2): type tabs, filters in the URL, sorting, infinite scroll (cursor), `ScoreBadge`/`DeadlineBadge` (use `lib/format.ts`, `lib/status.ts`), swipe triage on mobile with undo toast, keyboard triage on PC, master-detail ≥ 1024 px.
-3. Jobbdetalj (§5.3) incl. the fixed action bar on mobile.
-4. Mock mutations: `PUT /api/jobs/{id}/status`, `POST /api/runs` + task progress (`useTask`), active-task indicator.
-5. Playwright: triage a mock day by swipe (mobile) and keyboard (PC).
+### Frontend wave F3 (søknadseditor), see FRONTEND §5.5
+Editor with Markdown preview, autosave 2 s → new version (`author=user`), version picker with diff, revision chat against a mock agent (background task → new version with `change_summary`), `claims_to_verify` as checkable warnings, copy and `.docx` download. Mock: `POST /api/jobs/{id}/draft`, `POST /api/applications/{id}/drafts`, `POST /api/applications/{id}/revise`, `GET /api/drafts/{id}/docx`; "Lag søknadsutkast" in the job detail and `/soknader` list page. Creating a draft should move the application to `utkast` (ARCHITECTURE §9.1).
 
-After F1: user test on PC and phone (`npm run dev:mock -- --host`). Fix findings in FRONTEND + the contract before F2.
+The F1 user test (triage a mock day in < 2 min on mobile) has not been reported; the user gave F1 feedback and asked to start F2. Known small things: the main JS chunk is > 500 kB (code-split in F5); the PC filter row on Jobber wraps to three lines.
 
 ### Later: backend phase 1 (foundation)
 Starts after the F4 user test. `finn_api.py` (search + JSON-LD detail fetch) + `finn_sig.py` (port the signing from spike 04; test against the fixtures), NAV source, pipeline (normalize, clean §4.6, dedupe §4.5, hardfilter §5.1, lock, `scrape_runs`), `serve` with the first real endpoints.
@@ -71,3 +80,7 @@ Starts after the F4 user test. `finn_api.py` (search + JSON-LD detail fetch) + `
 - 2026-10-10: Phase 0b. Verified Finn HMAC signing live (~12 calls). Fixed spike 04 assumptions: path uses enum searchkey, param is `work_experience`, hierarchical location IDs, no ad text in search (→ fetch JSON-LD from the public ad page for new jobs). Saved filter fixtures. ARCHITECTURE v0.9.
 - 2026-10-10: Merged the docs branch to main (PR #3); FRONTEND §10 open questions resolved into §2. Built frontend wave F0 on `feat/frontend-f0`: uv + Python 3.12, API contract v0 with 501 stubs and OpenAPI export, `web/` skeleton (app shell, theme, PWA "Jobbsøk"), MSW + 41 invented jobs, Vitest + Playwright. TS pinned to 5.9 (TS 7 breaks `openapi-typescript`). FRONTEND v0.4.
 - 2026-10-10: User merged F0 to main (PR #4) and deleted the Finn APK (no longer needed; re-download if the key rotates). Removed APK location references from AGENTS, ARCHITECTURE §18 and spike 04 (update note).
+- 2026-10-10: Built frontend wave F1 against mocks: Oversikt, Jobber (tabs, URL filters, swipe + keyboard triage with undo, master-detail), Jobbdetalj with mobile action bar, task indicator and "Kjør nå", mock mutations. `role` query param typed. FRONTEND v0.5.
+- 2026-10-10: F1 feedback from the user: triage in the job detail now moves straight to the next job (not back to the list), and the undo toast/task indicator sit above the mobile action bar. E2E covers both.
+- 2026-10-10: Built frontend wave F2 (tracker) against mocks: kanban with drag and drop + status menu (PC), grouped list + action sheet (mobile), panel with next step/follow-up/notes/event log, undo. Contract: `allowed_next`/`previous_status` on the card. ARCHITECTURE v0.10 (§9.1 transition table: + Interessant → Søkt, Tilbud → Trukket, Ikke aktuell → Interessant), FRONTEND v0.6.
+- 2026-10-10: User feedback: untriaged status `ny` is now labelled "Ikke vurdert" in the UI (was "Ny", which clashed with the NY tag for new since last run). API value unchanged. The pre-marked Interessant jobs the user saw are mock fixtures. Then: untriaged jobs get an "Ikke vurdert" pill, and the new-since-last tag ("Ny") uses the same pill style as the rest.

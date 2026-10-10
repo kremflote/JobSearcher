@@ -139,3 +139,18 @@
       sans-serif;
   }
 }
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* The mobile job detail has a fixed action bar above the bottom tabs (FRONTEND §5.3). While it is
+   shown, toasts and the task indicator sit above it instead of covering the triage buttons. */
+@media (width < 48rem) {
+  body[data-action-bar] .above-action-bar {
+    bottom: calc(7.25rem + env(safe-area-inset-bottom));
+  }
+}

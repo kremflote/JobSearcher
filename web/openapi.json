@@ -224,6 +224,15 @@
             "schema": {
               "anyOf": [
                 {
+                  "enum": [
+                    "backend",
+                    "frontend",
+                    "fullstack",
+                    "mobile",
+                    "devops",
+                    "data",
+                    "other"
+                  ],
                   "type": "string"
                 },
                 {
@@ -2298,6 +2307,50 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "allowed_next": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "ny",
+                "interessant",
+                "utkast",
+                "sokt",
+                "intervju",
+                "tilbud",
+                "ikke_aktuell",
+                "avslag",
+                "trukket",
+                "utlopt"
+              ]
+            },
+            "type": "array",
+            "title": "Allowed Next",
+            "description": "Legal next statuses (ARCHITECTURE §9.1). The UI offers only these."
+          },
+          "previous_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "ny",
+                  "interessant",
+                  "utkast",
+                  "sokt",
+                  "intervju",
+                  "tilbud",
+                  "ikke_aktuell",
+                  "avslag",
+                  "trukket",
+                  "utlopt"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Status",
+            "description": "`from_status` of the latest event. PATCHing back to it undoes that event."
           }
         },
         "type": "object",
@@ -2314,7 +2367,9 @@
           "next_step_at",
           "contact_name",
           "notes",
-          "created_at"
+          "created_at",
+          "allowed_next",
+          "previous_status"
         ],
         "title": "ApplicationCard"
       },

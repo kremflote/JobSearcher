@@ -2,7 +2,7 @@ import type { ApplicationStatus, JobType } from '@/api/types'
 
 /** Display names for API status values (FRONTEND §7: values are snake_case, names live here). */
 export const STATUS_LABEL: Record<ApplicationStatus, string> = {
-  ny: 'Ny',
+  ny: 'Ikke vurdert',
   interessant: 'Interessant',
   utkast: 'Utkast',
   sokt: 'Søkt',
@@ -38,3 +38,18 @@ export const JOB_TYPE_LABEL: Record<JobType, string> = {
   summer: 'Sommerjobb',
   unknown: 'Ukjent',
 }
+
+export type TrackerColumn = { id: string; label: string; statuses: readonly ApplicationStatus[] }
+
+/** Tracker columns on PC and groups on mobile (FRONTEND §5.4). `ny` never has an application. */
+export const TRACKER_COLUMNS: readonly TrackerColumn[] = [
+  { id: 'interessant', label: 'Interessant', statuses: ['interessant'] },
+  { id: 'utkast', label: 'Utkast', statuses: ['utkast'] },
+  { id: 'sokt', label: 'Søkt', statuses: ['sokt'] },
+  { id: 'intervju', label: 'Intervju', statuses: ['intervju'] },
+  { id: 'tilbud', label: 'Tilbud', statuses: ['tilbud'] },
+  { id: 'avsluttet', label: 'Avsluttet', statuses: CLOSED_STATUSES },
+]
+
+export const columnOf = (status: ApplicationStatus) =>
+  TRACKER_COLUMNS.find((c) => c.statuses.includes(status)) ?? TRACKER_COLUMNS[0]!

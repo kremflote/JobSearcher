@@ -28,6 +28,8 @@ export function createMockDb(now = new Date()) {
     profileFiles: buildProfileFiles(c),
     settings: buildSettings(),
     tasks: [] as Task[],
+    /** How long a mock run takes: short enough to watch, long enough to cancel. */
+    runMs: 6000,
     lastRunAt: c.at(0, 7, 2),
     costMonthUsd: 4.37,
     costCapUsd: 25,

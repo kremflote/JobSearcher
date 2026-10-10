@@ -33,3 +33,9 @@ export function deadlineInfo(deadline: string | null, deadlineText?: string | nu
   const tone: Tone = days < 0 ? 'muted' : days <= 3 ? 'bad' : days <= 7 ? 'warn' : 'neutral'
   return { relative, date, tone, days }
 }
+
+/** Short date for tracker cards, e.g. "13. okt". `overdue` when it is before today. */
+export function shortDate(iso: string, today = new Date()) {
+  const d = parseISO(iso)
+  return { text: format(d, 'd. MMM', { locale: nb }).replace(/\.$/, ''), overdue: differenceInCalendarDays(d, today) < 0 }
+}

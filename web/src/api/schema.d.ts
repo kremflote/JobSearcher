@@ -508,6 +508,16 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Allowed Next
+             * @description Legal next statuses (ARCHITECTURE §9.1). The UI offers only these.
+             */
+            allowed_next: ("ny" | "interessant" | "utkast" | "sokt" | "intervju" | "tilbud" | "ikke_aktuell" | "avslag" | "trukket" | "utlopt")[];
+            /**
+             * Previous Status
+             * @description `from_status` of the latest event. PATCHing back to it undoes that event.
+             */
+            previous_status: ("ny" | "interessant" | "utkast" | "sokt" | "intervju" | "tilbud" | "ikke_aktuell" | "avslag" | "trukket" | "utlopt") | null;
         };
         /** ApplicationEvent */
         ApplicationEvent: {
@@ -1293,7 +1303,7 @@ export interface operations {
                 min_score?: number | null;
                 source?: ("finn_api" | "nav" | "teamtailor" | "page_watch" | "manual") | null;
                 deadline_before?: string | null;
-                role?: string | null;
+                role?: ("backend" | "frontend" | "fullstack" | "mobile" | "devops" | "data" | "other") | null;
                 q?: string | null;
                 sort?: "deadline" | "score" | "newest";
                 cursor?: string | null;

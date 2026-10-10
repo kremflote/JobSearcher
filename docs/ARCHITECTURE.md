@@ -1,12 +1,13 @@
 # JobSearcher: design- og arkitekturdokument
 
-> Status: v0.9 (2026-10-10). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølge F0 (skjelett) er bygget; backend-fasene er ikke startet.
+> Status: v0.10 (2026-10-10). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F2 er bygget mot mock; backend-fasene er ikke startet.
 > Dokumentet er "source of truth" for designet. UI-designet står i [FRONTEND.md](FRONTEND.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato       | Endring                                                                                                                                                                                                                                                                           |
 | ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v0.10   | 2026-10-10 | Statusovergangene i §9.1 er en eksplisitt tabell (bygget i F2). Nytt: Interessant → Søkt uten utkast (søkt utenfor appen), Tilbud → Trukket (takket nei), Ikke aktuell → Interessant (gjenåpne). Angre = tilbake til forrige status, som sletter siste hendelse. API-et sender lovlige neste statuser på hvert kort. Status `ny` heter "Ikke vurdert" i UI-et. |
 | v0.9    | 2026-10-10 | Fase 0b: Finn-signeringen er verifisert mot levende API. Søkeresponsen har ikke annonsetekst, så Finn blir to steg (§4.2): signert søk, så `JobPosting` JSON-LD fra den offentlige annonsesiden for nye jobber etter hardfilteret. Searchkey er enum-navnet (`SEARCH_ID_JOB_FULLTIME`). Trainee- og sommersøk filtreres serverside med `job_duration`. Se spike 04 §Oppdatering. |
 | v0.8    | 2026-10-10 | Veikartet (§17) er snudd til frontend først: F0–F4 bygges mot mock-data og prøves av brukeren før backend-fasene starter, så justeringer oppdages tidlig. Unntak: Finn-signaturen verifiseres først (fase 0b), siden den er største tekniske risiko. |
 | v0.7    | 2026-10-10 | Dedupe på tvers av kilder presisert (§4.5): tre nøkler i rekkefølge (kilde-ID, normalisert søknads-URL, bedrift/orgnr + fuzzy tittel + sted). Brukeren har godkjent selskapslisten i spike 03, og Cloudflare-DNS og NPM-proxy er satt opp (§18). |
@@ -250,7 +251,7 @@ geography:
 ### 5.5 Ny scoring
 
 - **Automatisk:** når `content_hash` endres (annonsen er oppdatert, eller tekst er importert).
-- **Profil eller prompt endret:** dashboardet viser "N aktive jobber er scoret med gammel profil, estimert kostnad $X" og en knapp. Bare aktive jobber med status Ny eller Interessant, publisert de siste 30 dagene, scores på nytt. Aldri automatisk, for å holde kostnaden nede.
+- **Profil eller prompt endret:** dashboardet viser "N aktive jobber er scoret med gammel profil, estimert kostnad $X" og en knapp. Bare aktive jobber med status Ikke vurdert eller Interessant, publisert de siste 30 dagene, scores på nytt. Aldri automatisk, for å holde kostnaden nede.
 
 ---
 
@@ -582,14 +583,29 @@ profile_revisions    id, path, content, content_hash, created_at        ← hist
 ### 9.1 Søknadsstatus
 
 ```
-Ny ─► Interessant ─► Utkast ─► Søkt ─► Intervju ─► Tilbud
- │         │           │         │        │
- └► Ikke aktuell ◄─────┘         └────────┴──► Avslag / Trukket
+Ikke vurdert ─► Interessant ─► Utkast ─► Søkt ─► Intervju ─► Tilbud
+ │                   │           │         │        │
+ └──► Ikke aktuell ◄─────────────┘         └────────┴──► Avslag / Trukket
 
 (automatisk) Utløpt: fristen har passert og stillingen er ikke søkt
 ```
 
-- Ved `Søkt` settes `follow_up_at` til +14 dager.
+Hovedflyten over; tabellen er fasit. Backend validerer, ellers 409 `invalid_transition`:
+
+| Fra | Til |
+|---|---|
+| Ikke vurdert (`ny`) | Interessant, Ikke aktuell (triage, FRONTEND §5.2) |
+| Interessant | Utkast, Søkt, Ikke aktuell |
+| Utkast | Søkt, Ikke aktuell |
+| Søkt | Intervju, Avslag, Trukket |
+| Intervju | Tilbud, Avslag, Trukket |
+| Tilbud | Trukket (takket nei) |
+| Ikke aktuell | Interessant |
+| Avslag, Trukket, Utløpt | – |
+
+- Hver overgang lagres i `application_events`. API-et sender lovlige neste statuser (`allowed_next`) og forrige status (`previous_status`, `from_status` i siste hendelse) på hvert kort.
+- **Angre:** overgang tilbake til `previous_status` er alltid lov og sletter siste hendelse. Første hendelse (fra Ikke vurdert) angres med triage, som sletter søknadsraden.
+- Ved `Søkt` settes `applied_at`, og `follow_up_at` til +14 dager hvis den ikke sendes med. Angre fra Søkt nullstiller `applied_at`.
 - `next_step` og `next_step_at` er fritekst og dato ("Intervju 2. runde", "Case-oppgave"). Ingen kalenderintegrasjon.
 
 ---
@@ -768,13 +784,13 @@ JobSearcher/
 │   ├── src/
 │   │   ├── api/                       schema.d.ts (generert), types.ts, client.ts, queries.ts
 │   │   ├── components/ui/             shadcn-komponenter
-│   │   ├── components/                AppShell, ScoreBadge, DeadlineBadge, SwipeRow, …
+│   │   ├── components/                AppShell, badges (score/frist/status), tasks (indikator, Kjør nå), Toaster, Sheet, Markdown
 │   │   ├── features/                  overview/, jobs/, tracker/, editor/, profile/, settings/, logs/, more/
 │   │   │                              (placeholders.tsx holder skjermene som ikke er bygget ennå)
 │   │   ├── mocks/                     MSW: handlers.ts, db.ts, browser.ts, fixtures/*.ts (oppdiktet)
 │   │   ├── test/                      Vitest-oppsett
 │   │   ├── routes.tsx, main.tsx
-│   │   └── lib/                       format (dato, frist), status, tema
+│   │   └── lib/                       format (dato, frist), status, tema, useMediaQuery
 │   ├── e2e/                           Playwright (390×844 og 1440×900)
 │   └── dist/                          gitignored, bygget
 │
@@ -836,7 +852,7 @@ Mock-data kan ikke vise kvaliteten på LLM-output (score, brev). Den vurderes n�
 |---|---|---|
 | ~~0. Spikes~~ | Finn, NAV, Claude-abonnement, trainee-kilder | ✅ `docs/spikes/` |
 | ~~0b. Finn-sjekk~~ | Verifiser HMAC-signeringen og lagre filter-metadata som fixture. Ingen appkode. | ✅ 2026-10-10, spike 04 §Oppdatering |
-| **F0–F4. Frontend mot mock** (F0 ✅ 2026-10-10) | Bølgene i FRONTEND §8, med en brukertest etter F1 og etter F4. Funn rettes i FRONTEND, kontrakten (`api/schemas.py`) og her. | Brukeren har brukt hele flyten i mock-modus og godkjent kontrakten |
+| **F0–F4. Frontend mot mock** (F0 ✅, F1 ✅, F2 ✅ 2026-10-10) | Bølgene i FRONTEND §8, med en brukertest etter F1 og etter F4. Funn rettes i FRONTEND, kontrakten (`api/schemas.py`) og her. | Brukeren har brukt hele flyten i mock-modus og godkjent kontrakten |
 | **1. Fundament** | Repo-oppsett, config med `DATA_DIR`/`PROFILE_DIR`, DB + Alembic, HTTP-lag, NAV-kilde, Finn-API-kilde (`finn_api.py` + `finn_sig.py`, se spike 04), normalisering, dedupe, hardfilter, `jobsearcher run` uten LLM, `serve` med de første ekte endepunktene. Ingen Windows-spesifikk kode. | Daglig kjøring fyller DB med filtrerte jobber, og dashboardet viser dem |
 | **2. Scoring + API v1** | LLM-backends, destiller, filter i batch, `/api` for oversikt, jobber, jobbdetalj, triage og tasks. Kobler F1. | Rangerte jobber med frister i dashboardet |
 | **3. Søknader** | Research, writer, revisjon, versjoner, `.docx`-eksport, `/api` for utkast. Kobler F3. | Brev kan lages, itereres og lastes ned |
