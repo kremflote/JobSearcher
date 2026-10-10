@@ -2,7 +2,7 @@
 
 Et AI-basert verktøy som automatiserer jobbsøkingen: det henter stillinger, rangerer dem mot profilen din, skriver utkast til søknadsbrev og holder oversikt over hva du har søkt på.
 
-> **Status:** Under planlegging. Arkitekturen er beskrevet i [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), men programmet er ikke implementert ennå.
+> **Status:** Under utvikling. Dashboardet bygges først mot oppdiktede data (frontend-bølge F0 av F4 er ferdig), deretter backend. Arkitekturen står i [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), UI-et i [docs/FRONTEND.md](docs/FRONTEND.md).
 
 ## Hva det gjør
 
@@ -52,12 +52,36 @@ context/
   derived/       Automatisk destillert kontekst (ikke i git)
   prompts/       Systemprompter for hver agent
 config/          Innstillinger, agentmanifest, geografi og kilder   (kommer)
-src/jobsearcher/ Kildekode                                         (kommer)
+src/jobsearcher/ Backend (FastAPI). Foreløpig bare API-kontrakten
+web/             Dashboard (React + Vite + TypeScript)
+scripts/         Hjelpeskript, f.eks. eksport av API-kontrakten
 ```
 
 ## Kom i gang
 
-> Oppsettet kommer når første versjon er implementert.
+Krever [uv](https://docs.astral.sh/uv/) og Node 22.
+
+```bash
+uv sync
+cd web && npm install
+```
+
+**Prøv dashboardet med oppdiktede data** (ingen backend nødvendig):
+
+```bash
+cd web && npm run dev:mock
+```
+
+Åpne http://localhost:5173. For å prøve på mobilen: `npm run dev:mock -- --host` og åpne `http://<PC-ens Tailscale-IP>:5173`.
+
+**Når API-kontrakten endres** (`src/jobsearcher/api/schemas.py`):
+
+```bash
+uv run python scripts/export_openapi.py
+cd web && npm run gen:api
+```
+
+**Tester:** `uv run pytest` (backend), og i `web/`: `npm test`, `npm run typecheck`, `npm run e2e`.
 
 Allerede nå kan du fylle ut profilen din:
 

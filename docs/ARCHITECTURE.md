@@ -1,6 +1,6 @@
 # JobSearcher: design- og arkitekturdokument
 
-> Status: v0.9 (2026-10-10). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Ingen kode er skrevet ennå.
+> Status: v0.9 (2026-10-10). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølge F0 (skjelett) er bygget; backend-fasene er ikke startet.
 > Dokumentet er "source of truth" for designet. UI-designet står i [FRONTEND.md](FRONTEND.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
@@ -697,6 +697,7 @@ JobSearcher/
 │   ├── settings.json                  Prosjekt-hooks
 │   └── hooks/docs_check.py            Stop-hook: krever oppdatert HANDOVER når kode er endret
 ├── pyproject.toml                     uv, CLI-entrypoint `jobsearcher`
+├── uv.lock, .python-version           Låste Python-avhengigheter, Python 3.12
 ├── .env.example
 ├── .gitignore
 ├── alembic.ini
@@ -729,7 +730,7 @@ JobSearcher/
 │       └── extractor.md
 │
 ├── src/jobsearcher/
-│   ├── cli.py                         run | serve | distill | rescore | eval | init-db | backup
+│   ├── cli.py                         run | serve | distill | rescore | eval | init-db | backup (bare `serve` finnes ennå)
 │   ├── config.py
 │   ├── scheduler.py                   APScheduler i serve, innhenting av tapt kjøring
 │   ├── api/           schemas.py      API-kontrakten (Pydantic), kilde for OpenAPI og TS-typer
@@ -755,19 +756,23 @@ JobSearcher/
 │   ├── export/        docx.py, template.docx
 │   └── web/
 │       ├── app.py, tasks.py           FastAPI-app, /api-rutere, serverer web/dist
+│       ├── errors.py                  Feilformat `{detail, code}`, 501 for ruter uten backend
 │       └── routes/    overview.py, jobs.py, applications.py, drafts.py, profile.py,
 │                      settings.py, logs.py, tasks.py
 │
 ├── web/                               Frontend (FRONTEND.md)
-│   ├── package.json, vite.config.ts, tsconfig.json, components.json
+│   ├── package.json, vite.config.ts, tsconfig*.json, components.json, playwright.config.ts
+│   ├── .env.mock                      VITE_MOCK=1 for `npm run dev:mock`
 │   ├── openapi.json                   Eksportert kontrakt, versjonert
-│   ├── public/                        manifest.webmanifest, ikoner
+│   ├── public/                        manifest.webmanifest, ikoner, mockServiceWorker.js (MSW)
 │   ├── src/
-│   │   ├── api/                       schema.d.ts (generert), client.ts, hooks
+│   │   ├── api/                       schema.d.ts (generert), types.ts, client.ts, queries.ts
 │   │   ├── components/ui/             shadcn-komponenter
 │   │   ├── components/                AppShell, ScoreBadge, DeadlineBadge, SwipeRow, …
-│   │   ├── features/                  overview/, jobs/, tracker/, editor/, profile/, settings/, logs/
-│   │   ├── mocks/                     MSW-handlere, fixtures/ (anonymisert)
+│   │   ├── features/                  overview/, jobs/, tracker/, editor/, profile/, settings/, logs/, more/
+│   │   │                              (placeholders.tsx holder skjermene som ikke er bygget ennå)
+│   │   ├── mocks/                     MSW: handlers.ts, db.ts, browser.ts, fixtures/*.ts (oppdiktet)
+│   │   ├── test/                      Vitest-oppsett
 │   │   ├── routes.tsx, main.tsx
 │   │   └── lib/                       format (dato, frist), status, tema
 │   ├── e2e/                           Playwright (390×844 og 1440×900)
@@ -783,6 +788,7 @@ JobSearcher/
 │
 └── tests/
     ├── fixtures/                      Finn-varsel-e-post, NAV-feedside og -annonse, Teamtailor-RSS, eksempelprofil
+    ├── test_api_contract.py           501-ruter, feilformat, web/openapi.json er oppdatert
     ├── test_finn_api.py
     ├── test_finn_sig.py
     ├── test_nav_feed.py
@@ -830,7 +836,7 @@ Mock-data kan ikke vise kvaliteten på LLM-output (score, brev). Den vurderes n�
 |---|---|---|
 | ~~0. Spikes~~ | Finn, NAV, Claude-abonnement, trainee-kilder | ✅ `docs/spikes/` |
 | ~~0b. Finn-sjekk~~ | Verifiser HMAC-signeringen og lagre filter-metadata som fixture. Ingen appkode. | ✅ 2026-10-10, spike 04 §Oppdatering |
-| **F0–F4. Frontend mot mock** | Bølgene i FRONTEND §8, med en brukertest etter F1 og etter F4. Funn rettes i FRONTEND, kontrakten (`api/schemas.py`) og her. | Brukeren har brukt hele flyten i mock-modus og godkjent kontrakten |
+| **F0–F4. Frontend mot mock** (F0 ✅ 2026-10-10) | Bølgene i FRONTEND §8, med en brukertest etter F1 og etter F4. Funn rettes i FRONTEND, kontrakten (`api/schemas.py`) og her. | Brukeren har brukt hele flyten i mock-modus og godkjent kontrakten |
 | **1. Fundament** | Repo-oppsett, config med `DATA_DIR`/`PROFILE_DIR`, DB + Alembic, HTTP-lag, NAV-kilde, Finn-API-kilde (`finn_api.py` + `finn_sig.py`, se spike 04), normalisering, dedupe, hardfilter, `jobsearcher run` uten LLM, `serve` med de første ekte endepunktene. Ingen Windows-spesifikk kode. | Daglig kjøring fyller DB med filtrerte jobber, og dashboardet viser dem |
 | **2. Scoring + API v1** | LLM-backends, destiller, filter i batch, `/api` for oversikt, jobber, jobbdetalj, triage og tasks. Kobler F1. | Rangerte jobber med frister i dashboardet |
 | **3. Søknader** | Research, writer, revisjon, versjoner, `.docx`-eksport, `/api` for utkast. Kobler F3. | Brev kan lages, itereres og lastes ned |

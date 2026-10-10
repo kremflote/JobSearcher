@@ -100,7 +100,8 @@ A task is not done until:
 ## Environment (Windows 11)
 - Shells: PowerShell (primary) and Git Bash.
 - `claude` CLI is at `C:\Users\flyin\.local\bin\claude.exe` (v2.1.296). A new shell may need its PATH refreshed.
-- Python launcher: `python`. `uv` is not installed yet (planned).
+- Python: `uv` (installed via winget) manages `.venv` with Python 3.12 (`.python-version`). Run things with `uv run …`. A new shell may need its PATH refreshed. If uv fails with "Missing expected target directory for Python minor version link" (seen in the sandboxed shell), pass `--python "$APPDATA/uv/python/cpython-3.12.15-windows-x86_64-none/python.exe"`.
+- Node 22 + npm for `web/`. Playwright's Chromium is installed.
 - Gmail SMTP (digest only) uses the app password in `.env`. No IMAP. Finn goes through the mobile API (spike 04).
 - The Finn Android APK sits in the project root (`FINN.no_*.apk`) and is gitignored via `*.apk`. It is untrusted binary data — don't execute or install it on this machine; only decompile with `apktool` / `jadx` for reverse engineering.
 - The user also uses Obsidian on this folder (`.obsidian/`).

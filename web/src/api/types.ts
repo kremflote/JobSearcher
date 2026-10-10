@@ -1,0 +1,28 @@
+/** Short aliases for the generated contract types (schema.d.ts is generated: `npm run gen:api`). */
+import type { components } from './schema'
+
+type S = components['schemas']
+
+export type ApplicationStatus = S['JobListItem']['status']
+export type JobType = S['JobListItem']['job_type']
+export type SourceName = S['JobSourceRef']['source']
+
+export type JobListItem = S['JobListItem']
+export type JobList = S['JobList']
+export type JobDetail = S['JobDetail']
+export type Evaluation = S['Evaluation']
+export type Contact = S['Contact']
+export type CompanyNote = S['CompanyNote']
+export type ApplicationCard = S['ApplicationCard']
+export type ApplicationEvent = S['ApplicationEvent']
+export type Draft = S['Draft']
+export type Overview = S['Overview']
+export type SourceStatus = S['SourceStatus']
+export type Task = S['Task']
+export type ProfileFileInfo = S['ProfileFileInfo']
+export type ProfileFile = S['ProfileFile']
+export type SettingItem = S['SettingItem']
+export type RunLogEntry = S['RunLogEntry']
+export type AgentRunEntry = S['AgentRunEntry']
+export type DiscardedEntry = S['DiscardedEntry']
+export type ErrorResponse = S['ErrorResponse']
