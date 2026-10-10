@@ -3,7 +3,7 @@
 > Keep this file short. Update it at the end of every session: status, next task, open questions, and one line in the log.
 
 **Last updated:** 2026-10-10
-**Phase:** 0, 0b and frontend F0 done → **next: frontend F1 (daily loop) against mocks.** Branch `feat/frontend-f0`, PR to main.
+**Phase:** 0, 0b and frontend F0 done → **next: frontend F1 (daily loop) against mocks.** F0 is merged to main (PR #4).
 
 ## Status
 
@@ -20,7 +20,6 @@
 - Draft agent prompts in `context/prompts/` (filter, researcher, writer, reviser, distiller, extractor), all v0.1 and untested. The old `enricher` prompt is obsolete — the Finn API returns full ad text.
 - `.env` has `GMAIL_ADDRESS` and `GMAIL_APP_PASSWORD` (now used only for SMTP digest).
 - `claude -p` verified on the subscription (~39k tokens overhead per call without isolation, see spike 02)
-- Finn APK downloaded to project root (`FINN.no_*.apk`, gitignored via `*.apk`).
 
 - **Frontend F0 (skeleton) done** (2026-10-10):
   - Backend: `pyproject.toml` (uv, Python 3.12), `api/schemas.py` with the whole v0 contract (FRONTEND §7), FastAPI app where every route returns `501 {detail, code}` except `/api/health`, `jobsearcher serve`, `scripts/export_openapi.py` → `web/openapi.json`. `uv run pytest`: 3 tests, including one that fails when `openapi.json` is stale.
@@ -71,3 +70,4 @@ Starts after the F4 user test. `finn_api.py` (search + JSON-LD detail fetch) + `
 - 2026-10-10: Roadmap flipped to frontend first (ARCHITECTURE v0.8, FRONTEND v0.2): F0–F4 against mocks with user tests after F1 and F4, then backend phases. Finn HMAC check kept first as phase 0b (biggest risk).
 - 2026-10-10: Phase 0b. Verified Finn HMAC signing live (~12 calls). Fixed spike 04 assumptions: path uses enum searchkey, param is `work_experience`, hierarchical location IDs, no ad text in search (→ fetch JSON-LD from the public ad page for new jobs). Saved filter fixtures. ARCHITECTURE v0.9.
 - 2026-10-10: Merged the docs branch to main (PR #3); FRONTEND §10 open questions resolved into §2. Built frontend wave F0 on `feat/frontend-f0`: uv + Python 3.12, API contract v0 with 501 stubs and OpenAPI export, `web/` skeleton (app shell, theme, PWA "Jobbsøk"), MSW + 41 invented jobs, Vitest + Playwright. TS pinned to 5.9 (TS 7 breaks `openapi-typescript`). FRONTEND v0.4.
+- 2026-10-10: User merged F0 to main (PR #4) and deleted the Finn APK (no longer needed; re-download if the key rotates). Removed APK location references from AGENTS, ARCHITECTURE §18 and spike 04 (update note).

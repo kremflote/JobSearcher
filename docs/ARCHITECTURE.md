@@ -852,7 +852,7 @@ F5 (drift i container) gjøres sammen med fase 4b.
 ## 18. Brukerens oppgaver før/under fase 1
 
 - [x] Installere Claude Code CLI og logge inn (verifisert: v2.1.296, `claude -p` fungerer)
-- [x] Laste ned Finns Android-APK til prosjektrot (`FINN.no_*.apk`, gitignored)
+- [x] Laste ned Finns Android-APK og dekompilere den (slettet etterpå; funnene står i spike 04)
 - [x] Lage Gmail-app-passord → `.env` (brukes nå bare til SMTP-digest)
 - [ ] Bestille privat token for NAV-feeden (e-post til nav.team.arbeidsplassen@nav.no)
 - [x] Gå gjennom selskapslisten i spike 03
