@@ -1,0 +1,23 @@
+# Hemmeligheter
+.env
+
+# Kjøretidsdata (DB, cache, logger, bedriftsnotater)
+data/
+
+# Generert kontekst
+context/derived/*
+!context/derived/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Obsidian: lokal arbeidsflate-tilstand
+.obsidian/workspace*.json
+
+# Personlig profil (persondata), bare malene versjoneres
+context/profile/**
+!context/profile/**/
+!context/profile/**/_template.md
