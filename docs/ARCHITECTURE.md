@@ -1,7 +1,15 @@
-# JobSearcher – Design- og arkitekturdokument
+# JobSearcher: design- og arkitekturdokument
 
-> Status: utkast v0.1 (2026-10-09). Ingen kode skrevet ennå.
-> Dokumentet er "source of truth" for designet. Oppdater det når beslutninger endres.
+> Status: v0.3 (2026-10-10). Fase 0 (spikes) er gjennomført, se `docs/spikes/`. Ingen kode er skrevet ennå.
+> Dokumentet er "source of truth" for designet. Regler for vedlikehold står i `AGENTS.md`.
+
+## Endringslogg
+
+| Versjon | Dato | Endring |
+|---|---|---|
+| v0.3 | 2026-10-10 | Finn-varsler er forhåndsfiltrert og regnes som gyldige (to tillitsnivåer i hardfilteret). Automatisk berikelse av Finn-jobber via `enricher` i stedet for manuell import. Ingen manuelle steg. Stillinger uten oppgitt senioritet vises med maks score 65. Geografi per jobbtype. |
+| v0.2 | 2026-10-10 | Finn via e-postvarsler i stedet for skraping (spike 01). NAV er egen kilde, ikke fallback (spike 02). `claude_code` er standard backend (spike 03). Strengt senioritetsfilter. Frister og kontakter som egne felt. Konkrete design for agenter, drift og eval. |
+| v0.1 | 2026-10-09 | Første utkast etter intervju |
 
 ---
 
@@ -9,74 +17,85 @@
 
 Et frittstående Python-program som kjører lokalt og automatiserer jobbsøkingen for en nyutdannet utvikler i Nittedal:
 
-1. **Henter** relevante stillinger daglig fra Finn.no (hovedkilde), NAV/Arbeidsplassen og kilder for trainee-/graduate-stillinger.
+1. **Samler inn** relevante stillinger daglig: Finn (via varsler), NAV-feeden og kilder for trainee/graduate.
 2. **Filtrerer og rangerer** stillingene mot brukerens profil.
-3. **Presenterer** resultatene i et lokalt web-dashboard.
-4. **Skriver utkast til søknadsbrev** med kontekst om brukeren, stillingen og bedriften. Utkastet kan redigeres manuelt og itereres på med en agent.
-5. **Holder oversikt** over søkte jobber og status.
-6. **Varsler** på e-post når nye, relevante jobber dukker opp.
+3. **Presenterer** resultatene i et lokalt web-dashboard, med søknadsfrister i sentrum.
+4. **Skriver utkast til søknadsbrev** ut fra profilen, annonsen og research om bedriften. Utkastet kan redigeres manuelt og itereres med en agent, og eksporteres til `.docx`.
+5. **Holder oversikt** over søknader, status og frister.
+6. **Varsler** på e-post om nye, relevante jobber og frister som nærmer seg.
 
-**Utenfor scope (foreløpig):** tilpasning av CV, automatisk innsending av søknader, LinkedIn-skraping.
+**Utenfor scope:**
+- Tilpasning av CV
+- Automatisk innsending av søknader
+- Egen modus for å svare på spørsmål i søknadsskjemaer: brukeren fyller ut skjemaer selv, med søknadsbrevet som grunnlag.
+- Læring fra brukerens valg (Interessant / Ikke aktuell) i scoringen
+- LinkedIn
+- Skraping av Finn
 
 ### Designprinsipper
 
 | Prinsipp | Konsekvens |
 |---|---|
-| **Tilstand ligger i databasen, ikke i agentene** | Agenter er kortlivde og tilstandsløse. De får en ferdig sammensatt kontekstpakke, gjør én jobb, skriver resultatet og avslutter. |
-| **Orkestreringen er vanlig kode, ikke en LLM** | Pipelinen er deterministisk Python. LLM brukes bare der det trengs vurdering eller språk. Det er billigere og lettere å feilsøke. |
-| **Kontekst er strukturert og budsjettert** | Hver agenttype har et manifest som sier nøyaktig hvilke kontekstbiter den får, og et token-budsjett for dem. |
-| **Billig først, dyrt sist** | Deterministiske filtre → billig modell → dyr modell bare på det brukeren har valgt ut. |
-| **Alt er konfigurerbart** | Roller, geografi, jobbtyper, modeller og terskler ligger i YAML, ikke i koden. |
+| **Tilstand i databasen, ikke i agentene** | Agenter er kortlivde og tilstandsløse. De får en ferdig kontekstpakke, gjør én jobb, returnerer strukturert output og avslutter. |
+| **Orkestrering er kode, ikke LLM** | Pipelinen er deterministisk Python. LLM brukes bare der det trengs vurdering eller språk. |
+| **Kontekst er strukturert og budsjettert** | Hver agent har et manifest med nøyaktig hvilke kontekstbiter den får, og et token-budsjett. |
+| **Billig først, dyrt sist** | Deterministiske filtre → billig modell i batch → dyr modell bare på det brukeren velger. |
+| **Respekter kildenes vilkår** | Bare offisielle feeder, kildens egne varsler og brukerens egen nettleser. Ingen omgåelse av tilgangskontroll. |
+| **Alt er konfigurerbart** | Roller, geografi, jobbtyper, modeller og terskler i YAML |
 
 ---
 
-## 2. Beslutninger så langt
+## 2. Beslutninger
 
 | Tema | Beslutning |
 |---|---|
 | Språk | Python 3.12+ |
 | Kjøremiljø | Lokalt på brukerens Windows-PC |
-| Planlegging | Windows Task Scheduler (daglig), og "Kjør nå"-knapp i dashboardet |
-| Dashboard | FastAPI + Jinja2-maler + HTMX (ingen JS-build) |
-| Database | SQLite (via SQLModel/SQLAlchemy) |
-| E-post | Gmail SMTP med app-passord, sendt til brukeren selv |
-| LLM | Claude, bak et abstrakt backend-lag (abonnement via Claude Code CLI *eller* API-nøkkel, se §7) |
+| Planlegging | Windows Task Scheduler (daglig 07:00) og "Kjør nå" i dashboardet |
+| Dashboard | FastAPI + Jinja2 + HTMX, bundet til `127.0.0.1` |
+| Database | SQLite via SQLModel, migrasjoner med Alembic |
+| E-post | Gmail: SMTP for utsending, IMAP for å lese Finn-varsler (samme app-passord) |
+| LLM | Claude. Standard: `claude_code` (abonnement via `claude -p`). Alternativ: `anthropic_api`. |
+| Finn | Lagrede søk med e-postvarsel → IMAP. Annonsetekst importeres fra brukerens nettleser. |
+| NAV | pam-stilling-feed med privat token |
+| Trainee/graduate | NAV + Teamtailor-RSS + kuratert selskapsliste med sideovervåker |
 | Volum | 10–20 søknader per uke |
-| Søknadsbrev | Ja: manuell redigering og agent-iterasjon |
-| CV-tilpasning | Nei |
+| Senioritet | Bare junior, trainee, graduate, nyutdannet, internship og sommerjobb. Krav om 1+ års erfaring forkastes. |
+| Geografi | Per jobbtype: fast stilling i `oslo_omegn` (Oslo med nærområder, inkl. Nittedal). Trainee, graduate og sommerjobb i hele `norge`. `nittedal` finnes som alternativ. |
+| Kildetillit | Finn-varsler er forhåndsfiltrert av brukerens Finn-filtre (ingen erfaring/junior, ingen utdanning/bachelor) og regnes som gyldige. Andre kilder filtreres med strengmatching + LLM. |
+| Søknad | Ett vanlig søknadsbrev per stilling. Eksport til `.docx`. |
+| Tracking | Søknadsfrist er viktigst. Kontaktpersoner og nøkkelinfo lagres når de finnes. |
+| Kostnad | Tak $25/mnd. E-postvarsel ved score ≥ 70. |
+| Reposts | Kobles til opprinnelig jobb via fingerprint og merkes "lagt ut på nytt" |
+| Profil i git | Nei. `context/profile/` er gitignored, bare malene versjoneres. |
 
 ---
 
 ## 3. Systemoversikt
 
 ```
-                 ┌───────────────────────────── Windows Task Scheduler (daglig 07:00)
-                 │                         ┌─── "Kjør nå" i dashboardet
-                 ▼                         ▼
-        ┌──────────────────────────────────────────┐
-        │           Pipeline-orkestrator (kode)    │   lock-fil hindrer samtidige kjøringer
-        └──────────────────────────────────────────┘
-          │ 1. hent     │ 2. normaliser  │ 3. hardfilter │ 4. LLM-score   │ 5. varsle
-          ▼             ▼                ▼               ▼                ▼
-   ┌────────────┐ ┌───────────┐  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-   │  Kilder    │ │ Normalize │  │ Regelbasert  │ │ Filter-agent │ │ E-post-      │
-   │ Finn, NAV, │ │ + dedupe  │  │ filter (geo, │ │ (Haiku)      │ │ digest       │
-   │ ATS, ...   │ │           │  │ rolle, type) │ │              │ │              │
-   └────────────┘ └───────────┘  └──────────────┘ └──────────────┘ └──────────────┘
-          │             │                │               │
-          └─────────────┴────────────────┴───────────────┴──────►  SQLite  ◄──────┐
-                                                                       ▲           │
-        ┌──────────────────────────── Dashboard (FastAPI + HTMX) ──────┘           │
-        │  Brukeren velger "Lag søknad" på en jobb                                  │
-        ▼                                                                           │
-   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                          │
-   │ Research-    │ ─► │ Skrive-agent │ ─► │ Revisjons-   │ ── nye utkastversjoner ──┘
-   │ agent        │    │ (Opus)       │    │ agent (chat) │
-   │ (Sonnet+web) │    │              │    │ (Sonnet/Opus)│
-   └──────────────┘    └──────────────┘    └──────────────┘
-         ▲                    ▲                   ▲
-         └──────── Kontekstbygger: setter sammen kontekstpakker etter manifest ────────┘
-                   (profil, annonse, bedriftsnotat, stil) innenfor token-budsjett
+  Finn (lagrede søk)        NAV pam-stilling-feed      Teamtailor RSS / karrieresider
+        │ daglig e-post              │ API                        │ RSS / sideovervåker
+        ▼                            │                            │
+  Gmail (etikett) ── IMAP ──┐        │                            │
+                            ▼        ▼                            ▼
+        ┌────────────────────────────────────────────────────────────────┐
+        │                Pipeline-orkestrator (kode)                     │ ← Task Scheduler / "Kjør nå"
+        │ hent → normaliser → dedupe/repost → hardfilter → score (batch) │   (lock-fil)
+        │ → varsle → backup                                              │
+        └────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+                                SQLite ◄──────────────────────────────┐
+                                   ▲                                   │
+   ┌──────────── Dashboard (FastAPI + HTMX, 127.0.0.1:8765) ──────────┘
+   │  • Frister og nye jobber   • Importer annonsetekst (Finn)
+   │  • "Lag søknad"            • Tracker         • Innstillinger
+   ▼
+ Research-agent ──► Skrive-agent ──► Revisjonsagent (rullerende) ──► .docx
+ (Sonnet + web)     (Opus)           (Sonnet)
+        ▲                ▲                 ▲
+        └─ Kontekstbygger: pakker etter manifest, innenfor token-budsjett ─┘
 ```
 
 ---
@@ -85,191 +104,219 @@ Et frittstående Python-program som kjører lokalt og automatiserer jobbsøkinge
 
 ### 4.1 Kildegrensesnitt
 
-Alle kilder implementerer samme grensesnitt, slik at nye kilder kan legges til uten å endre pipelinen:
-
 ```python
 class JobSource(Protocol):
     name: str
-    def search(self, query: SearchQuery) -> Iterable[RawJobRef]: ...   # lister treff (billig)
-    def fetch(self, ref: RawJobRef) -> RawJob: ...                     # henter full annonse
+    def collect(self, since: Cursor | None) -> CollectResult: ...
+    # CollectResult: list[RawJob], ny cursor, helsestatus (antall, feil)
 ```
 
-`SearchQuery` bygges fra `config/settings.yaml` (roller, geografi-modus, jobbtyper). Hver kilde oversetter den til sitt eget format (URL-parametre, API-filtre).
+- Hver kilde lagrer sin egen cursor i `source_state` (IMAP UID, NAV `next_url`/ETag, RSS ETag, sidehash).
+- Kildene returnerer `RawJob` med så mange strukturerte felt som kilden har. Felles normalisering tar resten.
+- Felles HTTP-lag (`sources/http.py`):
+  - rate-limiting per domene
+  - retry med backoff
+  - `If-None-Match` og `If-Modified-Since`
+  - respekt for `robots.txt`
+  - rå respons lagres i `data/cache/`
 
-Felles HTTP-lag (`sources/http.py`):
-- Rate-limiting per domene (standard: 1 forespørsel per 2–3 sekunder for Finn)
-- Disk-cache for annonsesider (en annonse hentes bare én gang med mindre den endres)
-- Tydelig User-Agent, retry med backoff, respekt for `robots.txt`
-- Lagrer rå HTML/JSON i `data/cache/` slik at parsing kan kjøres på nytt uten ny henting
+### 4.2 Finn via e-postvarsler (spike 01)
 
-### 4.2 Finn.no (prioritet 1)
+Finn forbyr automatisert innhenting uten skriftlig samtykke. Derfor:
 
-Finn har ikke et åpent jobb-API (partner-API-et krever avtale). Tilnærming:
+1. **Brukeren har lagrede søk på Finn med e-postvarsel**, og alle bruker Finns egne filtre:
+   - *Utdanning:* ingen utdanning, høyskole/universitet lavere nivå
+   - *Arbeidserfaring:* ingen erfaring, junior
 
-1. **HTTP + parsing av søkesider** (`finn.no/job/...search`): hent resultatlister med filtre for yrke, sted og ansettelsesform, og parse embedded JSON hvis siden har det, ellers HTML (selectolax).
-2. **Annonsesider** hentes enkeltvis for full tekst, frist, kontaktinfo og ansettelsesform.
-3. **Fallback: Playwright** (headless browser) bare hvis siden krever JavaScript-rendering.
+   | Lagret søk | Jobbtype-hint | Geografi |
+   |---|---|---|
+   | `JS – IT utvikling Oslo` | — | `oslo_omegn` |
+   | `JS – IT utvikling Norge` | — | `norge` |
+   | `JS – Trainee Norge` | `trainee` | `norge` |
+   | `JS – Graduate Norge` | `graduate` | `norge` |
+   | `JS – Summer Internship Norge` | `summer` | `norge` |
 
-> ⚠️ **Spike påkrevd (fase 0):** Den faktiske strukturen på Finn sine søkesider (URL-parametre, embedded data, paginering) må undersøkes før implementering. Parseren skrives mot lagrede fixtures, slik at endringer på Finn fanges opp av tester.
->
-> ⚠️ **Vilkår:** Finn sine brukervilkår begrenser automatisert innhenting. Programmet er designet for personlig bruk med lavt volum: én kjøring per dag, rate-limiting, caching og ingen videredistribusjon. Brukeren har akseptert denne risikoen. Ikke øk frekvensen uten å vurdere dette på nytt.
+   Koblingen fra søk til hint står i `config/sources.yaml`. Om e-posten viser hvilket lagret søk en annonse kommer fra, avklares med en ekte e-post. Ellers klassifiserer filteret jobbtypen.
+2. **Et Gmail-filter** legger varslene under etiketten `JobSearcher/Finn` (opprettet og verifisert via IMAP 2026-10-10).
+3. **Finn-annonser er forhåndsfiltrert og regnes som gyldige.** Finn har allerede filtrert på erfaring og utdanning, så de slipper senioritetsfilteret (§5.1) og blir aldri skjult på grunn av senioritet. Står det likevel et eksplisitt erfaringskrav i teksten (f.eks. etter berikelse), legges det inn som en `concern`, men jobben vises. Rolle-ekskludering (f.eks. cybersikkerhet) og geografi gjelder fortsatt.
+4. **`FinnEmailSource`** leser nye e-poster under etiketten via IMAP (bare lesing, bare den etiketten). Den parser hver annonse i e-posten til tittel, bedrift, sted, Finn-kode, lenke og (hvis mulig) navnet på det lagrede søket. Samme Finn-kode fra flere søk blir én jobb.
+5. Jobben opprettes med `ad_text_status = missing` og `prefiltered = true`.
+6. **Automatisk berikelse**, uten manuelt steg. Kjøres i rekkefølge til full annonsetekst er funnet:
+   1. **Krysskilde-match:** Dedupe (§4.5) finner samme stilling fra NAV, Teamtailor eller sideovervåkeren. Den teksten brukes.
+   2. **Søk etter annonsen hos arbeidsgiver:** En billig agent (`enricher`, Haiku + websøk) søker etter "bedrift + tittel" og henter annonsen fra arbeidsgivers egen karriereside, ATS-side eller andre jobbtavler. **`finn.no` er blokkert som domene** i verktøyene.
+   3. **Ingen tekst funnet:** Jobben scores på tittel, bedrift og sted med `confidence: low`. Det lages ingen beskrivelse av innhold som ikke er lest, for å unngå oppdiktede krav. I dashboardet vises "Bare tittel kjent" med lenke til Finn.
+7. **Åpent problem (§19 #1):** Hvor stor andel av Finn-jobbene havner i steg iii, må måles etter et par ukers drift. Er andelen høy, er alternativene å be Finn om skriftlig samtykke (da kan en adapter for enkeltannonser legges til), eller å la brukeren lime inn tekst som valgfri reserve.
 
-### 4.3 NAV / Arbeidsplassen (prioritet 1)
+### 4.3 NAV pam-stilling-feed (spike 02)
 
-NAV tilbyr en offentlig stillingsfeed (Arbeidsplassen, "pam-stilling-feed"). Den er offisiell og stabil, og mange Finn-annonser finnes der også. Brukes både som egen kilde og som "sikkerhetsnett" hvis Finn-parseren brekker.
+- Hendelsesfeed. Leser fra lagret `next_url` med `ETag`, og henter detaljer for nye eller endrede annonser.
+- Første kjøring: start 30 dager tilbake i tid.
+- Inneholder ca. 1000 nye annonser per dag fra hele landet, uten filtrering på serversiden. Hardfilteret (§5.1) tar bort det meste før LLM.
+- Strukturerte felt brukes direkte: kommune, frist, kontakter, arbeidsgiver, ansettelsesform, yrkeskategori.
+- Inaktive annonser → `jobs.active = false` (påkrevd etter vilkårene).
+- Privat token i `.env` (`NAV_FEED_TOKEN`).
 
-> Spike: bekreft endepunkt, autentisering (offentlig token) og filtreringsmuligheter.
+### 4.4 Trainee, graduate og sommerjobb (spike 04)
 
-### 4.4 Trainee-, graduate- og sommerjobbkilder (prioritet 2)
+- **NAV** dekker mange ATS-annonser allerede.
+- **`TeamtailorSource`:** `https://<karriereside>/jobs.rss` per selskap i `config/sources.yaml`.
+- **`PageWatcherSource`:** for karrieresider uten feed. Henter én side per selskap per dag og hasher hovedinnholdet (valgfri CSS-selektor). Ved endring trekker en billig LLM-modell ut stillinger fra siden. Respekterer `robots.txt`.
+- Startliste i spike 04. Kildene evalueres etter 2–4 uker i drift.
 
-Disse ligger ofte *ikke* på Finn. Strategi i tre lag:
+### 4.5 Normalisering, dedupe og reposts
 
-| Lag | Eksempler | Implementering |
-|---|---|---|
-| **ATS-adaptere** | Teamtailor, Jobylon, Webcruiter, ReachMee, Greenhouse, Lever, Workday | Generisk adapter per ATS-type. Mange har JSON- eller RSS-endepunkter. Bedrifter konfigureres i `config/sources.yaml` med ATS-type og ID. |
-| **Aggregatorer** | Jobbnorge (offentlig sektor), Karrierestart, Graduateland | Egne adaptere ved behov |
-| **Karrieresider uten ATS** | Enkelte store selskaper | Valgfri "side-overvåker": hasher siden og varsler ved endring. Kjører LLM-uttrekk *bare* når innholdet har endret seg. |
+- **Fingerprint:** normalisert `bedrift | tittel | kommune` (små bokstaver, uten tegnsetting og vanlige suffiks som "AS"/"ASA").
+- **Samme stilling fra flere kilder:** fuzzy-match (rapidfuzz ≥ 90) innen samme bedrift → én `Job` med flere `job_sources`. Kilden med mest strukturert data blir primær (NAV > ATS > Finn-e-post).
+- **Repost:** Samme fingerprint som en inaktiv jobb, eller en jobb eldre enn 30 dager → ny `Job` med `reposted_from_id`. Jobben merkes "lagt ut på nytt", og tidligere status og søknad vises.
+- **Frist:** lagres som `deadline` (dato) og/eller `deadline_text` ("snarest", "fortløpende"). Kildens strukturerte felt har forrang. Ellers trekker filteret ut fristen.
 
-`config/sources.yaml` holder en kuratert liste over relevante selskaper (bankene, Equinor, Telenor, Statnett, konsulenthusene, offentlige IT-miljøer og så videre). Brukeren kan legge til og fjerne.
+### 4.6 Rensing av annonsetekst
 
-### 4.5 Normalisering og deduplisering
-
-- Alle kilder mappes til én `Job`-modell (se §8).
-- **Fingerprint** = normalisert (bedrift + tittel + kommune). Fuzzy-match (rapidfuzz) fanger små variasjoner.
-- Samme stilling fra flere kilder → én `Job` med flere `JobSource`-rader. Finn-lenken foretrekkes som primærlenke.
-- Stillinger som forsvinner fra kilden, eller som har passert fristen, markeres `inactive` (slettes ikke).
+- HTML → Markdown (selectolax + markdownify). Skript, navigasjon og "Del annonsen"-tekst fjernes.
+- Felles boilerplate fra samme arbeidsgiver (f.eks. "Om oss" som går igjen) kortes ned etter at den er sett i ≥ 3 annonser.
+- Hvis `job_ad` overskrider budsjettet (2500 tokens): behold tittel og innledning, prioriter avsnitt med nøkkelord som "kvalifikasjoner", "krav", "arbeidsoppgaver", "vi tilbyr" og "søknad", og kutt resten med en markør.
 
 ---
 
 ## 5. Filtrering og rangering
 
-### 5.1 Steg 1: Regelbasert hardfilter (gratis)
+### 5.1 Steg 1: regelbasert hardfilter (gratis)
 
-Konfigurert i `config/settings.yaml`:
+Konfigurert i `config/settings.yaml`. Kildene har to tillitsnivåer:
 
-- **Geografi-modus** (se 5.3)
-- **Ekskluder-nøkkelord** i tittel/kategori (f.eks. `cybersecurity`, `sikkerhetsanalytiker`, `SOC`, `pentest`)
-- **Senioritet**: forkast tydelige seniorroller (`senior`, `lead`, `principal`, `arkitekt`, `"5+ års erfaring"`). Konfigurerbart, siden noen "senior"-annonser er aktuelle likevel.
-- **Jobbtyper**: bare typer som er slått på (trainee / graduate / sommerjobb / fast)
-- Allerede vurderte stillinger (samme fingerprint og uendret tekst) hoppes over
+| Tillit | Kilder | Behandling |
+|---|---|---|
+| **Forhåndsfiltrert** | Finn-varsler (Finns egne filtre for erfaring og utdanning) | Bare geografi og rolle-ekskludering. Antas å passe på nivå. |
+| **Ufiltrert** | NAV, Teamtailor, sideovervåker, berikelse | Alle regler under, med strengmatching som første ledd og LLM som andre |
 
-### 5.2 Steg 2: Filter-agent (billig LLM)
+Forkaster hvis:
 
-Per stilling som passerer hardfilteret. Får kort profil + annonse, og returnerer strukturert JSON:
+- **Geografi:** kommunen er utenfor modusen for jobbtypen (§5.3). Remote med norsk arbeidsgiver slipper gjennom.
+- **Rolle:** tittel eller kategori treffer et ekskluderingsord (`sikkerhet`, `security`, `SOC`, `pentest`, `cyber`, …), eller yrkeskategorien er klart ikke-IT.
+- **Senioritet** (bare ufiltrerte kilder), med strengt filter:
+  - tittelen inneholder `senior`, `lead`, `principal`, `arkitekt`, `leder`, `head of`, `erfaren`, `experienced`
+  - teksten krever erfaring i år: regex for `\b([1-9]\d?)\s*(\+|-\s*\d+)?\s*(års?|years?)\b` i nærheten av `erfaring`/`experience`. Krav på 1 år eller mer forkastes.
+- Jobben er allerede vurdert med samme `content_hash`, `profile_hash` og `prompt_version`.
 
-```json
-{
-  "score": 0-100,
-  "role_category": "backend|frontend|fullstack|mobile|devops|other",
-  "job_type": "trainee|graduate|summer|permanent|unknown",
-  "seniority_fit": "good|stretch|too_senior",
-  "match_reasons": ["..."],
-  "concerns": ["..."],
-  "deadline": "YYYY-MM-DD | null",
-  "ad_language": "no|en"
-}
-```
+Hardfilteret logger *hvorfor* noe ble forkastet, slik at det kan justeres. Dashboardet har en skjult fane "Forkastet i dag".
 
-Resultatet lagres i `evaluations` sammen med `prompt_version` og `profile_hash`. Hvis profilen eller prompten endres, kan alt rescores.
+### 5.2 Steg 2: filter-agent (Haiku, batch)
 
-### 5.3 Geografi-moduser
+- **Batching:** opptil 10 annonser per kall. Felles kontekst (kort profil og preferanser) sendes én gang. Det gir lavere overhead og utnytter prompt caching.
+- **Output per annonse:** `FilterResult` (§7.2). Inneholder score, klassifisering, **sammendrag**, frist og kontakter. Sammendraget gjenbrukes senere som `job_ad_summary`, så annonsen ikke må leses på nytt.
+- **Senioritet etter LLM** (bare ufiltrerte kilder, siden Finn-jobber alltid regnes som `entry`): `seniority` er `entry | unspecified | experienced`.
+  - `experienced` skjules.
+  - `unspecified` (ingen krav om erfaring, men heller ikke uttalt junior) **vises med lavere score**: maks 65, altså under e-postterskelen på 70. Disse havner i dashboardet, men utløser ikke varsel.
+  - Taket på 65 settes av koden etter LLM-kallet (`search.unspecified_seniority_max_score`), slik at det gjelder uansett hva modellen svarer.
+- Finn-annonser uten tekst (berikelsen fant ingenting) får `confidence: low`, og skjules ikke på grunn av lav score alene. De er forhåndsfiltrert, så det er grunn til å tro at de passer.
 
-Definert i `config/locations.yaml` som kommunelister:
+### 5.3 Geografi-moduser (`config/locations.yaml`)
 
-| Modus | Innhold |
+| Modus | Kommuner |
 |---|---|
-| `nittedal` | Nittedal + nabokommuner med kort pendlevei (Oslo nord/Grorud-området kan legges til) |
-| `oslo_omegn` | Nittedal, Oslo, Lillestrøm, Lørenskog, Rælingen, Gjerdrum, Bærum, Asker, Nordre Follo m.fl. |
-| `norge` | Ingen geografisk begrensning |
+| `nittedal` | Nittedal, Oslo (bydel Grorud, Stovner, Bjerke, Nordre Aker), Lillestrøm, Lørenskog, Gjerdrum |
+| `oslo_omegn` **(standard)** | Oslo, Nittedal, Lillestrøm, Lørenskog, Rælingen, Gjerdrum, Bærum, Ullensaker (Gardermoen) |
+| `norge` | Alle |
 
-Remote/hybrid-stillinger med norsk arbeidsgiver tas med i alle moduser (konfigurerbart). Aktiv modus velges i dashboardet og lagres i innstillingene.
+Listene er utgangspunkt og redigeres fritt.
+
+**Modus per jobbtype.** Brukerens Finn-søk for trainee, graduate og sommerjobb gjelder hele landet. Søket for faste IT-jobber gjelder Oslo. Geografi settes derfor per jobbtype, og kan endres i dashboardet:
+
+```yaml
+geography:
+  permanent: oslo_omegn
+  trainee:   norge
+  graduate:  norge
+  summer:    norge
+```
 
 ### 5.4 Jobbtyper
 
-Fire separate typer, hver for seg kan slås av og på, og de vises som egne faner/filtre i dashboardet:
-`trainee`, `graduate`, `summer`, `permanent`.
+`trainee`, `graduate`, `summer` (sommerjobb/internship), `permanent` (fast junior/nyutdannet). Hver type kan slås av og på og vises som egen fane. Typen settes fra kildens felt (ansettelsesform, tittel) og ellers av filteret.
 
-Typen settes av kilden når den er kjent (ansettelsesform på Finn, sommerjobb-kategori), ellers av filter-agenten.
+### 5.5 Ny scoring
+
+- **Automatisk:** når `content_hash` endres (annonsen er oppdatert, eller tekst er importert).
+- **Profil eller prompt endret:** dashboardet viser "N aktive jobber er scoret med gammel profil, estimert kostnad $X" og en knapp. Bare aktive jobber med status Ny eller Interessant, publisert de siste 30 dagene, scores på nytt. Aldri automatisk, for å holde kostnaden nede.
 
 ---
 
 ## 6. Kontekstsystemet
 
-Dette er kjernen i at agentene fungerer godt uten at konteksten vokser ukontrollert.
-
-### 6.1 Tre lag med kontekst
+### 6.1 Tre lag
 
 ```
 context/
-├── profile/      LAG 1: Kilde (skrevet av brukeren, versjonert i git)
-├── derived/      LAG 2: Destillert (generert av profil-destilleren, cachet på hash)
-└── prompts/      LAG 3: Instruksjoner (systemprompter per agent, versjonert)
+├── profile/   LAG 1: Kilde. Skrevet av brukeren. GITIGNORED (persondata), bare _template.md versjoneres.
+├── derived/   LAG 2: Destillert. Generert, cachet på hash. Gitignored.
+└── prompts/   LAG 3: Systemprompter per agent. Versjonert i git.
 ```
 
-**Lag 1: Kildekontekst** (brukeren eier og vedlikeholder denne)
+**Lag 1: kilde**
 
-| Fil | Innhold | Format |
+| Fil | Innhold |
+|---|---|
+| `profile.yaml` | Fakta: kontakt, utdanning med karakterer, ferdigheter med nivå 1–3, språk, praktisk |
+| `cv.md` | Full CV |
+| `motivation.md` | Hva brukeren vil, hvorfor utvikler, egenskaper, dealbreakers |
+| `style_overrides.md` | Eksplisitte stilregler. Overstyrer alt annet. |
+| `projects/*.md` | Ett prosjekt per fil. Frontmatter: `tech`, `categories`, `role`, `link`, `highlight` |
+| `experience/*.md` | Én jobb per fil |
+| `writing_samples/*.md` | Egne tekster. Frontmatter `outcome` sier om de ga intervju. |
+
+Filer som starter med `_` ignoreres.
+
+**Lag 2: destillert** (laget av destiller-agenten når hash av lag 1 endres)
+
+| Fil | Mål | Brukes av |
 |---|---|---|
-| `profile.yaml` | Harde fakta: navn, utdanning, ferdigheter med nivå, språk, førerkort, oppstartsdato, lønnsforventning | YAML (maskinlesbart) |
-| `cv.md` | Full CV i tekst | Markdown |
-| `motivation.md` | Hva brukeren vil, hva som gir energi, typer team/bedrifter, dealbreakers | Markdown |
-| `projects/*.md` | Ett prosjekt per fil. Frontmatter: `tech`, `role`, `link`, `highlight: true/false`. Brødtekst: hva, hvorfor, hva *jeg* gjorde og hva jeg lærte. | Markdown + frontmatter |
-| `experience/*.md` | Én jobb/verv per fil, samme struktur | Markdown + frontmatter |
-| `writing_samples/*.md` | Tidligere søknader og tekster brukeren har skrevet selv (helst noen som ga intervju) | Markdown |
-| `style_overrides.md` | Eksplisitte stilregler ("aldri 'brenner for'", "maks 1 side", "du-form") | Markdown |
+| `profile_short.md` | ~500 tokens | Filter |
+| `profile_long.md` | ~3000 tokens | Skriver, reviser |
+| `voice.md` | ~800 tokens | Skriver, reviser |
+| `manifest.json` | Hash per kildefil, `profile_hash`, versjon av destiller-prompten | Kontekstbygger |
 
-**Lag 2: Destillert kontekst** (generert, aldri redigert for hånd)
+**Bedriftskontekst:** `data/companies/<slug>.md`, laget av research-agenten. Cache i 90 dager.
 
-Profil-destilleren (en agent) kjører når en kildefil endres (hash-sjekk) og lager:
-
-| Fil | Mål-størrelse | Brukes av |
-|---|---|---|
-| `profile_short.md` | ~500 tokens | Filter-agent |
-| `profile_long.md` | ~3 000 tokens | Skrive- og revisjonsagent |
-| `voice.md` | ~800 tokens | Skrive- og revisjonsagent: beskrivelse av brukerens skrivestil, med 2–3 korte, representative utdrag |
-| `manifest.json` | n/a | Hash av kildene. Avgjør om destillatet er utdatert. |
-
-**Bedriftskontekst:** `data/companies/<slug>.md` lages av research-agenten og caches (TTL 90 dager). Gjenbrukes på tvers av stillinger i samme bedrift.
-
-### 6.2 Kontekstmanifest per agent
-
-`config/agents.yaml` definerer hva hver agent får. Kontekstbyggeren følger manifestet slavisk, og ingen agent får "alt":
+### 6.2 Kontekstmanifest per agent (`config/agents.yaml`)
 
 ```yaml
 filter:
-  model_tier: fast            # → Haiku
+  model_tier: fast
   effort: low
   prompt: prompts/filter.md
-  context:
-    - { slice: profile_short,     priority: 1 }
-    - { slice: job_ad,            priority: 1, max_tokens: 2500 }
-    - { slice: search_prefs,      priority: 2 }
-  input_budget_tokens: 4000
-  output_schema: FilterResult
+  batch_size: 10
+  context:                                    # felles for batchen
+    - { slice: profile_short,   priority: 1 }
+    - { slice: search_prefs,    priority: 1 }  # roller, jobbtyper, senioritetsregler
+  per_item:
+    - { slice: job_ad,          priority: 1, max_tokens: 2500 }
+    - { slice: job_meta,        priority: 1 }  # kildens strukturerte felt
+  input_budget_tokens: 30000
+  output_schema: FilterBatchResult
 
 researcher:
-  model_tier: balanced        # → Sonnet
+  model_tier: balanced
   effort: medium
   tools: [web_search, web_fetch]
   prompt: prompts/researcher.md
   context:
-    - { slice: company_name,      priority: 1 }
-    - { slice: job_ad,            priority: 1, max_tokens: 2500 }
+    - { slice: company_meta,    priority: 1 }  # navn, orgnr, hjemmeside, beskrivelse fra NAV
+    - { slice: job_ad_summary,  priority: 1 }
   input_budget_tokens: 4000
-  output: data/companies/<slug>.md
+  output_schema: CompanyNote
 
 writer:
-  model_tier: best            # → Opus
+  model_tier: best
   effort: high
   prompt: prompts/writer.md
   context:
-    - { slice: profile_long,      priority: 1 }
-    - { slice: voice,             priority: 1 }
     - { slice: style_overrides,   priority: 1 }
-    - { slice: job_ad,            priority: 1 }
-    - { slice: company_notes,     priority: 2 }
-    - { slice: relevant_projects, priority: 2, top_k: 3 }   # valgt ut fra annonsen
-    - { slice: evaluation,        priority: 3 }             # match_reasons/concerns fra filteret
+    - { slice: voice,             priority: 1 }
+    - { slice: profile_long,      priority: 1 }
+    - { slice: job_ad,            priority: 1, max_tokens: 3000 }
+    - { slice: company_note,      priority: 2 }
+    - { slice: relevant_projects, priority: 2, top_k: 3 }
+    - { slice: evaluation,        priority: 3 }   # match_reasons / concerns
   input_budget_tokens: 15000
   output_schema: DraftResult
 
@@ -278,377 +325,489 @@ reviser:
   effort: medium
   prompt: prompts/reviser.md
   context:
-    - { slice: voice,             priority: 1 }
-    - { slice: style_overrides,   priority: 1 }
-    - { slice: job_ad_summary,    priority: 1 }
-    - { slice: current_draft,     priority: 1 }
-    - { slice: revision_log,      priority: 2, max_items: 5 }
-    - { slice: profile_long,      priority: 3 }
+    - { slice: style_overrides, priority: 1 }
+    - { slice: voice,           priority: 1 }
+    - { slice: job_ad_summary,  priority: 1 }
+    - { slice: current_draft,   priority: 1 }
+    - { slice: user_message,    priority: 1 }
+    - { slice: revision_log,    priority: 2, max_items: 5 }
+    - { slice: profile_long,    priority: 3 }
   input_budget_tokens: 12000
+  output_schema: RevisionResult
+
+distiller:
+  model_tier: balanced
+  effort: medium
+  prompt: prompts/distiller.md
+  context:
+    - { slice: profile_all,     priority: 1 }  # alle kildefiler i lag 1
+  input_budget_tokens: 40000
+  output_schema: DistilledProfile
 ```
 
-**Budsjetthåndtering:** Kontekstbyggeren teller tokens før kallet. Går pakken over budsjettet, droppes eller forkortes biter med lavest prioritet først (priority 3 → 2). Priority 1 kuttes aldri. Kommer man likevel over, feiler kallet med en tydelig melding.
+**Budsjett:** Kontekstbyggeren teller tokens før hvert kall (estimat: tegn/3.5, med `count_tokens` på API-backend). Over budsjett kuttes biter med prioritet 3, deretter 2. Prioritet 1 kuttes aldri. Går det fortsatt over, feiler kallet med en tydelig melding.
 
-### 6.3 Agent-livssyklus: "bytte ut i stedet for å vokse"
+**Kilder for alle slices:**
+
+| Slice | Produseres av |
+|---|---|
+| `job_ad` | Rensing, §4.6 |
+| `job_meta` | Kildens strukturerte felt |
+| `job_ad_summary` | Filter-agenten (`summary` + `key_requirements` + `tech`) |
+| `company_meta` | Kilde (NAV) eller tittel/bedrift |
+| `company_note` | Research-agenten |
+| `evaluation` | Filter-agenten |
+| `relevant_projects` | §6.4 |
+| `current_draft` / `revision_log` | `drafts`-tabellen |
+
+### 6.3 Agentenes livssyklus
 
 | Agent | Livssyklus |
 |---|---|
-| Filter, researcher, writer, destiller | **Ett kall = én agent.** Ingen historikk. Ny instans for hver stilling. |
-| Reviser (chat i editoren) | **Rullerende:** Hver brukermelding starter en *ny* agent med: gjeldende utkast + de siste N instruksjonene som en kompakt revisjonslogg + fast kontekst. Den fulle chathistorikken sendes aldri. Etter hvert svar lagres en ny utkastversjon. Konteksten er derfor like stor på runde 20 som på runde 1. |
-
-Resultatet er at ingen agent noen gang trenger kompaktering eller utskiftning midt i en oppgave, fordi oppgavene er kuttet slik at de aldri blir store.
+| Filter, researcher, writer, distiller | Ett kall er én agent, uten historikk |
+| Reviser | Rullerende: hver brukermelding starter en ny agent med gjeldende utkast, de siste 5 instruksjonene som en kompakt logg og fast kontekst. Konteksten er like stor i runde 20 som i runde 1. |
 
 ### 6.4 Valg av relevante prosjekter
 
-For writer-agenten velges de 3 mest relevante prosjektene fra `projects/` ut fra overlapp mellom annonsens teknologier/nøkkelord og prosjektets `tech`-frontmatter (enkel deterministisk scoring, ingen embeddings i v1). Prosjekter med `highlight: true` får bonus.
+1. Filter-agenten gir `tech[]` og `role_category` for annonsen.
+2. `config/tech_aliases.yaml` normaliserer synonymer (`react.js`/`reactjs` → `react`, `.net`/`dotnet`/`asp.net core` → `dotnet`, `k8s` → `kubernetes`).
+3. Score per prosjekt:
+   - +3 per teknologi annonsen og prosjektet har felles
+   - +2 hvis `categories` inneholder annonsens `role_category`
+   - +2 hvis `highlight: true`
+   - +1 hvis `type` er `jobb` eller `personlig` og prosjektet er i bruk (skiller fra rene skoleoppgaver ved lik score)
+4. De 3 beste tas med i sin helhet. Resten nevnes med én linje i `profile_long`.
 
-### 6.5 Sikkerhet: annonser er utrygg input
+### 6.5 Sikkerhet
 
-Annonsetekst og nettsider kan inneholde instruksjoner rettet mot en LLM. Tiltak:
-- Ekstern tekst pakkes inn i tydelige skilletegn og merkes som data i promptene.
-- Bare research-agenten har verktøy (websøk/-henting), og ingen agent har skrivetilgang til filer, DB eller e-post. All skriving gjøres av pipeline-koden basert på strukturert output.
-- Strukturert output (JSON-skjema) valideres før det lagres.
+- Annonsetekst, e-poster og nettsider er **utrygg input**. De pakkes i `<job_ad>…</job_ad>`-blokker, og promptene sier eksplisitt at innholdet er data, ikke instruksjoner.
+- Bare research-agenten har verktøy (websøk/-henting). Ingen agent kan skrive filer, endre DB eller sende e-post. All skriving gjøres av koden ut fra validert, strukturert output.
+- `claude_code`-backenden kjører hvert kall i en tom arbeidsmappe med eksplisitt verktøyliste (§8.1).
 
 ---
 
-## 7. LLM-laget
+## 7. Agentene
 
-### 7.1 Backend-abstraksjon
+Systemprompter ligger i `context/prompts/*.md`. Hver har en `version` i frontmatter, som lagres på resultatet.
+
+### 7.1 Oversikt
+
+| Agent | Modell | Når | Input | Output |
+|---|---|---|---|---|
+| Distiller | Sonnet | Profilhash endret | Hele lag 1 | `profile_short`, `profile_long`, `voice` |
+| Filter | Haiku | Hver kjøring, i batch | Kort profil + 10 annonser | `FilterResult` × 10 |
+| Researcher | Sonnet + web | Første søknad til en bedrift | Bedriftsmeta + sammendrag | `CompanyNote` |
+| Writer | Opus | "Lag søknad" | Se §6.2 | `DraftResult` |
+| Reviser | Sonnet | Hver chatmelding i editoren | Se §6.2 | `RevisionResult` |
+| Extractor | Haiku | Sideovervåker oppdaget endring | Rensket side | Liste over stillinger |
+| Enricher | Haiku + web (uten finn.no) | Finn-jobb uten tekst og uten krysskilde-match | Tittel, bedrift, sted | Annonsetekst + kilde-URL, eller "ikke funnet" |
+
+### 7.2 Output-skjemaer (Pydantic, i `agents/schemas.py`)
+
+```python
+class Contact(BaseModel):
+    name: str; role: str | None; email: str | None; phone: str | None
+
+class FilterResult(BaseModel):
+    job_id: str
+    score: int                      # 0–100
+    confidence: Literal["high", "low"]          # low når annonseteksten mangler
+    role_category: Literal["backend","frontend","fullstack","mobile","devops","data","other"]
+    job_type: Literal["trainee","graduate","summer","permanent","unknown"]
+    seniority: Literal["entry","unspecified","experienced"]
+    tech: list[str]
+    summary: str                    # 2–4 setninger: hva jobben er
+    key_requirements: list[str]     # maks 6
+    match_reasons: list[str]        # maks 4
+    concerns: list[str]             # maks 4
+    deadline: date | None
+    deadline_text: str | None       # "snarest", "fortløpende"
+    contacts: list[Contact]
+    application_url: str | None
+    ad_language: Literal["no","en"]
+
+class CompanyNote(BaseModel):
+    what_they_do: str
+    size_and_locations: str | None
+    tech_and_engineering: str | None   # stack, techblogg, open source
+    recent_news: list[str]             # maks 3, med dato
+    culture_and_values: str | None
+    hooks_for_letter: list[str]        # konkrete ting brevet kan koble seg til
+    sources: list[str]                 # URL-er
+
+class DraftResult(BaseModel):
+    language: Literal["no","en"]
+    letter_markdown: str
+    used_projects: list[str]
+    claims_to_verify: list[str]   # påstander om brukeren som ikke er dekket av profilen
+    notes_for_user: str | None    # f.eks. "annonsen ber om attester"
+
+class RevisionResult(BaseModel):
+    letter_markdown: str
+    change_summary: str           # én linje, går inn i revision_log
+    claims_to_verify: list[str]
+```
+
+Ugyldig output → ett nytt forsøk med valideringsfeilen i prompten → deretter markeres kallet som feilet.
+
+### 7.3 Research-agenten
+
+- Verktøy: websøk og -henting (`claude_code`: `--allowedTools "WebSearch,WebFetch"`. API: server-verktøyene `web_search`/`web_fetch`).
+- Prioriterte kilder: bedriftens nettside (om oss, karriere, techblogg), nyheter siste 12 måneder, Proff/Brønnøysund for størrelse.
+- Maks ~8 verktøykall.
+- **Fallback uten web:** notatet bygges bare fra arbeidsgiverbeskrivelsen i NAV-annonsen og annonsen selv, og merkes `limited`.
+- Cache 90 dager per `company_slug`. Kan oppdateres manuelt i dashboardet.
+
+### 7.4 Skrive-agenten
+
+- Ett vanlig søknadsbrev per stilling, også når stillingen har søknadsskjema. Brevet er da grunnlag for skjemautfyllingen.
+- Språket følger `ad_language`, og kan overstyres i dashboardet.
+- Lengde og stil fra `style_overrides.md`. Stemme fra `voice.md`.
+- **Faktaregel:** Brevet kan bare påstå ting om brukeren som finnes i profilen. Alt annet skal i `claims_to_verify`, og vises som advarsel i editoren.
+- Skriveeksemplene ga ikke intervju. De brukes for stemmen, ikke for strukturen (står i `style_overrides.md`).
+
+### 7.5 Destiller
+
+- Kjører når `profile_hash` endres, og ved `jobsearcher distill`.
+- `voice.md`: beskriver stilen (setningslengde, tone, humor, typiske uttrykk) med 2–3 korte sitater fra eksemplene. Skrivefeil tas ikke med som stiltrekk.
+- Dashboardet viser diff av de destillerte filene, slik at brukeren kan se hva agentene "tror" om hen.
+
+---
+
+## 8. LLM-laget
+
+### 8.1 Backends (spike 03)
 
 ```python
 class LLMBackend(Protocol):
     def run(self, req: AgentRequest) -> AgentResponse: ...
-    # AgentRequest: system_prompt, messages, model_tier, effort, output_schema, tools
-    # AgentResponse: text | parsed, usage (tokens), cost_estimate, model
+    # AgentRequest: system_prompt, user_content, model_tier, effort, output_schema, tools, max_budget_usd
+    # AgentResponse: parsed | text, usage, cost_usd, model, duration_ms
 ```
 
-To implementasjoner, valgt i `settings.yaml` (`llm.backend`):
+**`claude_code` (standard):** subprosess av `claude -p` med:
+- `--output-format json --json-schema <schema>` → `structured_output`
+- `--model <alias>`
+- `--system-prompt-file <prompt>`, som erstatter Claude Code sin standardprompt
+- `--allowedTools` bare for research-agenten. Ellers ingen verktøy.
+- `--permission-prompts none`, `--max-budget-usd`
+- Arbeidsmappe: `data/llm_sandbox/` (tom). MCP-servere, hooks og brukerinnstillinger isoleres bort. Eksakte flagg verifiseres ved implementering.
+- `ANTHROPIC_API_KEY` fjernes fra subprosessens miljø, så abonnementet brukes.
+- Kostnad fra `total_cost_usd`.
 
-| Backend | Hvordan | Fordel | Ulempe |
-|---|---|---|---|
-| `claude_code` | Kaller Claude Code CLI headless (`claude -p ... --output-format json`) som subprosess, med brukerens eksisterende innlogging | Bruker eksisterende abonnement, ingen ekstra kostnad | Abonnementets bruksgrenser gjelder, og CLI-flagg kan endre seg. Sjekk Anthropic sine gjeldende vilkår for automatisert bruk av abonnement. |
-| `anthropic_api` | Offisiell `anthropic` Python-SDK med API-nøkkel | Stabilt, strukturert output, prompt caching, batch, presis kostnadsmåling | Betales per token |
+**`anthropic_api`:** offisiell `anthropic`-SDK med strukturert output, prompt caching på profilkonteksten og server-verktøy for research.
 
-Det finnes også en `mock`-backend for tester og utvikling av dashboardet uten LLM-kall.
+**`mock`:** faste svar for tester og dashboardutvikling.
 
-> **Spike (fase 0):** Verifiser at `claude_code`-backenden fungerer for strukturert JSON-output og websøk, og hva som gjelder for bruk av abonnement i automatiserte skript. Hvis det ikke holder, er `anthropic_api` standard.
+### 8.2 Modeller (`model_tier`)
 
-### 7.2 Modellvalg (konfigurerbart via `model_tier`)
-
-| Tier | Modell | Brukes til |
+| Tier | `claude_code` | `anthropic_api` |
 |---|---|---|
-| `fast` | `claude-haiku-5-5` | Filter-agent, enkle uttrekk |
-| `balanced` | `claude-sonnet-5-5` | Research, revisjon, profil-destiller |
-| `best` | `claude-opus-5-5` | Første søknadsutkast |
+| `fast` | `haiku` | `claude-haiku-5-5` |
+| `balanced` | `sonnet` | `claude-sonnet-5-5` |
+| `best` | `opus` | `claude-opus-5-5` |
 
-### 7.3 Kostnadsestimat (`anthropic_api`-backend)
+### 8.3 Kostnad
 
-Priser per oktober 2026 (per million tokens): Haiku 5.5 $0.10 / $0.50, Sonnet 5.5 $2 / $10, Opus 5.5 $4 / $20.
+Med `anthropic_api` estimeres ca. $15–25/mnd (filter ~$0.05/dag, utkast ~$0.10–0.15 stk, research ~$0.05–0.10). Med `claude_code` trekkes bruken fra abonnementet, men `total_cost_usd` logges likevel.
 
-| Operasjon | Volum | Ca. kostnad |
-|---|---|---|
-| Filtrering (~3k inn / ~400 ut per annonse) | ~100 annonser/dag | ~$0.05/dag |
-| Research (Sonnet + websøk) | ~15/uke | ~$0.05–0.10 per bedrift |
-| Første utkast (Opus, ~15k inn / ~3k ut inkl. tenking) | 10–20/uke | ~$0.10–0.15 per utkast |
-| Revisjoner (Sonnet) | ~3 per søknad | ~$0.03 per runde |
-| **Totalt** | | **ca. $15–25/mnd (≈ 150–250 kr)** |
-
-Prompt caching på den faste profilkonteksten reduserer dette ytterligere. Alle kall logges i `agent_runs` med tokens og estimert kostnad, og dashboardet viser forbruk per uke. Et månedlig kostnadstak i `settings.yaml` stopper LLM-kall når taket er nådd.
+**Kostnadstak:** $25/mnd (rullerende kalendermåned).
+- Ved 80 %: advarsel i dashboardet og digesten.
+- Ved 100 %: filter-kall stoppes. Brukerinitierte kall (utkast, revisjon) krever bekreftelse i dashboardet.
 
 ---
 
-## 8. Datamodell (SQLite)
+## 9. Datamodell (SQLite)
 
 ```
-jobs                 id, fingerprint, title, company, company_slug, location, municipality,
-                     remote (none|hybrid|full), job_type, description_raw, description_clean,
-                     ad_language, published_at, deadline, first_seen, last_seen, active,
-                     content_hash
+jobs                 id, fingerprint, title, company, company_slug, location_text, municipality,
+                     remote (none|hybrid|full), job_type, seniority, ad_language,
+                     description_clean, ad_text_status (present|missing|imported),
+                     published_at, expires_at, deadline, deadline_text, application_url,
+                     first_seen, last_seen, active, content_hash, reposted_from_id
 
-job_sources          id, job_id → jobs, source (finn|nav|teamtailor|...), source_id, url,
-                     raw_path (cache-fil), fetched_at
+job_sources          id, job_id, source (finn_email|nav|teamtailor|page_watch|manual),
+                     source_id, url, raw_path, fetched_at
 
-evaluations          id, job_id → jobs, score, role_category, job_type, seniority_fit,
-                     match_reasons (json), concerns (json), model, prompt_version,
-                     profile_hash, created_at
+job_contacts         id, job_id, name, role, email, phone, source (feed|llm|manual)
 
-companies            slug (pk), name, notes_path, researched_at
+evaluations          id, job_id, score, confidence, role_category, job_type, seniority,
+                     tech (json), summary, key_requirements (json), match_reasons (json),
+                     concerns (json), model, prompt_version, profile_hash, created_at
 
-applications         id, job_id → jobs (unik), status, created_at, applied_at,
-                     follow_up_at, notes
+hardfilter_log       id, job_id, rule, detail, created_at          ← "hvorfor forkastet"
 
-application_events   id, application_id, from_status, to_status, at, comment   ← statushistorikk
+companies            slug, name, org_number, homepage, note_path, note_quality (full|limited),
+                     researched_at
+
+applications         id, job_id (unik), status, created_at, applied_at, follow_up_at,
+                     next_step, next_step_at, notes
+
+application_events   id, application_id, from_status, to_status, at, comment
 
 drafts               id, application_id, version, content, author (agent|user),
-                     instruction (hva ble bedt om), agent_run_id, created_at
+                     instruction, change_summary, claims_to_verify (json), agent_run_id, created_at
 
-agent_runs           id, agent, job_id?, application_id?, backend, model, prompt_version,
+agent_runs           id, agent, job_ids (json), application_id, backend, model, prompt_version,
                      input_tokens, output_tokens, cost_usd, duration_ms, status, error, created_at
 
 scrape_runs          id, trigger (schedule|manual), source, started_at, finished_at,
-                     found, new, updated, errors (json)
+                     found, new, updated, filtered_out, errors (json), health (ok|warn|fail)
 
-settings_overrides   key, value    ← det som endres fra dashboardet (f.eks. geo-modus)
+source_state         source, key, cursor, etag, last_success_at       ← cursorer per kilde
+
+tasks                id, kind, params (json), status, progress, message, cancel_requested,
+                     created_at, finished_at                           ← bakgrunnsjobber
+
+settings_overrides   key, value
 ```
 
-### 8.1 Søknadsstatus
+### 9.1 Søknadsstatus
 
 ```
-  Ny ──► Interessant ──► Utkast ──► Søkt ──► Intervju ──► Tilbud
-   │          │            │         │          │
-   └──► Ikke aktuell ◄─────┘         └──────────┴──► Avslag / Trukket
-                                                        
-  (automatisk) Utløpt: fristen har passert uten at stillingen er søkt
+Ny ─► Interessant ─► Utkast ─► Søkt ─► Intervju ─► Tilbud
+ │         │           │         │        │
+ └► Ikke aktuell ◄─────┘         └────────┴──► Avslag / Trukket
+
+(automatisk) Utløpt: fristen har passert og stillingen er ikke søkt
 ```
 
-- `Ny` og `Ikke aktuell` gjelder jobber (ingen søknadsrad ennå). Når brukeren markerer en jobb som `Interessant`, opprettes en `applications`-rad.
-- Hver statusendring logges i `application_events`.
-- `follow_up_at` settes automatisk (f.eks. 14 dager etter `Søkt`) og vises i dashboardet og i e-postdigesten.
+- Ved `Søkt` settes `follow_up_at` til +14 dager.
+- `next_step` og `next_step_at` er fritekst og dato ("Intervju 2. runde", "Case-oppgave"). Ingen kalenderintegrasjon.
 
 ---
 
-## 9. Dashboard
+## 10. Dashboard
 
-FastAPI + Jinja2 + HTMX, på `http://localhost:8765`.
+FastAPI + Jinja2 + HTMX på `http://127.0.0.1:8765`. Ingen autentisering, bare localhost.
 
 | Side | Innhold |
 |---|---|
-| **Oversikt** | Nye jobber siden sist, toppscorede, frister de neste 7 dagene, oppfølginger som forfaller, status for siste kjøring, "Kjør nå"-knapp |
-| **Jobber** | Tabell/kort med filtre: jobbtype (faner), score, kilde, geografi-modus, rolle, frist. Hurtigvalg: Interessant / Ikke aktuell |
-| **Jobbdetalj** | Annonsetekst, score med begrunnelse og bekymringer, bedriftsnotat, lenker til alle kilder, knapp "Research bedrift" og "Lag søknadsutkast" |
-| **Søknadseditor** | Venstre: redigerbart utkast (textarea, autosave som ny versjon). Høyre: chat med revisjonsagenten. Versjonshistorikk med diff, "Kopier" og eksport til `.docx`/`.md` |
-| **Tracker** | Kanban med kolonner per status, dra og slipp for å endre status, notater per søknad |
-| **Innstillinger** | Geo-modus, jobbtyper, roller og ekskluderinger, varslingsterskel, modellvalg, kostnadstak. Status for kontekst ("profil_long er utdatert, regenerer") |
-| **Logg & kostnader** | Kjøringer per kilde (funnet, nye, feil), agentkall og forbruk per uke |
+| **Oversikt** | **Frister de neste 14 dagene** (øverst, fargekodet), nye jobber siden sist, oppfølginger, status for siste kjøring per kilde, kostnad denne måneden, "Kjør nå" |
+| **Jobber** | Faner per jobbtype. Filtre: score, kilde, frist, rolle. Sortering standard: frist, deretter score. Hurtigvalg: Interessant / Ikke aktuell. |
+| **Jobbdetalj** | Frist, kontaktpersoner, søknadslenke, score med begrunnelse og bekymringer, sammendrag, annonsetekst med kilde (eller "Bare tittel kjent" + Finn-lenke), bedriftsnotat, "Lag søknadsutkast" |
+| **Søknadseditor** | Venstre: utkast med autosave som ny versjon. Høyre: chat med revisjonsagenten. `claims_to_verify` vises som advarsler. Versjonshistorikk med diff. "Kopier" og **"Last ned .docx"**. |
+| **Tracker** | Kanban per status. Kortene viser frist, neste steg og kontaktperson. |
+| **Innstillinger** | Geo-modus, jobbtyper, ekskluderinger, senioritetsvalg, terskel, LLM-backend og modeller, kostnadstak, kildestatus, kontekststatus (diff av destillert profil, "regenerer"), ny scoring med kostnadsestimat |
+| **Logg** | Kjøringer per kilde, agentkall og kostnad, "Forkastet i dag" (hardfilter med regel) |
 
-Lange operasjoner (skraping, utkast) kjører som bakgrunnsjobber. Dashboardet poller status via HTMX.
+### 10.1 Bakgrunnsjobber
 
----
+- Brukerinitierte operasjoner (kjør nå, utkast, research, ny scoring) blir rader i `tasks` og kjøres av en `ThreadPoolExecutor` med 2 arbeidere i web-prosessen.
+- Dashboardet poller `GET /tasks/{id}` hvert 2. sekund (HTMX) for progresjon.
+- Avbryt: `cancel_requested` sjekkes mellom steg, f.eks. mellom filter-batcher.
+- Den planlagte kjøringen er en egen prosess (`jobsearcher run`). `data/run.lock` hindrer overlapp med "Kjør nå".
 
-## 10. Planlegging og varsling
+### 10.2 Eksport
 
-### 10.1 Daglig kjøring
-- `scripts/install_task_scheduler.ps1` registrerer en oppgave som kjører `jobsearcher run` hver dag kl. 07:00, med "kjør så snart som mulig hvis en planlagt kjøring ble gått glipp av" (PC-en kan ha vært av).
-- "Kjør nå" i dashboardet starter den samme pipelinen i bakgrunnen.
-- `data/run.lock` hindrer at to kjøringer går samtidig.
+`.docx` via `python-docx` fra én mal (`src/jobsearcher/export/template.docx`):
+- avsender (fra `profile.yaml`)
+- dato
+- mottaker (bedrift, kontaktperson hvis kjent)
+- tittel ("Søknad på stilling som …")
+- brevtekst (Markdown → avsnitt)
 
-### 10.2 E-postdigest
-Sendes etter hver daglig kjøring, men bare hvis det er noe å melde:
-- Nye jobber med score ≥ terskel (standard 70), gruppert per jobbtype
-- Frister de neste 3 dagene for jobber merket Interessant/Utkast
-- Oppfølginger som forfaller
-- Kildefeil (f.eks. "Finn-parseren fant 0 treff, kanskje har siden endret seg")
-
-Gmail SMTP (`smtp.gmail.com:587`, STARTTLS) med app-passord fra `.env`. HTML-mal med lenker inn i dashboardet.
+Filnavn: `Soknad_<Bedrift>_<Stilling>.docx` i `data/exports/`.
 
 ---
 
-## 11. Konfigurasjon
+## 11. Planlegging og varsling
+
+- **Task Scheduler:** `scripts/install_task_scheduler.ps1` registrerer `jobsearcher run` kl. 07:00 daglig, med "kjør så snart som mulig ved tapt kjøring".
+- **Rekkefølge i kjøringen:** kilder → normalisering → hardfilter → filter-batcher → utløp/oppfølging → digest → backup.
+- **E-postdigest** (bare hvis det er noe å melde), sendt via Gmail SMTP til brukeren selv:
+  1. **Frister de neste 3 dagene** for jobber merket Interessant/Utkast
+  2. Nye jobber med score ≥ 70, per jobbtype
+  3. Oppfølginger som forfaller
+  4. Kildehelse (f.eks. "NAV-feeden svarte 401: token utløpt?") og kostnadsvarsel
+- **IMAP:** leser bare etiketten `JobSearcher/Finn`. Behandlede e-poster merkes som lest, og flyttes ikke eller slettes.
+
+---
+
+## 12. Drift
+
+| Område | Løsning |
+|---|---|
+| Logging | JSON-linjer i `data/logs/jobsearcher-YYYY-MM-DD.log`, 30 dagers rotasjon |
+| Kildehelse | Per kilde og kjøring: `ok`, `warn` (0 treff der vi forventer treff, eller > 20 % parsefeil) eller `fail` (unntak, HTTP 4xx/5xx). Vises i dashboardet og digesten. |
+| Agentfeil | Logges i `agent_runs`. Tre feil på rad for samme agent → varsel. |
+| Migrasjoner | Alembic fra start |
+| Backup | Etter hver kjøring: SQLite backup-API → `data/backups/jobsearcher-YYYY-MM-DD.db`, beholder 14 |
+| Nettverk | Uvicorn bundet til `127.0.0.1` |
+| Hemmeligheter | `.env`: `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD`, `NAV_FEED_TOKEN`, valgfri `ANTHROPIC_API_KEY` |
+| Personvern | Kontaktpersoner fra annonser slettes 90 dager etter at jobben er inaktiv, med mindre det finnes en søknad. Rå cache slettes etter 30 dager. |
+
+---
+
+## 13. Evaluering
+
+- **Filter-agenten:** Brukerens egne valg i dashboardet (Interessant / Ikke aktuell) er etikettene. Det trengs ikke et eget merkesett.
+  - Etter 2–3 uker eksporterer `jobsearcher eval filter` dem til `tests/evals/filter_labeled.jsonl` og måler.
+  - **Mål:** ≥ 90 % av jobbene brukeren merker Interessant har score ≥ terskel (recall). Presisjonen er sekundær.
+  - Brukes ved endring av prompt eller modell, og for å sammenligne backends.
+- **Skrive-agenten:** Ingen automatisk eval i v1. `claims_to_verify` og brukerens antall revisjoner per brev logges som indikator.
+- **Hardfilteret:** "Forkastet i dag" stikkprøves manuelt de første ukene.
+
+---
+
+## 14. Konfigurasjon
 
 | Fil | Innhold | I git? |
 |---|---|---|
-| `config/settings.yaml` | Søk (roller, ekskluderinger, jobbtyper, geo-modus), terskler, planlegging, LLM-backend, kostnadstak | Ja |
+| `config/settings.yaml` | Søk (roller, ekskluderinger, jobbtyper, senioritet, geo-modus), terskler, planlegging, LLM-backend, kostnadstak | Ja |
 | `config/agents.yaml` | Kontekstmanifest, modell-tier og effort per agent | Ja |
-| `config/locations.yaml` | Geo-moduser → kommunelister | Ja |
-| `config/sources.yaml` | Aktive kilder, Finn-søkeparametre, ATS-bedriftsliste | Ja |
-| `.env` | `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD`, `ANTHROPIC_API_KEY` (valgfri) | **Nei** |
+| `config/locations.yaml` | Geo-moduser → kommuner | Ja |
+| `config/sources.yaml` | Aktive kilder, IMAP-etikett, Teamtailor-feeder, sideovervåkede selskaper | Ja |
+| `config/tech_aliases.yaml` | Teknologisynonymer | Ja |
+| `.env` | Hemmeligheter | **Nei** |
 
-Innstillinger endret i dashboardet lagres i `settings_overrides` og overstyrer YAML-verdiene.
+Innstillinger endret i dashboardet lagres i `settings_overrides` og overstyrer YAML.
 
 ---
 
-## 12. Filhierarki
+## 15. Filhierarki
 
 ```
 JobSearcher/
-├── README.md                          Oppsett og bruk
-├── pyproject.toml                     Avhengigheter (uv), CLI-entrypoint `jobsearcher`
+├── README.md
+├── AGENTS.md                          Regler for AI-agenter, inkl. vedlikehold av dokumentasjon
+├── CLAUDE.md                          Importerer AGENTS.md (for Claude Code)
+├── .claude/
+│   ├── settings.json                  Prosjekt-hooks
+│   └── hooks/docs_check.py            Stop-hook: krever oppdatert HANDOVER når kode er endret
+├── pyproject.toml                     uv, CLI-entrypoint `jobsearcher`
 ├── .env.example
-├── .gitignore                         data/, .env, context/derived/
+├── .gitignore
+├── alembic.ini
 │
 ├── docs/
-│   └── ARCHITECTURE.md                Dette dokumentet
+│   ├── ARCHITECTURE.md
+│   ├── HANDOVER.md                    Status og neste steg for neste agent
+│   └── spikes/                        01-finn, 02-nav-feed, 03-claude-subscription, 04-trainee-sources
 │
 ├── config/
 │   ├── settings.yaml
 │   ├── agents.yaml
 │   ├── locations.yaml
-│   └── sources.yaml
+│   ├── sources.yaml
+│   └── tech_aliases.yaml
 │
 ├── context/
-│   ├── README.md                      Guide: hvordan fylle ut profilen
-│   ├── profile/                       LAG 1: skrevet av brukeren
-│   │   ├── profile.yaml
-│   │   ├── cv.md
-│   │   ├── motivation.md
-│   │   ├── style_overrides.md
-│   │   ├── projects/
-│   │   │   └── _template.md
-│   │   ├── experience/
-│   │   │   └── _template.md
-│   │   └── writing_samples/
-│   ├── derived/                       LAG 2: generert (gitignored)
-│   │   ├── profile_short.md
-│   │   ├── profile_long.md
-│   │   ├── voice.md
-│   │   └── manifest.json
-│   └── prompts/                       LAG 3: systemprompter (versjonert)
+│   ├── README.md
+│   ├── profile/                       gitignored, bare _template.md versjoneres
+│   ├── derived/                       gitignored
+│   └── prompts/
 │       ├── filter.md
 │       ├── researcher.md
 │       ├── writer.md
 │       ├── reviser.md
-│       └── distiller.md
+│       ├── distiller.md
+│       ├── enricher.md
+│       └── extractor.md
 │
 ├── src/jobsearcher/
-│   ├── __init__.py
-│   ├── cli.py                         `jobsearcher run | serve | rescore | distill | init-db`
-│   ├── config.py                      Laster YAML + .env + overrides (pydantic-settings)
-│   │
-│   ├── db/
-│   │   ├── models.py                  SQLModel-tabeller (§8)
-│   │   ├── session.py
-│   │   └── repo.py                    Spørringer brukt av pipeline og web
-│   │
+│   ├── cli.py                         run | serve | distill | rescore | eval | init-db | backup
+│   ├── config.py
+│   ├── logging.py
+│   ├── db/            models.py, session.py, repo.py, migrations/
 │   ├── sources/
-│   │   ├── base.py                    JobSource-protokoll, RawJob, SearchQuery
-│   │   ├── http.py                    Rate-limit, cache, retry, robots.txt
-│   │   ├── finn.py
-│   │   ├── nav.py
-│   │   ├── jobbnorge.py
-│   │   └── ats/
-│   │       ├── teamtailor.py
-│   │       ├── jobylon.py
-│   │       └── webcruiter.py
-│   │
-│   ├── pipeline/
-│   │   ├── run.py                     Orkestrator: hent → normaliser → filtrer → score → varsle
-│   │   ├── normalize.py
-│   │   ├── dedupe.py
-│   │   ├── hardfilter.py
-│   │   └── lock.py
-│   │
-│   ├── context/
-│   │   ├── loader.py                  Leser profile/ (yaml + markdown med frontmatter)
-│   │   ├── slices.py                  Én funksjon per slice-type (profile_short, job_ad, ...)
-│   │   ├── builder.py                 Setter sammen pakker etter agents.yaml
-│   │   ├── budget.py                  Token-telling og prioritetsbasert kutting
-│   │   └── projects.py                Velger relevante prosjekter for en annonse
-│   │
-│   ├── agents/
-│   │   ├── base.py                    Felles: bygg kontekst → kall backend → valider → logg agent_run
-│   │   ├── filter.py
-│   │   ├── researcher.py
-│   │   ├── writer.py
-│   │   ├── reviser.py
-│   │   ├── distiller.py
-│   │   └── schemas.py                 Pydantic-modeller for strukturert output
-│   │
-│   ├── llm/
-│   │   ├── base.py                    LLMBackend-protokoll, AgentRequest/Response
-│   │   ├── claude_code.py             Subprosess mot `claude -p`
-│   │   ├── anthropic_api.py           Offisiell SDK
-│   │   ├── mock.py
-│   │   └── costs.py                   Prisliste og kostnadsberegning, kostnadstak
-│   │
-│   ├── tracking/
-│   │   └── status.py                  Gyldige statusoverganger, oppfølgingslogikk
-│   │
-│   ├── notify/
-│   │   ├── email.py
-│   │   └── templates/digest.html
-│   │
-│   ├── export/
-│   │   └── docx.py                    Eksport av søknadsbrev
-│   │
+│   │   ├── base.py
+│   │   ├── http.py
+│   │   ├── finn_email.py              IMAP + parser for Finn-varsler
+│   │   ├── nav_feed.py
+│   │   ├── teamtailor.py
+│   │   ├── page_watch.py
+│   │   └── manual.py                  import av limt inn annonsetekst
+│   ├── pipeline/      run.py, normalize.py, clean.py, dedupe.py, hardfilter.py, lifecycle.py, lock.py
+│   ├── context/       loader.py, slices.py, builder.py, budget.py, projects.py
+│   ├── agents/        base.py, schemas.py, filter.py, researcher.py, writer.py, reviser.py,
+│   │                  distiller.py, extractor.py
+│   ├── llm/           base.py, claude_code.py, anthropic_api.py, mock.py, costs.py
+│   ├── tracking/      status.py
+│   ├── notify/        email.py, templates/digest.html
+│   ├── export/        docx.py, template.docx
 │   └── web/
-│       ├── app.py                     FastAPI-app, bakgrunnsjobber
-│       ├── routes/
-│       │   ├── dashboard.py
-│       │   ├── jobs.py
-│       │   ├── applications.py        Editor, versjoner, revisjonschat
-│       │   ├── tracker.py
-│       │   ├── settings.py
-│       │   └── runs.py
-│       ├── templates/                 Jinja2 (base.html + sider + HTMX-partials)
-│       └── static/                    CSS, htmx.min.js
+│       ├── app.py, tasks.py
+│       ├── routes/    dashboard.py, jobs.py, applications.py, tracker.py, settings.py, logs.py
+│       ├── templates/
+│       └── static/
 │
-├── data/                              (gitignored)
+├── data/                              gitignored
 │   ├── jobsearcher.db
-│   ├── cache/                         Rå HTML/JSON per kilde
-│   ├── companies/                     Bedriftsnotater (<slug>.md)
-│   ├── exports/
-│   ├── logs/
+│   ├── backups/  cache/  companies/  exports/  logs/  llm_sandbox/
 │   └── run.lock
 │
 ├── scripts/
 │   └── install_task_scheduler.ps1
 │
 └── tests/
-    ├── fixtures/                      Lagrede Finn-sider, NAV-respons, eksempelprofil
-    ├── test_finn_parser.py
-    ├── test_nav_source.py
+    ├── fixtures/                      Finn-varsel-e-post, NAV-feedside og -annonse, Teamtailor-RSS, eksempelprofil
+    ├── test_finn_email.py
+    ├── test_nav_feed.py
+    ├── test_teamtailor.py
+    ├── test_clean.py
     ├── test_dedupe.py
     ├── test_hardfilter.py
     ├── test_context_builder.py
+    ├── test_projects.py
     ├── test_status_transitions.py
     └── evals/
-        └── filter_labeled.jsonl       ~30 manuelt merkede annonser for å måle filter-agenten
 ```
 
 ---
 
-## 13. Teknologivalg
+## 16. Teknologi
 
 | Behov | Bibliotek |
 |---|---|
-| Pakke-/miljøhåndtering | `uv` |
+| Pakker og miljø | `uv` |
 | Web | `fastapi`, `uvicorn`, `jinja2`, HTMX (statisk fil) |
-| DB | `sqlmodel` (SQLAlchemy + Pydantic), `alembic` ved behov |
+| DB | `sqlmodel`, `alembic` |
 | Konfig | `pydantic-settings`, `pyyaml`, `python-frontmatter` |
-| HTTP/parsing | `httpx`, `selectolax`, `playwright` (bare som fallback) |
+| HTTP og parsing | `httpx`, `selectolax`, `markdownify`, `feedparser` |
+| E-post | `imaplib` / `smtplib` (stdlib), `email` (stdlib) |
 | Fuzzy-match | `rapidfuzz` |
-| LLM | `anthropic` (API-backend), Claude Code CLI (abonnement-backend) |
+| LLM | Claude Code CLI (`claude -p`), `anthropic` |
 | CLI | `typer` |
-| E-post | `smtplib` (stdlib) |
 | Eksport | `python-docx` |
-| Test | `pytest`, `respx` (mock av httpx) |
+| Test | `pytest`, `respx` |
 
 ---
 
-## 14. Veikart
+## 17. Veikart
 
 | Fase | Innhold | Ferdig når |
 |---|---|---|
-| **0. Spikes** | Undersøk Finn sine søkesider (struktur, paginering, filtre), NAV-feeden og `claude_code`-backenden (JSON-output, websøk, vilkår) | Hvert spørsmål har et kort notat i `docs/spikes/` |
-| **1. Fundament** | Repo-oppsett, config, DB-modeller, HTTP-lag, Finn- og NAV-kilde, normalisering, dedupe, `jobsearcher run` uten LLM | Daglig kjøring fyller DB med jobber |
-| **2. Filter + dashboard v1** | Hardfilter, kontekstlag 1 og 2 (destiller), filter-agent, jobbliste, jobbdetalj | Rangerte jobber vises i dashboardet |
-| **3. Søknader** | Research-agent, writer, editor med versjoner, revisjonschat, eksport | Utkast kan lages, redigeres og eksporteres |
-| **4. Tracking + varsling** | Statusflyt, kanban, oppfølging, e-postdigest, Task Scheduler-script | Hele flyten går uten manuelt arbeid |
-| **5. Flere kilder** | ATS-adaptere, Jobbnorge, kuratert selskapsliste for trainee/graduate/sommer | Trainee-programmer fanges opp |
-| **6. Polering** | Kostnadsside, eval av filter-agenten, prompt-tuning | Filterets presisjon målt og akseptabel |
+| ~~0. Spikes~~ | Finn, NAV, Claude-abonnement, trainee-kilder | ✅ `docs/spikes/` |
+| **1. Fundament** | Repo-oppsett, config, DB + Alembic, HTTP-lag, NAV-kilde, Finn-e-postkilde, normalisering, dedupe, hardfilter, `jobsearcher run` uten LLM | Daglig kjøring fyller DB med filtrerte jobber |
+| **2. Scoring + dashboard v1** | LLM-backends, destiller, filter i batch, enricher for Finn-jobber, oversikt (frister), jobbliste, jobbdetalj | Rangerte jobber med frister i dashboardet |
+| **3. Søknader** | Research, writer, editor med versjoner og revisjonschat, `.docx`-eksport | Brev kan lages, itereres og lastes ned |
+| **4. Tracking + varsling** | Statusflyt, kanban, oppfølging, e-postdigest, Task Scheduler, backup | Hele flyten går uten manuelt arbeid |
+| **5. Flere kilder** | Teamtailor, sideovervåker + extractor, kuratert selskapsliste | Trainee-programmer fanges opp |
+| **6. Polering** | Filter-eval, kostnadsside, måling av Finn-dekning (§19 #1) | Recall ≥ 90 % |
 
 ---
 
-## 15. Kontekst brukeren må samle (før fase 2–3)
+## 18. Brukerens oppgaver før/under fase 1
 
-- [ ] CV (norsk og/eller engelsk) → `context/profile/cv.md`
-- [ ] Utdanning: grad, skole, relevante emner, eventuelle karakterer → `profile.yaml`
-- [ ] 3–5 prosjekter, én fil hver: hva, teknologi, din rolle, hva du lærte, lenke → `projects/`
-- [ ] Erfaring, også ikke-teknisk (deltid, verv, frivillig) → `experience/`
-- [ ] 2–5 søknader eller tekster du har skrevet selv → `writing_samples/`
-- [ ] Hva du vil og ikke vil: teknologier, teamtyper, bransjer, dealbreakers → `motivation.md`
-- [ ] Stilregler du vet du vil ha → `style_overrides.md`
-- [ ] Praktisk: lønnsforventning, oppstartsdato, førerkort, språk → `profile.yaml`
-- [ ] Gmail app-passord → `.env`
+- [x] Installere Claude Code CLI og logge inn (verifisert: v2.1.296, `claude -p` fungerer)
+- [x] Sette opp lagrede søk på Finn med e-postvarsel (5 søk, §4.2)
+- [x] Lage Gmail-filter og etikett `JobSearcher/Finn` (verifisert via IMAP)
+- [ ] Lagre ett Finn-varsel som `tests/fixtures/private/finn-varsel-1.eml`
+- [x] Lage Gmail-app-passord → `.env` (verifisert: IMAP-innlogging OK)
+- [ ] Bestille privat token for NAV-feeden (e-post til nav.team.arbeidsplassen@nav.no)
+- [ ] Gå gjennom selskapslisten i spike 04
+- [x] Fylle ut kontekstprofilen
 
 ---
 
-## 16. Åpne spørsmål og risiko
+## 19. Åpne spørsmål og risiko
 
 | # | Spørsmål / risiko | Håndtering |
 |---|---|---|
-| 1 | Finn kan endre sidestruktur eller blokkere automatisert trafikk | Fixtures og tester, varsling ved 0 treff, NAV som sikkerhetsnett, lavt volum |
-| 2 | Er abonnementsbruk via `claude -p` stabilt og tillatt for dette formålet? | Spike i fase 0, med API-backend som fallback |
-| 3 | Hvor godt klassifiserer filter-agenten trainee vs. graduate vs. fast? | Merket eval-sett (`tests/evals/`), mål og juster i fase 6 |
-| 4 | Skal søknadsspråket følge annonsespråket automatisk? | Foreslått standard: ja (norsk annonse → norsk søknad), kan overstyres per søknad |
-| 5 | Hvor mange trainee-kilder trengs for god dekning? | Starter med en kuratert liste og utvider etter hva som faktisk dukker opp |
+| 1 | **ÅPENT:** Finn-varslene inneholder trolig bare tittel, bedrift og sted. Brukeren ønsker ingen manuelle steg. | Automatisk berikelse (§4.2 steg 5). Andelen jobber uten tekst måles etter 2 uker. Mulige løsninger: be Finn om skriftlig samtykke, eller valgfri manuell innliming. |
+| 2 | Anthropic kan endre vilkår eller fakturering for `claude -p` | `anthropic_api` er klar som alternativ. Byttet er én linje i config. |
+| 3 | Strengt senioritetsfilter kan gå glipp av gode stillinger | Stillinger uten oppgitt senioritet vises med maks score 65. Hardfilteret følges opp via "Forkastet i dag". |
+| 4 | NAV-token roterer eller utløper | Privat token, og kildehelsevarsel ved 401 |
+| 5 | Karrieresider endrer struktur og gir støy i sideovervåkeren | Hash av hovedinnhold med CSS-selektor, og LLM-uttrekk bare ved endring |
+| 6 | Skrive-agenten finner på fakta | Faktaregel og `claims_to_verify` i editoren |

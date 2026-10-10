@@ -6,7 +6,7 @@ Et AI-basert verktøy som automatiserer jobbsøkingen: det henter stillinger, ra
 
 ## Hva det gjør
 
-- **Henter stillinger daglig** fra Finn.no, NAV/Arbeidsplassen og kilder for trainee-, graduate- og sommerjobber.
+- **Samler inn stillinger daglig** fra Finn.no (via Finn sine egne e-postvarsler), NAVs stillingsfeed og kilder for trainee-, graduate- og sommerjobber.
 - **Filtrerer og rangerer** hver stilling mot profilen din. Først gratis regelbaserte filtre (geografi, rolle, senioritet), deretter en billig AI-modell som gir en score fra 0–100 med begrunnelse.
 - **Viser alt i et lokalt dashboard** med filtre for jobbtype, score, kilde og geografi.
 - **Skriver søknadsutkast** ut fra din profil, stillingsannonsen og research om bedriften. Utkastet kan redigeres manuelt eller forbedres i en chat med en AI-agent, med versjonshistorikk.
@@ -69,4 +69,4 @@ Profilen inneholder persondata og er derfor ekskludert fra git.
 
 ## Merknad om Finn.no
 
-Verktøyet er laget for personlig bruk. Det henter data med lavt volum (én kjøring om dagen, med pauser mellom forespørslene og mellomlagring) og videreformidler ingenting.
+Finn forbyr automatisert innhenting uten skriftlig samtykke. JobSearcher skraper derfor ikke Finn. Stillinger derfra kommer via Finn sine egne varsler for lagrede søk (e-post, lest via IMAP), og annonseteksten importeres fra brukerens egen nettleser. Se [docs/spikes/01-finn.md](docs/spikes/01-finn.md).

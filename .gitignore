@@ -21,3 +21,6 @@ __pycache__/
 context/profile/**
 !context/profile/**/
 !context/profile/**/_template.md
+
+# Ekte e-poster/data brukt som testgrunnlag (persondata)
+tests/fixtures/private/
