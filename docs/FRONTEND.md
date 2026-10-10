@@ -293,7 +293,7 @@ Bølgene F0–F4 bygges før backend-fasene i ARCHITECTURE §17. Hver bølge er 
 
 | Bølge | Innhold | Ferdig når | Avhenger av backend |
 |---|---|---|---|
-| **F0. Skjelett** | `web/` med Vite, TS, Tailwind, shadcn, React Router, TanStack Query, MSW. `api/schemas.py` + `export_openapi.py` + typegenerering. App-skall (sidemeny/bunnfaner), tema, PWA-manifest, fixture-sett. | Tomt skall navigerer på mobil og PC; typer genereres fra kontrakten | Nei |
+| ~~F0. Skjelett~~ | `web/` med Vite, TS, Tailwind, shadcn, React Router, TanStack Query, MSW. `api/schemas.py` + `export_openapi.py` + typegenerering. App-skall (sidemeny/bunnfaner), tema, PWA-manifest, fixture-sett. | ✅ 2026-10-10 (PR #4) | Nei |
 | **F1. Daglig sløyfe** | Oversikt, Jobber (faner, filtre, sveip, tastatur), Jobbdetalj, bakgrunnsjobb-indikator, "Kjør nå" | Triage av en mock-dag tar < 2 min på mobil | Nei. Kobles til ekte data i fase 2. |
 | **F2. Tracker** | Kanban (PC), gruppert liste (mobil), statusoverganger, neste steg, hendelseslogg | Hele statusflyten i §9.1 kan gjøres fra mobil | Nei. Kobles i fase 4. |
 | **F3. Søknadseditor** | Editor, forhåndsvisning, autosave/versjoner, diff, revisjonschat, `claims_to_verify`, `.docx` | Brev kan itereres mot mock-agent | Nei. Kobles i fase 3. |
