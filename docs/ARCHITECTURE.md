@@ -1,13 +1,14 @@
 # JobSearcher: design- og arkitekturdokument
 
-> Status: v0.4 (2026-10-10). Fase 0 (spikes) er gjennomført, se `docs/spikes/`. Ingen kode er skrevet ennå.
+> Status: v0.5 (2026-10-10). Fase 0 (spikes) er gjennomført, se `docs/spikes/`. Ingen kode er skrevet ennå.
 > Dokumentet er "source of truth" for designet. Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato       | Endring                                                                                                                                                                                                                                                                           |
 | ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| v0.4    | 2026-10-10 | Finn hentes direkte fra mobil-API-et (reverse engineering av Android-APK, HMAC-signering med `finnsig`), ikke via e-postvarsler. Søk defineres i `config/sources.yaml`. IMAP for Finn er droppet; Gmail brukes bare til SMTP-digest. Egen `enricher` for Finn-jobber er droppet — API-et gir full annonsetekst. Se spike 04. |
+| v0.5    | 2026-10-10 | Finn-APK-en er dekompilert (spike 04). Konkret base-URL, HMAC-nøkkel, signeringsmelding og jobbsøk-endepunkt er dokumentert. `finnsig`-biblioteket er droppet — vi implementerer signeringen selv i `finn_sig.py` (~20 linjer Python). Ingen designendring, bare presisering av implementasjonen. |
+| v0.4    | 2026-10-10 | Finn hentes direkte fra mobil-API-et (reverse engineering av Android-APK, HMAC-signering), ikke via e-postvarsler. Søk defineres i `config/sources.yaml`. IMAP for Finn er droppet; Gmail brukes bare til SMTP-digest. Egen `enricher` for Finn-jobber er droppet — API-et gir full annonsetekst. Se spike 04. |
 | v0.3    | 2026-10-10 | Finn-varsler er forhåndsfiltrert og regnes som gyldige (to tillitsnivåer i hardfilteret). Automatisk berikelse av Finn-jobber via `enricher` i stedet for manuell import. Ingen manuelle steg. Stillinger uten oppgitt senioritet vises med maks score 65. Geografi per jobbtype. |
 | v0.2    | 2026-10-10 | Finn via e-postvarsler i stedet for skraping (spike 01). NAV er egen kilde, ikke fallback (spike 02). `claude_code` er standard backend (spike 03). Strengt senioritetsfilter. Frister og kontakter som egne felt. Konkrete design for agenter, drift og eval.                    |
 | v0.1    | 2026-10-09 | Første utkast etter intervju                                                                                                                                                                                                                                                      |
@@ -57,7 +58,7 @@ Et frittstående Python-program som kjører lokalt og automatiserer jobbsøkinge
 | Database | SQLite via SQLModel, migrasjoner med Alembic |
 | E-post | Gmail SMTP for utsending av digest. Ingen IMAP. |
 | LLM | Claude. Standard: `claude_code` (abonnement via `claude -p`). Alternativ: `anthropic_api`. |
-| Finn | Mobil-API med HMAC-signering (`finnsig`). Søk defineres i `config/sources.yaml`. Endepunkter reverse-engineeres fra Android-APK. Se spike 04. |
+| Finn | Mobil-API på `https://appsgw.finn.no/` med HMAC-SHA512-signering (egen implementasjon fra spike 04 §Signering). Søk defineres i `config/sources.yaml`. Endepunkter er reverse-engineert fra Android-APK (v`261006-ec709768`). Se spike 04. |
 | NAV | pam-stilling-feed med privat token |
 | Trainee/graduate | NAV + Teamtailor-RSS + kuratert selskapsliste med sideovervåker |
 | Volum | 10–20 søknader per uke |
@@ -76,8 +77,8 @@ Et frittstående Python-program som kjører lokalt og automatiserer jobbsøkinge
 
 ```
   Finn mobil-API            NAV pam-stilling-feed      Teamtailor RSS / karrieresider
-        │ HMAC-signert HTTP          │ API                        │ RSS / sideovervåker
-        │ (finnsig)                  │                            │
+        │ HMAC-SHA512-signert HTTP   │ API                        │ RSS / sideovervåker
+        │ (finn_sig.py)              │                            │
         ▼                            ▼                            ▼
         ┌────────────────────────────────────────────────────────────────┐
         │                Pipeline-orkestrator (kode)                     │ ← Task Scheduler / "Kjør nå"
@@ -122,29 +123,28 @@ class JobSource(Protocol):
 
 ### 4.2 Finn via mobil-API (spike 04)
 
-Finn har ikke et offisielt tredjeparts-API, men mobilappen snakker med et HMAC-signert HTTP-API som kan brukes direkte. Endepunktene reverse-engineeres fra Android-APK-en (`FINN.no_*.apk`, i prosjektrot, gitignored). Forespørsler signeres med `FINN-GW-KEY`-headeren via biblioteket [`finnsig`](https://github.com/newis/finnsig). Dette er en bevisst gråsone — risikoen og tiltakene står i spike 04.
+Finn har ikke et offisielt tredjeparts-API, men mobilappen snakker med et HMAC-signert HTTP-API på `https://appsgw.finn.no/` som kan brukes direkte. Endepunktene og signeringsregelen er reverse-engineert fra Android-APK-en (`FINN.no_*.apk`, i prosjektrot, gitignored). Forespørsler signeres med `FINN-GW-KEY`-headeren (HMAC-SHA512 → base64) — vi implementerer signeringen selv i `finn_sig.py` (se spike 04 §Signering). Dette er en bevisst gråsone — risikoen og tiltakene står i spike 04.
 
 1. **Søk defineres i `config/sources.yaml`**, ikke i Finns UI. Hvert søk setter Finns egne filtre som API-parametere:
    - *Utdanning:* ingen utdanning, høyskole/universitet lavere nivå
    - *Arbeidserfaring:* ingen erfaring, junior
 
-   | Søk-id | Jobbtype-hint | Geografi |
-   |---|---|---|
-   | `it_oslo` | — | `oslo_omegn` |
-   | `it_norge` | — | `norge` |
-   | `trainee` | `trainee` | `norge` |
-   | `graduate` | `graduate` | `norge` |
-   | `summer` | `summer` | `norge` |
+   | Søk-id | `searchkey` | Jobbtype-hint | Geografi |
+   |---|---|---|---|
+   | `it_oslo` | `job-fulltime` | — | `oslo_omegn` |
+   | `it_norge` | `job-fulltime` | — | `norge` |
+   | `trainee` | `job-fulltime` | `trainee` | `norge` |
+   | `graduate` | `job-fulltime` | `graduate` | `norge` |
+   | `summer` | `job-fulltime` | `summer` | `norge` |
 
-   Eksakte parameternavn kommer fra APK-dekompileringen (spike 04).
-2. **`FinnApiSource`** gjør to steg per søk:
-   1. `GET /search/jobs?...` → liste med annonse-stubs (Finn-kode, tittel, bedrift, sted, publisert).
-   2. For hver ny Finn-kode: `GET /ad/<finnkode>` → full annonsetekst, krav, frist, kontakter og søknadslenke.
-   Begge kall signeres med `FINN-GW-KEY`. Samme Finn-kode fra flere søk blir én jobb.
+   Alle går mot `GET /search/{searchkey}` med `FINN-GW-Service: Search-Quest-JB` og `client=android-finn`. Konkrete query-ID-er for `occupation`, `location`, `experience`, `education` hentes fra filter-metadata (`include_results=false&include_filters=true`) ved første kjøring og lagres i `config/sources.yaml`. Se spike 04 for utkast.
+2. **`FinnApiSource`** gjør i hovedregelen bare ett steg per søk:
+   - `GET /search/{searchkey}?client=android-finn&<filtre>&page=N` → full liste med annonser, inkludert annonsetekst, bedrift, sted, publisert, utløpsdato og kontaktpersoner. Samme Finn-kode fra flere søk blir én jobb.
+   - Det finnes ingen dedikert `JOB-ITEM`-Retrofit-interface i appen; annonsedetalj er en WebView på `https://www.finn.no/job/ad/{finnkode}`. Hvis vi senere trenger felt søket ikke gir, scraper vi den offentlige web-siden (ingen HMAC). Se spike 04 §Endepunkter.
 3. **Cursor** per søk-id lagres i `source_state` som høyeste sette `publishedAt`. Ved neste kjøring hentes bare nyere annonser. Rate-limit og retry håndteres av det felles HTTP-laget (§4.1).
 4. **Finn-annonser er forhåndsfiltrert og regnes som gyldige.** API-kallet filtrerer serverside på erfaring og utdanning, så de slipper senioritetsfilteret (§5.1) og blir aldri skjult på grunn av senioritet. Står det likevel et eksplisitt erfaringskrav i teksten, legges det inn som en `concern`, men jobben vises. Rolle-ekskludering (f.eks. cybersikkerhet) og geografi gjelder fortsatt.
 5. Jobben opprettes med `ad_text_status = present` og `prefiltered = true`. Ingen separat berikelse trengs — API-et gir hele annonsen.
-6. **App-identitet:** `User-Agent` og `X-FINN-APP-VERSION` låses til en konkret appversjon (fra APK-en), slik at trafikken ser realistisk ut og endepunkter ikke flyter mellom versjoner.
+6. **App-identitet:** `User-Agent`, `x-nmp-app-version-name` og tilhørende headere låses til appversjon `261006-ec709768` (fra APK-en), slik at trafikken ser realistisk ut og endepunkter ikke flyter mellom versjoner.
 7. **Fallback om API-et blir ubrukelig** (signaturen brytes, endepunkt forsvinner): brukeren limer inn annonsetekst via `manual`-kilden (§4.1 / §9 `job_sources.source`). IMAP-flyten er ikke en lett vei tilbake.
 
 ### 4.3 NAV pam-stilling-feed (spike 01)
@@ -633,7 +633,7 @@ Filnavn: `Soknad_<Bedrift>_<Stilling>.docx` i `data/exports/`.
 | Migrasjoner | Alembic fra start |
 | Backup | Etter hver kjøring: SQLite backup-API → `data/backups/jobsearcher-YYYY-MM-DD.db`, beholder 14 |
 | Nettverk | Uvicorn bundet til `127.0.0.1` |
-| Hemmeligheter | `.env`: `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD` (bare SMTP), `NAV_FEED_TOKEN`, valgfri `ANTHROPIC_API_KEY`. Finn-API-nøkkelen er bakt inn i `finnsig` og trenger ingen env-variabel. |
+| Hemmeligheter | `.env`: `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD` (bare SMTP), `NAV_FEED_TOKEN`, valgfri `ANTHROPIC_API_KEY`. Finn-HMAC-nøkkelen (`d45ff03c-b783-44d9-b94a-bb28dbc016a6`) er bakt inn i `finn_sig.py` som konstant — den finnes åpent i APK-en og trenger ingen env-variabel, men må oppdateres hvis Finn roterer den. |
 | Personvern | Kontaktpersoner fra annonser slettes 90 dager etter at jobben er inaktiv, med mindre det finnes en søknad. Rå cache slettes etter 30 dager. |
 
 ---
@@ -711,8 +711,8 @@ JobSearcher/
 │   ├── sources/
 │   │   ├── base.py
 │   │   ├── http.py
-│   │   ├── finn_api.py                Finn mobil-API (HMAC-signert, bruker finnsig)
-│   │   ├── finn_sig.py                Vendret kopi av finnsig (eller tynn wrapper)
+│   │   ├── finn_api.py                Finn mobil-API-klient (search → RawJob, HMAC-signert)
+│   │   ├── finn_sig.py                HMAC-SHA512-signering, egen impl. (se spike 04)
 │   │   ├── nav_feed.py
 │   │   ├── teamtailor.py
 │   │   ├── page_watch.py
@@ -766,7 +766,7 @@ JobSearcher/
 | DB | `sqlmodel`, `alembic` |
 | Konfig | `pydantic-settings`, `pyyaml`, `python-frontmatter` |
 | HTTP og parsing | `httpx`, `selectolax`, `markdownify`, `feedparser` |
-| Finn-signering | `finnsig` (vendret eller pin-nad versjon) |
+| Finn-signering | Egen impl. i `finn_sig.py` (bruker `hmac` + `hashlib` fra stdlib, se spike 04 §Signering) |
 | E-post | `smtplib` + `email` (stdlib). Ingen IMAP. |
 | Fuzzy-match | `rapidfuzz` |
 | LLM | Claude Code CLI (`claude -p`), `anthropic` |
@@ -781,7 +781,7 @@ JobSearcher/
 | Fase | Innhold | Ferdig når |
 |---|---|---|
 | ~~0. Spikes~~ | Finn, NAV, Claude-abonnement, trainee-kilder | ✅ `docs/spikes/` |
-| **1. Fundament** | Repo-oppsett, config, DB + Alembic, HTTP-lag, NAV-kilde, APK-dekompilering + Finn-API-kilde (med `finnsig`), normalisering, dedupe, hardfilter, `jobsearcher run` uten LLM | Daglig kjøring fyller DB med filtrerte jobber |
+| **1. Fundament** | Repo-oppsett, config, DB + Alembic, HTTP-lag, NAV-kilde, Finn-API-kilde (`finn_api.py` + `finn_sig.py`, se spike 04), normalisering, dedupe, hardfilter, `jobsearcher run` uten LLM | Daglig kjøring fyller DB med filtrerte jobber |
 | **2. Scoring + dashboard v1** | LLM-backends, destiller, filter i batch, oversikt (frister), jobbliste, jobbdetalj | Rangerte jobber med frister i dashboardet |
 | **3. Søknader** | Research, writer, editor med versjoner og revisjonschat, `.docx`-eksport | Brev kan lages, itereres og lastes ned |
 | **4. Tracking + varsling** | Statusflyt, kanban, oppfølging, e-postdigest, Task Scheduler, backup | Hele flyten går uten manuelt arbeid |
@@ -808,7 +808,7 @@ Finns lagrede søk og Gmail-etiketten `JobSearcher/Finn` trengs ikke lenger — 
 | # | Spørsmål / risiko | Håndtering |
 |---|---|---|
 | 1 | **Finn-API-et er en gråsone.** Finns ToS forbyr automatisert innhenting uten skriftlig samtykke. Mobil-API-et er uoffisielt for tredjepart. | Bevisst risiko. Privat, lokal, lavvolum (1 bruker, ~5 søk per døgn). Realistiske headere og rate-limit. Verktøyet publiseres ikke. Detaljer i spike 04. |
-| 2 | **Finn-signaturen eller endepunktene brytes** (nøkkelrotasjon, format- eller endepunktsendring, deteksjon). | Pin appversjon fra APK-en. Oppdater `finnsig` eller dekompiler ny APK. Kildehelse (§12) oppdager 401/403 raskt. Manuell innliming (`manual`-kilden) som siste fallback. |
+| 2 | **Finn-signaturen eller endepunktene brytes** (nøkkelrotasjon, format- eller endepunktsendring, deteksjon). | Pin appversjon (`261006-ec709768`) fra APK-en i `User-Agent`. Oppdater `finn_sig.py` eller dekompiler ny APK ved behov. Kildehelse (§12) oppdager 401/403 raskt. Manuell innliming (`manual`-kilden) som siste fallback. |
 | 3 | Anthropic kan endre vilkår eller fakturering for `claude -p` | `anthropic_api` er klar som alternativ. Byttet er én linje i config. |
 | 4 | Strengt senioritetsfilter kan gå glipp av gode stillinger | Stillinger uten oppgitt senioritet vises med maks score 65. Hardfilteret følges opp via "Forkastet i dag". |
 | 5 | NAV-token roterer eller utløper | Privat token, og kildehelsevarsel ved 401 |
