@@ -6,7 +6,7 @@ Instructions for AI agents (Claude Code, Codex, etc.) working in this repo. Read
 JobSearcher: a local, AI-assisted job search tool for one user (a newly graduated developer in Nittedal, Norway).
 - Collects job ads daily (Finn mobile API, NAV feed, Teamtailor RSS, career pages)
 - Filters and scores them against the user's profile
-- Shows them in a local dashboard (FastAPI + HTMX)
+- Shows them in a dashboard for PC and phone (React SPA over a FastAPI JSON API, see `docs/FRONTEND.md`)
 - Drafts cover letters (.docx)
 - Tracks applications and deadlines
 
@@ -15,8 +15,9 @@ Python 3.12, SQLite, Claude via `claude -p` (subscription) or the Anthropic API.
 ## Read order (keep context small)
 1. `docs/HANDOVER.md`: current status, next task, open questions. **Always.**
 2. `docs/ARCHITECTURE.md`: the design. ~800 lines, so **read only the sections your task needs**. The table of contents is the `## N.` headings. Grep for them.
-3. `docs/spikes/*.md`: research behind source/LLM decisions. Read only when touching that area.
-4. `context/README.md` + `context/prompts/*.md`: only when working on agents and prompts.
+3. `docs/FRONTEND.md`: UI design, API contract, frontend waves. Read only when touching `web/` or `/api`.
+4. `docs/spikes/*.md`: research behind source/LLM decisions. Read only when touching that area.
+5. `context/README.md` + `context/prompts/*.md`: only when working on agents and prompts.
 
 Do not read `context/profile/` or `context/derived/` unless the task is about the profile itself. They contain personal data and are large.
 
@@ -38,6 +39,7 @@ Do not read `context/profile/` or `context/derived/` unless the task is about th
   - Code, identifiers and code comments: English
   - Chat: reply in the language the user writes in
 - Layout as in ARCHITECTURE §15. Config in `config/*.yaml`, secrets in `.env` (template: `.env.example`).
+- Frontend in `web/` (TypeScript). API types are generated from `src/jobsearcher/api/schemas.py`, never hand-written. Mock fixtures in `web/src/mocks/fixtures/` must be invented data, never real ads or contacts.
 - Tests with pytest. Parsers are tested against fixtures in `tests/fixtures/`. Real emails or data go in `tests/fixtures/private/` (gitignored), with anonymized copies in `tests/fixtures/`.
 
 ## Documentation: source of truth
@@ -50,6 +52,7 @@ Each fact lives in exactly one place. Elsewhere, link to it instead of copying i
 | Document | Owns | Audience |
 |---|---|---|
 | `docs/ARCHITECTURE.md` | Design: decisions (§2), sources, filtering, context system, agents, schemas, data model, dashboard, ops, file tree, roadmap, risks | Agents and the developer |
+| `docs/FRONTEND.md` | UI design: screens, layout, components, API contract, frontend waves F0–F5 | Agents and the developer |
 | `docs/HANDOVER.md` | Current state: what's done, what's next, what's blocked, session log | The next agent |
 | `docs/spikes/NN-*.md` | Research findings and evidence behind a decision. Append a dated "Update" section when new evidence arrives. Don't rewrite history. | Anyone revisiting a decision |
 | `AGENTS.md` | Rules for agents, conventions, environment | Agents |
@@ -63,6 +66,7 @@ Each fact lives in exactly one place. Elsewhere, link to it instead of copying i
 |---|---|
 | A decision, or behavior that contradicts the design | ARCHITECTURE: the relevant section, plus §2 if it's a decision. Add an entry to the change list at the top. |
 | DB models or migrations | ARCHITECTURE §9 |
+| Screens, UI behavior or `/api` endpoints | FRONTEND.md (and re-export `web/openapi.json`) |
 | Files or modules added, moved or removed | ARCHITECTURE §15 |
 | A data source or how it's accessed | ARCHITECTURE §4, plus the spike file if new evidence |
 | Agent input/output, schemas, context slices | ARCHITECTURE §6–7, plus the prompt file (bump `version`) |

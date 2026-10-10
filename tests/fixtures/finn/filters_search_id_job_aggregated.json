@@ -1,0 +1,55 @@
+{
+ "filters": [],
+ "metadata": {
+  "params": {},
+  "search_key": "SEARCH_ID_JOB_AGGREGATED",
+  "selected_filters": [],
+  "num_results": 0,
+  "quest_time": 2,
+  "solr_time": 1,
+  "solr_elapsed_time": 2,
+  "result_size": {
+   "match_count": 9848,
+   "group_count": 5223
+  },
+  "paging": {
+   "param": "page",
+   "current": 1,
+   "last": 50
+  },
+  "title": "Aggregerte stillinger",
+  "is_savable_search": false,
+  "search_key_description": "Aggregerte stillinger",
+  "vertical": "JOB",
+  "vertical_description": "Jobb",
+  "sort": "RELEVANCE",
+  "descriptions": {
+   "title": "Aggregerte stillinger",
+   "heading": "Aggregerte stillinger",
+   "saved_search": "Aggregerte stillinger",
+   "search_key": "Aggregerte stillinger",
+   "vertical": "Jobb",
+   "canonical_search_params": ""
+  },
+  "guided_search": {
+   "suggestions": [],
+   "tracking": {
+    "search": {
+     "items": [],
+     "@type": "SearchMetadata",
+     "@id": "sdrn:finn:searchmetadata:bc553e44-8cb0-4e13-ada9-d915a95c2e71"
+    },
+    "vertical": {
+     "name": "job",
+     "subVertical": "aggregated"
+    },
+    "name": "Guided Search",
+    "intent": "Search",
+    "type": "Click"
+   }
+  },
+  "actions": [],
+  "is_end_of_paging": false,
+  "timestamp": 1791645511542
+ }
+}
