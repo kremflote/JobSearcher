@@ -3,7 +3,7 @@
 > Keep this file short. Update it at the end of every session: status, next task, open questions, and one line in the log.
 
 **Last updated:** 2026-10-10
-**Phase:** 0, 0b, frontend F0, F1 and F2 done → **next: F3 (søknadseditor).** F1 and F2 are on `feat/frontend-f1` (uncommitted until the user commits).
+**Phase:** 0, 0b, F0–F2 and **backend phases 1 + 2 done** (on `feat/backend-phase1-2`, uncommitted; branched from `feat/frontend-f1`, which has F2 as `d40e121`). Roadmap (ARCHITECTURE §17 v0.11): phase 1 → 2 → **F3 next** → 3 → F4 → 4.
 
 ## Status
 
@@ -40,30 +40,44 @@
   - Oversikt follow-ups and the job detail ("Endre status i Tracker") link to the panel.
   - Tests: Vitest 44, Playwright 17 (+7 skipped across viewports). `npm run build` and `uv run pytest` OK.
 
+- **Backend phases 1 + 2 done** (2026-10-10), see ARCHITECTURE v0.11 §4–§11, FRONTEND §7.1:
+  - Foundation: `config.py` (env paths, `settings.yaml` models, overrides via `db/repo.py`, `today()` in Oslo), `config/*.yaml`, all §9 tables (`db/models.py`, aware UTC datetimes) + Alembic `0001`, JSON logging, typer CLI `serve | run | distill | init-db`.
+  - Sources: `finn_sig.py` + `finn_api.py` (search → JSON-LD detail, cursor per search, device id in `data/finn_device.json`), `nav_feed.py` (feed summaries → `feedentry` detail after hard filter), `http.py` (rate limit, retry, robots, per-request timeout/retries), `registry.py`.
+  - Pipeline: normalize, clean, dedupe (incl. Finn `job_title`), hardfilter (incl. NAV title rule `title_not_it`), lifecycle, lock, run (+ daily DB backup).
+  - LLM: `claude_code` (isolated, ~1.5k overhead/call), `anthropic_api` (mock-tested only), `mock`; context loader/builder/budget; filter agent (batch 10, Haiku) and distiller (Sonnet); prompts filter/distiller v0.2; cost cap per Oslo month.
+  - API: overview, jobs, job detail, triage, tracker (pulled forward from phase 4), runs/tasks, logs. `serve` serves `web/dist`, runs a task runner and the daily 07:00 scheduler with catch-up (pulled forward from phase 4).
+  - Live (2026-10-10, Finn only): 108 ads → 45 hard-filtered → 63 detail fetches → 63 scored in 6 min for $0.06. Dashboard on :8765 shows them; triage/tracker/undo verified against the real API.
+  - Tests: `uv run pytest` 168, web Vitest 44, typecheck OK, openapi.json unchanged.
+  - Local data: `data/jobsearcher.db` is the live run above; the earlier dev DB is in `data/old/`.
+
 ### Waiting on the user
-- [ ] NAV private token → `NAV_FEED_TOKEN` in `.env`. Blocks live NAV runs only. Development can use the public token from the NAV docs.
+- [ ] NAV private token → `NAV_FEED_TOKEN` in `.env` (email in ARCHITECTURE §18). `.env` currently has NAV's **public** dev token, which rotates. NAV has not completed a live run yet: its gateway returned 500/504 on 2026-10-10 (spike 01 §Oppdatering). The daily run retries; check `GET /api/logs/runs` or Oversikt › Kildestatus.
 - [x] Geography per job type (ARCHITECTURE §5.3) confirmed: permanent = `oslo_omegn`, trainee/graduate/summer = `norge`.
 - [x] Company list in spike 03 approved as is.
 - [x] Open questions in `docs/FRONTEND.md` resolved (preliminary choices accepted, now in §2).
 - [x] Cloudflare DNS and NPM proxy host done.
-- [ ] Before phase 4b: `claude setup-token` → `CLAUDE_CODE_OAUTH_TOKEN` in the Pi's `jobsearcher.env` (ARCHITECTURE §18).
+- [x] `claude setup-token` → `CLAUDE_CODE_OAUTH_TOKEN` in the Pi's `jobsearcher.env` (done, confirmed 2026-10-10).
 - (No longer needed: Finn saved searches, Gmail label `JobSearcher/Finn`, sample `.eml` fixture. The user can delete them.)
 
 ## Next task
-Frontend first (ARCHITECTURE §17 v0.8): build the whole UI against mocks, let the user try it, then build the backend.
+1. **First:** confirm NAV works once its gateway recovers (`uv run jobsearcher run --source nav --no-score`). First run asks 7 days back; expect several runs to catch up. Watch how many NAV ads pass the title rule and get detail-fetched; tune `search.title_require_any` from `GET /api/logs/discarded`.
+2. Let the user use the real dashboard for a few days (`uv run jobsearcher serve` + `npm run dev`, or `npm run build` and just `serve`). Collect feedback on scores and the hard filter.
+3. Then F3 below, then backend phase 3.
+
+Known small things: the API's `is_new` groups `scrape_runs` within 1 h as one run (no run id column; add one if it misbehaves). `agents.filter.rescore()` has no UI/CLI yet (F4). Phase-3 context slices are not written.
 
 ### Frontend wave F3 (søknadseditor), see FRONTEND §5.5
 Editor with Markdown preview, autosave 2 s → new version (`author=user`), version picker with diff, revision chat against a mock agent (background task → new version with `change_summary`), `claims_to_verify` as checkable warnings, copy and `.docx` download. Mock: `POST /api/jobs/{id}/draft`, `POST /api/applications/{id}/drafts`, `POST /api/applications/{id}/revise`, `GET /api/drafts/{id}/docx`; "Lag søknadsutkast" in the job detail and `/soknader` list page. Creating a draft should move the application to `utkast` (ARCHITECTURE §9.1).
 
 The F1 user test (triage a mock day in < 2 min on mobile) has not been reported; the user gave F1 feedback and asked to start F2. Known small things: the main JS chunk is > 500 kB (code-split in F5); the PC filter row on Jobber wraps to three lines.
 
-### Later: backend phase 1 (foundation)
-Starts after the F4 user test. `finn_api.py` (search + JSON-LD detail fetch) + `finn_sig.py` (port the signing from spike 04; test against the fixtures), NAV source, pipeline (normalize, clean §4.6, dedupe §4.5, hardfilter §5.1, lock, `scrape_runs`), `serve` with the first real endpoints.
+### Later: backend phase 3 (søknader)
+Research, writer and reviser agents, the phase-3 context slices + `context/projects.py`, drafts API, `.docx` export. Connects F3.
 
 ## Open questions and risks (details in ARCHITECTURE §19)
 1. **Finn mobile API is a ToS grey area.** Deliberate, informed decision; low-volume, private use. See spike 04.
 2. The Finn signature or endpoints may break at any time (key rotation, format changes, detection). Pin app version (`261006-ec709768`) in User-Agent; fall back to `manual` paste if it dies. HMAC-nøkkelen må oppdateres fra en ny APK hvis Finn roterer den.
-3. Isolation flags for `claude -p` must get the overhead from ~39k down to <2k tokens per call. Verify when building `llm/claude_code.py` (phase 2).
+3. NAV's feed gateway is slow and was failing on 2026-10-10. Requests use a 90 s timeout and no quick retries; a failed run leaves the cursor and tries next day.
 4. Anthropic may change subscription billing for `claude -p`. The `anthropic_api` backend is the fallback.
 5. `claude -p` inside a Docker container on the Pi (arm64, `CLAUDE_CODE_OAUTH_TOKEN`) is unverified. Check at phase 4b.
 6. In production the profile lives only in the Pi data volume, edited via the dashboard. Backup relies on the Pi's Restic (same disk as data).
@@ -84,3 +98,5 @@ Starts after the F4 user test. `finn_api.py` (search + JSON-LD detail fetch) + `
 - 2026-10-10: F1 feedback from the user: triage in the job detail now moves straight to the next job (not back to the list), and the undo toast/task indicator sit above the mobile action bar. E2E covers both.
 - 2026-10-10: Built frontend wave F2 (tracker) against mocks: kanban with drag and drop + status menu (PC), grouped list + action sheet (mobile), panel with next step/follow-up/notes/event log, undo. Contract: `allowed_next`/`previous_status` on the card. ARCHITECTURE v0.10 (§9.1 transition table: + Interessant → Søkt, Tilbud → Trukket, Ikke aktuell → Interessant), FRONTEND v0.6.
 - 2026-10-10: User feedback: untriaged status `ny` is now labelled "Ikke vurdert" in the UI (was "Ny", which clashed with the NY tag for new since last run). API value unchanged. The pre-marked Interessant jobs the user saw are mock fixtures. Then: untriaged jobs get an "Ikke vurdert" pill, and the new-since-last tag ("Ny") uses the same pill style as the rest.
+- 2026-10-10: Started backend phases 1+2 (user chose real data before F3/F4). Built the foundation; roadmap reordered (ARCHITECTURE v0.11 §17); `claude setup-token` confirmed done.
+- 2026-10-10: Built backend phases 1+2 with 5 parallel subagents (Finn, NAV, pipeline, LLM/agents, API) + foundation/integration. Pulled tracker API and scheduler forward. Live Finn run scored 63 jobs for $0.06; NAV untested live (gateway 500/504), made gentler (7-day first window, no quick retries, title pre-filter). ARCHITECTURE v0.11, FRONTEND v0.7.

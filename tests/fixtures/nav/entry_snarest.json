@@ -1,0 +1,29 @@
+{
+  "uuid": "e0000005-0000-4000-8000-000000000005",
+  "sistEndret": "2026-10-02T11:00:00.000Z",
+  "status": "ACTIVE",
+  "ad_content": {
+    "uuid": "a0000003-0000-4000-8000-00000000000c",
+    "published": "2026-10-02T11:00:00Z",
+    "expires": "2026-11-15T00:00:00Z",
+    "updated": "2026-10-02T11:00:00Z",
+    "workLocations": [{"country": "NORGE", "address": null, "city": null, "postalCode": null, "county": "AKERSHUS", "municipal": "NITTEDAL"}],
+    "contactList": [],
+    "title": "Trainee IT",
+    "description": "<p>Traineeprogram i IT-avdelingen.</p>",
+    "sourceurl": null,
+    "source": "AMEDIA",
+    "applicationUrl": null,
+    "applicationDue": "Snarest",
+    "occupationCategories": [],
+    "categoryList": [],
+    "jobtitle": null,
+    "link": "https://arbeidsplassen.nav.no/stillinger/stilling/a0000003-0000-4000-8000-00000000000c",
+    "employer": {"name": "Eksempelkommune", "orgnr": null, "description": null, "homepage": null},
+    "engagementtype": "Engasjement",
+    "extent": "Heltid",
+    "starttime": null,
+    "positioncount": null,
+    "sector": "Offentlig"
+  }
+}

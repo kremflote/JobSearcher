@@ -1,0 +1,127 @@
+# Kjøreinnstillinger (ARCHITECTURE §14). Innstillinger endret i dashboardet lagres i
+# DB-tabellen settings_overrides og overstyrer verdiene her (punktnøkler, f.eks. "search.geography.permanent").
+
+search:
+  # Jobbtyper som samles inn og vises (§5.4).
+  job_types:
+    permanent: true
+    trainee: true
+    graduate: true
+    summer: true
+  # Geografi-modus per jobbtype (§5.3). Modusene står i config/locations.yaml.
+  geography:
+    permanent: oslo_omegn
+    trainee: norge
+    graduate: norge
+    summer: norge
+    unknown: oslo_omegn
+  # Remote-stillinger hos norsk arbeidsgiver slipper gjennom geografifilteret (§5.1).
+  allow_remote_norway: true
+  # Rolle-ekskludering: tittel eller kategori som inneholder et av ordene forkastes (§5.1).
+  role_exclude:
+    - sikkerhet
+    - security
+    - soc
+    - pentest
+    - cyber
+  # Ufiltrerte kilder uten yrkeskategori før detaljhenting (NAV): tittelen må inneholde ett av
+  # ordene, ellers hentes ikke annonsen (§5.1, regel title_not_it). Ord på ≤ 3 tegn matcher hele ord.
+  # Tom liste slår regelen av.
+  title_require_any:
+    - utvikler
+    - developer
+    - programmer
+    - programmerer
+    - engineer
+    - ingeniør
+    - software
+    - it
+    - ikt
+    - data
+    - devops
+    - cloud
+    - frontend
+    - backend
+    - fullstack
+    - full-stack
+    - full stack
+    - web
+    - app
+    - applikasjon
+    - system
+    - tech
+    - teknolog
+    - digital
+    - konsulent
+    - consultant
+    - analytiker
+    - analyst
+    - ai
+    - ml
+    - maskinlæring
+    - machine learning
+    - plattform
+    - platform
+    - trainee
+    - graduate
+    - nyutdannet
+    - sommer
+    - summer
+    - intern
+  # Senioritet i tittel (bare ufiltrerte kilder, §5.1).
+  seniority_title_exclude:
+    - senior
+    - lead
+    - principal
+    - arkitekt
+    - leder
+    - head of
+    - erfaren
+    - experienced
+  # Krav om mer enn så mange års erfaring forkastes (bare ufiltrerte kilder). 0 = krav på 1+ år forkastes.
+  max_required_experience_years: 0
+  # Stillinger uten uttalt senioritet vises med maks denne scoren (§5.2).
+  unspecified_seniority_max_score: 65
+  # En jobb med samme fingerprint eldre enn dette regnes som repost (§4.5).
+  repost_after_days: 30
+
+dedupe:
+  # rapidfuzz token_set_ratio på tittel for sammenslåing på tvers av kilder (§4.5 nøkkel 3).
+  title_merge_threshold: 90
+  # Treff fra og med denne og under merge-terskelen logges, men slås ikke sammen.
+  title_log_threshold: 80
+
+clean:
+  # Token-budsjett for job_ad (§4.6). Estimat: tegn / 3.5.
+  job_ad_max_tokens: 2500
+  # Avsnitt fra samme arbeidsgiver sett i så mange annonser kortes ned som boilerplate.
+  boilerplate_min_ads: 3
+
+thresholds:
+  # E-postvarsel ved score lik eller over (§11).
+  notify_min_score: 70
+  # Frister innenfor så mange dager vises på Oversikt.
+  overview_deadline_days: 14
+
+schedule:
+  daily_at: "07:00"
+  timezone: Europe/Oslo
+
+llm:
+  # claude_code (abonnement via `claude -p`) | anthropic_api | mock (§8.1)
+  backend: claude_code
+  # Kostnadstak per kalendermåned i USD (§8.3). Varsel ved warn_ratio.
+  monthly_cap_usd: 25
+  warn_ratio: 0.8
+  # Maks kostnad per enkeltkall (sendes som --max-budget-usd).
+  max_budget_usd_per_call: 1.0
+  # Tidsavbrudd per kall i sekunder.
+  timeout_s: 600
+
+retention:
+  # Rå cache i DATA_DIR/cache slettes etter så mange dager (§12).
+  raw_cache_days: 30
+  # Kontaktpersoner slettes så mange dager etter at jobben ble inaktiv, uten søknad.
+  contacts_days_after_inactive: 90
+  # Antall daglige DB-backuper som beholdes.
+  backups_keep: 14

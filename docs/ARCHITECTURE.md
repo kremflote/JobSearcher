@@ -1,12 +1,13 @@
 # JobSearcher: design- og arkitekturdokument
 
-> Status: v0.10 (2026-10-10). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F2 er bygget mot mock; backend-fasene er ikke startet.
+> Status: v0.11 (2026-10-10). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F2 og backend-fase 1 og 2 er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), og dashboardets oversikt, jobbliste og tracker går mot ekte data. Neste: F3.
 > Dokumentet er "source of truth" for designet. UI-designet står i [FRONTEND.md](FRONTEND.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato       | Endring                                                                                                                                                                                                                                                                           |
 | ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v0.11   | 2026-10-10 | Veikartet (§17): backend-fase 1 og 2 går foran F3 og F4, så de prøvde skjermene får ekte data nå. Fase 1 og 2 er bygget; tracker-API og planlegger er trukket frem fra fase 4. Presisert etter implementering: kildegrensesnitt og cursorer (§4.1), NAV i to steg med tittelregel før detaljhenting (§4.3, §5.1), dedupe-score og repost (§4.5), hva filter-agenten scorer og fyller inn (§5.2), profilhash (§6.1), verifiserte `claude -p`-flagg (§8.1), nye kolonner (§9), planlegger (§11), filhierarki (§15). |
 | v0.10   | 2026-10-10 | Statusovergangene i §9.1 er en eksplisitt tabell (bygget i F2). Nytt: Interessant → Søkt uten utkast (søkt utenfor appen), Tilbud → Trukket (takket nei), Ikke aktuell → Interessant (gjenåpne). Angre = tilbake til forrige status, som sletter siste hendelse. API-et sender lovlige neste statuser på hvert kort. Status `ny` heter "Ikke vurdert" i UI-et. |
 | v0.9    | 2026-10-10 | Fase 0b: Finn-signeringen er verifisert mot levende API. Søkeresponsen har ikke annonsetekst, så Finn blir to steg (§4.2): signert søk, så `JobPosting` JSON-LD fra den offentlige annonsesiden for nye jobber etter hardfilteret. Searchkey er enum-navnet (`SEARCH_ID_JOB_FULLTIME`). Trainee- og sommersøk filtreres serverside med `job_duration`. Se spike 04 §Oppdatering. |
 | v0.8    | 2026-10-10 | Veikartet (§17) er snudd til frontend først: F0–F4 bygges mot mock-data og prøves av brukeren før backend-fasene starter, så justeringer oppdages tidlig. Unntak: Finn-signaturen verifiseres først (fase 0b), siden den er største tekniske risiko. |
@@ -112,20 +113,24 @@ Et frittstående Python-program som kjører på brukerens egen maskin (PC under 
 ### 4.1 Kildegrensesnitt
 
 ```python
-class JobSource(Protocol):
-    name: str
-    def collect(self, since: Cursor | None) -> CollectResult: ...
-    # CollectResult: list[RawJob], ny cursor, helsestatus (antall, feil)
+class JobSource(Protocol):                       # sources/base.py
+    name: SourceName
+    def collect(self, state: dict[str, CursorState]) -> CollectResult: ...
+    # CollectResult: jobs: list[RawJob], state (ny cursor per nøkkel), found, errors, health, message
+    def fetch_details(self, jobs: list[RawJob]) -> list[RawJob]: ...
+    # Fyller annonsetekst for jobber med needs_detail, bare nye jobber som har passert hardfilteret
 ```
 
-- Hver kilde lagrer sin egen cursor i `source_state` (Finn-API: siste `publishedAt` per søk, NAV `next_url`/ETag, RSS ETag, sidehash).
+- Hver kilde lagrer sine egne cursorer i `source_state`, én per nøkkel (Finn-API: høyeste `published` per søk-id, NAV: neste feed-URL + ETag). Nye cursorer lagres bare når kilden ikke feilet (`health != fail`).
+- `sources/registry.py` bygger kildene fra `enabled` i `sources.yaml`. Kildene kjøres i rekkefølgen NAV, Finn, så NAV blir primærkilde ved sammenslåing.
 - Kildene returnerer `RawJob` med så mange strukturerte felt som kilden har. Felles normalisering tar resten.
 - Felles HTTP-lag (`sources/http.py`):
   - rate-limiting per domene
   - retry med backoff
   - `If-None-Match` og `If-Modified-Since`
   - respekt for `robots.txt`
-  - rå respons lagres i `data/cache/`
+  - rå respons lagres i `data/cache/<kilde>/<dato>/`
+  - `appsgw.finn.no` har 2,5 s mellom kall
 
 ### 4.2 Finn via mobil-API (spike 04)
 
@@ -149,16 +154,21 @@ Finn har ikke et offisielt tredjeparts-API, men mobilappen snakker med et HMAC-s
    - **Detalj:** for nye jobber som har passert hardfilteret (§5.1) hentes `https://www.finn.no/job/ad/{finnkode}` (vanlig GET, ingen HMAC), og `JobPosting` fra JSON-LD-blokken gir annonsetekst (`description`, HTML), arbeidsgiver, sted og frist. Det er samme side som appens WebView viser. Bare nye jobber hentes, så volumet er lavt (typisk 10–30 per døgn). Feiler detaljhentingen, beholdes jobben med `ad_text_status = missing` og prøves igjen neste kjøring.
 3. **Cursor** per søk-id lagres i `source_state` som høyeste sette `published` (ms). Med `sort=PUBLISHED_DESC` blas det side for side til en annonse er eldre enn cursoren. Finn gir maks 50 sider, så søkene må være filtrert. Rate-limit og retry håndteres av det felles HTTP-laget (§4.1).
 4. **Finn-annonser er forhåndsfiltrert og regnes som gyldige.** API-kallet filtrerer serverside på erfaring og utdanning, så de slipper senioritetsfilteret (§5.1) og blir aldri skjult på grunn av senioritet. Står det likevel et eksplisitt erfaringskrav i teksten, legges det inn som en `concern`, men jobben vises. Rolle-ekskludering (f.eks. cybersikkerhet) og geografi gjelder fortsatt.
-5. Jobben opprettes med `prefiltered = true` og `ad_text_status = present` når detaljhentingen lyktes. Ingen LLM-berikelse trengs.
+5. Jobben opprettes med `prefiltered = true` og `ad_text_status = present` når detaljhentingen lyktes. Ingen LLM-berikelse trengs. Søknadslenken står ikke i JSON-LD, men i annonsesidens søk-knapp (`/job-apply/{id}/apply`, Finns videresending). Mangler teksten, prøves detaljhentingen igjen i 14 dager (maks 30 per kjøring), og kildehelsen er `warn` så lenge noen mangler.
+   - `work_locations` er `[land, fylke, kommune, sted]`; i Oslo er tredje ledd en bydel, så kommunen settes til Oslo.
+   - Finn-overskriften (`heading`) er ofte reklametekst. Stillingstittelen (`job_title`) lagres i `meta` og brukes også ved fuzzy-match mot andre kilder (§4.5).
+   - Første kjøring per søk henter maks `initial_max_pages` sider, senere maks `max_pages`. Filter-ID-ene sjekkes mot ferske filter-metadata hver kjøring (`validate_filters`).
 6. **App-identitet:** `User-Agent`, `x-nmp-app-version-name` og tilhørende headere låses til appversjon `261006-ec709768` (fra APK-en), slik at trafikken ser realistisk ut og endepunkter ikke flyter mellom versjoner.
 7. **Fallback om API-et blir ubrukelig** (signaturen brytes, endepunkt forsvinner): brukeren limer inn annonsetekst via `manual`-kilden (§4.1 / §9 `job_sources.source`). IMAP-flyten er ikke en lett vei tilbake.
 
 ### 4.3 NAV pam-stilling-feed (spike 01)
 
-- Hendelsesfeed. Leser fra lagret `next_url` med `ETag`, og henter detaljer for nye eller endrede annonser.
-- Første kjøring: start 30 dager tilbake i tid.
+- Hendelsesfeed (`GET /api/v1/feed`, `/feed/{side}`, `/feedentry/{uuid}`). Cursor (`source_state` nøkkel `feed`): neste side-URL, eller siste side + `ETag` når feeden er lest ut. Neste kjøring spør siste side med `If-None-Match`; `304` betyr ingenting nytt.
+- Første kjøring: `If-Modified-Since` 7 dager tilbake (`initial_days_back`; 30 dager ga 504 fra NAV-gatewayen). Maks `max_pages_per_run` (200) sider per kjøring; resten tas neste kjøring.
 - Inneholder ca. 1000 nye annonser per dag fra hele landet, uten filtrering på serversiden. Hardfilteret (§5.1) tar bort det meste før LLM.
-- Strukturerte felt brukes direkte: kommune, frist, kontakter, arbeidsgiver, ansettelsesform, yrkeskategori.
+- **To steg, som Finn:** feed-elementene er sammendrag (uuid, status, tittel, arbeidsgiver, kommune). `collect` gir `RawJob` med `needs_detail = true`, og `fetch_details` henter hele annonsen fra `feedentry` bare for nye jobber som har passert hardfilteret. Før detaljhenting har filteret bare tittel, arbeidsgiver og kommune; derfor tittelregelen `title_not_it` (§5.1).
+- Strukturerte felt fra annonsen brukes direkte: kommune, fylke, frist (dato eller fritekst som "Snarest"), kontakter, arbeidsgiver og orgnr, ansettelsesform, yrkeskategori (nivå 1 og 2), søknads-URL (ellers `sourceurl`).
+- NAV-gatewayen er treg (13–60 s per feed-side, spike 01 §Oppdatering). Kallene har eget tidsavbrudd (`timeout_s`, 90 s) og ingen nye forsøk ved 5xx (`retries: 0`): feiler NAV, står cursoren urørt og neste kjøring prøver igjen.
 - Inaktive annonser → `jobs.active = false` (påkrevd etter vilkårene).
 - Privat token i `.env` (`NAV_FEED_TOKEN`).
 
@@ -177,18 +187,21 @@ Finn har ikke et offisielt tredjeparts-API, men mobilappen snakker med et HMAC-s
   | # | Nøkkel | Hvorfor |
   |---|---|---|
   | 1 | Samme `source` + `source_id` | Samme annonse hentet på nytt |
-  | 2 | Samme normaliserte `application_url` (uten query/fragment, uten `www.`) | NAV og Finn lenker ofte til samme ATS-side (Teamtailor, Webcruiter) som vi også henter direkte |
-  | 3 | Samme bedrift + tittel med rapidfuzz `token_set_ratio` ≥ 90 + overlappende sted (eller ett av stedene mangler) | Fanger annonser med ulik URL. Bedrift = `org_number` når kilden har det (NAV), ellers normalisert navn. |
+  | 2 | Samme normaliserte `application_url` (uten query/fragment, uten `www.`), bare når URL-en peker på én annonse (ikke `/jobs`, `/karriere` eller bare domenet), og samme bedrift eller tittelscore ≥ loggterskelen | NAV og Finn lenker ofte til samme ATS-side (Teamtailor, Webcruiter) som vi også henter direkte |
+  | 3 | Samme bedrift + tittelscore ≥ 90 + overlappende sted (eller ett av stedene mangler) | Fanger annonser med ulik URL. Bedrift = `org_number` når kilden har det (NAV), ellers normalisert navn. |
+
+  Tittelscore = snitt av rapidfuzz `token_set_ratio` og `token_sort_ratio`, beste par av overskrift og kildens stillingstittel (Finn `job_title`). `token_set_ratio` alene gir 100 når ett sett ord er delmengde av det andre ("Utvikler" vs. "Senior utvikler").
 
   Kilden med mest strukturert data blir primær (NAV > Finn-API > ATS > sideovervåker). Usikre treff (score 80–89 på #3) slås ikke sammen, men logges, så terskelen kan justeres etter noen uker i drift.
-- **Repost:** Samme fingerprint som en inaktiv jobb, eller en jobb eldre enn 30 dager → ny `Job` med `reposted_from_id`. Jobben merkes "lagt ut på nytt", og tidligere status og søknad vises.
+- **Repost:** Samme fingerprint som en inaktiv jobb, eller treff fra en annen kilde mot en jobb eldre enn `repost_after_days` (30, regnet fra `published_at`, ellers `first_seen`) → ny `Job` med `reposted_from_id`, og den gamle settes inaktiv. Samme kilde + kilde-ID er aldri repost; da oppdateres (eller reaktiveres) jobben. Jobben merkes "lagt ut på nytt", og tidligere status og søknad vises.
+- **Oppdatering:** en annonse som hentes på nytt oppdaterer `last_seen` og endrede felt. `content_hash` regnes av hele den rensede teksten før boilerplate-kutt (§4.6) og nøkkelfelt, så bare reelle endringer gir ny scoring.
 - **Frist:** lagres som `deadline` (dato) og/eller `deadline_text` ("snarest", "fortløpende"). Kildens strukturerte felt har forrang. Ellers trekker filteret ut fristen.
 
 ### 4.6 Rensing av annonsetekst
 
-- HTML → Markdown (selectolax + markdownify). Skript, navigasjon og "Del annonsen"-tekst fjernes.
+- HTML → Markdown (selectolax `LexborHTMLParser` + markdownify). Skript, navigasjon og "Del annonsen"-tekst fjernes. `description_clean` lagrer teksten med kortet boilerplate.
 - Felles boilerplate fra samme arbeidsgiver (f.eks. "Om oss" som går igjen) kortes ned etter at den er sett i ≥ 3 annonser.
-- Hvis `job_ad` overskrider budsjettet (2500 tokens): behold tittel og innledning, prioriter avsnitt med nøkkelord som "kvalifikasjoner", "krav", "arbeidsoppgaver", "vi tilbyr" og "søknad", og kutt resten med en markør.
+- Hvis `job_ad` overskrider budsjettet (2500 tokens, `pipeline.clean.truncate_for_budget`): behold tittel og innledning, prioriter avsnitt med nøkkelord som "kvalifikasjoner", "krav", "arbeidsoppgaver", "vi tilbyr" og "søknad", og kutt resten med en markør.
 
 ---
 
@@ -205,14 +218,18 @@ Konfigurert i `config/settings.yaml`. Kildene har to tillitsnivåer:
 
 Forkaster hvis:
 
-- **Geografi:** kommunen er utenfor modusen for jobbtypen (§5.3). Remote med norsk arbeidsgiver slipper gjennom.
-- **Rolle:** tittel eller kategori treffer et ekskluderingsord (`sikkerhet`, `security`, `SOC`, `pentest`, `cyber`, …), eller yrkeskategorien er klart ikke-IT.
+- **Geografi:** kommunen er utenfor modusen for jobbtypen (§5.3), eller stillingen er i utlandet. Remote med norsk arbeidsgiver slipper gjennom (`allow_remote_norway`).
+- **Jobbtype:** typen er slått av i `search.job_types`.
+- **Tittel** (bare ufiltrerte kilder uten yrkeskategori, dvs. NAV før detaljhenting): tittelen inneholder ingen av ordene i `search.title_require_any` (IT-ord og trainee/graduate/sommer/intern). Regelen `title_not_it` er svakest og logges bare når ingen annen regel slo til. Etter detaljhenting gjelder yrkeskategorien i stedet.
+- **Rolle:** tittel eller kategori treffer et ekskluderingsord (`sikkerhet`, `security`, `SOC`, `pentest`, `cyber`, …), eller yrkeskategorien er klart ikke-IT (ukjent kategori beholdes). Ord på ≤ 3 tegn matcher hele ord; lengre ord matcher som delstreng, så sammensetninger som "informasjonssikkerhet" fanges. En unntaksliste i koden hindrer falske treff ("Cybernetics").
 - **Senioritet** (bare ufiltrerte kilder), med strengt filter:
   - tittelen inneholder `senior`, `lead`, `principal`, `arkitekt`, `leder`, `head of`, `erfaren`, `experienced`
-  - teksten krever erfaring i år: regex for `\b([1-9]\d?)\s*(\+|-\s*\d+)?\s*(års?|years?)\b` i nærheten av `erfaring`/`experience`. Krav på 1 år eller mer forkastes.
+  - teksten krever erfaring i år: regex for `\b([1-9]\d?)\s*(\+|-\s*\d+)?\s*(års?|years?)\b` (også tallord som "tre"/"three") i nærheten av `erfaring`/`experience`. Krav på mer enn `max_required_experience_years` (0) forkastes, altså 1 år eller mer. "0–2 år" godtas. Verdier over 15 og bedriftens egen erfaring ("vi har over 20 års erfaring") ignoreres.
 - Jobben er allerede vurdert med samme `content_hash`, `profile_hash` og `prompt_version`.
 
-Hardfilteret logger *hvorfor* noe ble forkastet, slik at det kan justeres. Dashboardet har en skjult fane "Forkastet i dag".
+Regler som bare trenger tittel, sted og kategori kjøres før detaljhenting, så Finn-annonser som åpenbart faller bort aldri hentes. Tekstreglene kjøres etter at annonseteksten er hentet. Forkastede jobber får `filtered_out = true`.
+
+Hardfilteret logger *hvorfor* noe ble forkastet (`hardfilter_log.rule`: `geography`, `job_type`, `role`, `occupation`, `title_not_it`, `seniority_title`, `experience_years`, og `llm_seniority` fra filter-agenten), slik at det kan justeres. Loggen vises i `GET /api/logs/discarded`.
 
 ### 5.2 Steg 2: filter-agent (Haiku, batch)
 
@@ -222,6 +239,9 @@ Hardfilteret logger *hvorfor* noe ble forkastet, slik at det kan justeres. Dashb
   - `experienced` skjules.
   - `unspecified` (ingen krav om erfaring, men heller ikke uttalt junior) **vises med lavere score**: maks 65, altså under e-postterskelen på 70. Disse havner i dashboardet, men utløser ikke varsel.
   - Taket på 65 settes av koden etter LLM-kallet (`search.unspecified_seniority_max_score`), slik at det gjelder uansett hva modellen svarer.
+- **Hva som scores** (`agents.filter.score_pending`): aktive jobber som ikke er forkastet og mangler en evaluering for gjeldende `content_hash`. Er den destillerte profilen utdatert, kjøres destilleren først. Kostnadstaket (§8.3) stopper scoringen.
+- **Koden fyller inn** fra resultatet: `job_type` hvis ukjent, `seniority`, `ad_language`, frist og søknads-URL hvis jobben mangler dem, og kontakter (`source = llm`) hvis kilden ikke hadde noen.
+- **Ugyldig output:** skjemafeil eller manglende `job_id` gir ett nytt forsøk. Deretter godtas delvise batcher, og manglende jobber telles som feilet og prøves neste kjøring. Pydantic klemmer score til 0–100, korter lister til maks antall og gjør ugyldige datoer til null.
 - Finn-jobber får full annonsetekst fra annonsesiden (§4.2), så `confidence: low` er ikke normalt for Finn-jobber. Faller API-et ut og en jobb havner inn via manuell innliming uten tekst, gjelder samme regel som før: `confidence: low` skjules ikke på grunn av lav score alene.
 
 ### 5.3 Geografi-moduser (`config/locations.yaml`)
@@ -251,7 +271,7 @@ geography:
 ### 5.5 Ny scoring
 
 - **Automatisk:** når `content_hash` endres (annonsen er oppdatert, eller tekst er importert).
-- **Profil eller prompt endret:** dashboardet viser "N aktive jobber er scoret med gammel profil, estimert kostnad $X" og en knapp. Bare aktive jobber med status Ikke vurdert eller Interessant, publisert de siste 30 dagene, scores på nytt. Aldri automatisk, for å holde kostnaden nede.
+- **Profil eller prompt endret:** dashboardet viser "N aktive jobber er scoret med gammel profil, estimert kostnad $X" og en knapp. Bare aktive jobber med status Ikke vurdert eller Interessant, publisert de siste 30 dagene, scores på nytt. Aldri automatisk, for å holde kostnaden nede. Logikken finnes i `agents.filter.rescore()`; knappen kommer med F4.
 
 ---
 
@@ -289,7 +309,9 @@ Filer som starter med `_` ignoreres.
 | `profile_short.md` | ~500 tokens | Filter |
 | `profile_long.md` | ~3000 tokens | Skriver, reviser |
 | `voice.md` | ~800 tokens | Skriver, reviser |
-| `manifest.json` | Hash per kildefil, `profile_hash`, versjon av destiller-prompten | Kontekstbygger |
+| `manifest.json` | Hash per kildefil, `profile_hash`, versjon av destiller-prompten, modell, tidspunkt | Kontekstbygger |
+
+`profile_hash` = 16 hex-tegn av sha256 over sorterte `sti:sha256(innhold)` (CRLF → LF). Bare `.md`, `.yaml`, `.yml` og `.txt` leses; filer og mapper som starter med `_` eller `.` ignoreres. Lag 2 er utdatert når `profile_hash` eller destiller-promptens versjon endres, eller en fil mangler. `evaluations.profile_hash` er hashen lag 2 ble laget fra.
 
 **Bedriftskontekst:** `data/companies/<slug>.md`, laget av research-agenten. Cache i 90 dager.
 
@@ -361,7 +383,9 @@ distiller:
   output_schema: DistilledProfile
 ```
 
-**Budsjett:** Kontekstbyggeren teller tokens før hvert kall (estimat: tegn/3.5, med `count_tokens` på API-backend). Over budsjett kuttes biter med prioritet 3, deretter 2. Prioritet 1 kuttes aldri. Går det fortsatt over, feiler kallet med en tydelig melding.
+**Format:** felles biter pakkes som `<slice_navn>…</slice_navn>`. Hver annonse er `<job_ad id=… prefiltered=…><meta>…</meta><text>…</text></job_ad>`, og `<job_ad` inne i annonseteksten escapes. Bitene for fase 3 (`company_meta`, `job_ad_summary`, `company_note`, `relevant_projects`, `evaluation`, `current_draft`, `user_message`, `revision_log`) er ikke skrevet ennå.
+
+**Budsjett:** Kontekstbyggeren teller tokens før hvert kall (også systemprompten) (estimat: tegn/3.5, med `count_tokens` på API-backend). Over budsjett kuttes biter med prioritet 3, deretter 2. Prioritet 1 kuttes aldri. En annonseblokk i en batch kuttes som helhet, med laveste prioritet blant bitene sine. Går det fortsatt over, feiler kallet med en tydelig melding.
 
 **Kilder for alle slices:**
 
@@ -500,18 +524,21 @@ class LLMBackend(Protocol):
     # AgentResponse: parsed | text, usage, cost_usd, model, duration_ms
 ```
 
-**`claude_code` (standard):** subprosess av `claude -p` med:
-- `--output-format json --json-schema <schema>` → `structured_output`
-- `--model <alias>`
-- `--system-prompt-file <prompt>`, som erstatter Claude Code sin standardprompt
-- `--allowedTools` bare for research-agenten. Ellers ingen verktøy.
-- `--permission-prompts none`, `--max-budget-usd`
-- Arbeidsmappe: `data/llm_sandbox/` (tom). MCP-servere, hooks og brukerinnstillinger isoleres bort. Eksakte flagg verifiseres ved implementering.
-- `ANTHROPIC_API_KEY` fjernes fra subprosessens miljø, så abonnementet brukes.
-- Kostnad fra `total_cost_usd`.
+**`claude_code` (standard):** subprosess av `claude -p` (verifisert med CLI v2.1.296, spike 02 §Oppdatering):
+
+```
+claude -p --output-format json --json-schema '<schema>' --model <haiku|sonnet|opus>
+  --system-prompt-file <tmp-fil> --effort <nivå> --max-budget-usd <n>
+  --strict-mcp-config --setting-sources "" --disable-slash-commands --no-session-persistence
+  --permission-prompts none --tools ""          # research: --allowedTools WebSearch,WebFetch
+```
+- Brukerinnholdet sendes på stdin (UTF-8). Arbeidsmappe: `data/llm_sandbox/` (tom).
+- Isolasjonen gir ~1,5k tokens overhead per kall (mot ~39k uten). `--bare` brukes ikke, siden det slår av abonnementsinnloggingen.
+- `ANTHROPIC_API_KEY` fjernes fra subprosessens miljø, så abonnementet brukes. `CLAUDE_CODE_OAUTH_TOKEN` sendes videre hvis den finnes.
+- Kostnad fra `total_cost_usd`. Målt: filter-batch med 3 annonser (Haiku) ~$0.0025, destillering (Sonnet) ~$0.12.
 - **I container:** Claude Code CLI installeres i imaget (linux-arm64). Innlogging på abonnementet gjøres én gang med `claude setup-token`, og tokenet legges i `.env` som `CLAUDE_CODE_OAUTH_TOKEN`. Verifiseres når fase 4b starter.
 
-**`anthropic_api`:** offisiell `anthropic`-SDK med strukturert output, prompt caching på profilkonteksten og server-verktøy for research.
+**`anthropic_api`:** offisiell `anthropic`-SDK med strukturert output (`output_config.format`), prompt caching på systemprompten og profilkonteksten, og server-verktøy for research. Kostnad fra en lokal pristabell i `llm/anthropic_api.py`. Bare testet mot mock-klient.
 
 **`mock`:** faste svar for tester og dashboardutvikling.
 
@@ -527,7 +554,7 @@ class LLMBackend(Protocol):
 
 Med `anthropic_api` estimeres ca. $15–25/mnd (filter ~$0.05/dag, utkast ~$0.10–0.15 stk, research ~$0.05–0.10). Med `claude_code` trekkes bruken fra abonnementet, men `total_cost_usd` logges likevel.
 
-**Kostnadstak:** $25/mnd (rullerende kalendermåned).
+**Kostnadstak:** $25/mnd (kalendermåned i Oslo-tid, sum av `agent_runs.cost_usd`, `llm/costs.py`).
 - Ved 80 %: advarsel i dashboardet og digesten.
 - Ved 100 %: filter-kall stoppes. Brukerinitierte kall (utkast, revisjon) krever bekreftelse i dashboardet.
 
@@ -536,11 +563,13 @@ Med `anthropic_api` estimeres ca. $15–25/mnd (filter ~$0.05/dag, utkast ~$0.10
 ## 9. Datamodell (SQLite)
 
 ```
-jobs                 id, fingerprint, title, company, company_slug, location_text, municipality,
-                     remote (none|hybrid|full), job_type, seniority, ad_language,
-                     description_clean, ad_text_status (present|missing|imported),
-                     published_at, expires_at, deadline, deadline_text, application_url,
-                     first_seen, last_seen, active, content_hash, reposted_from_id
+jobs                 id, fingerprint, title, company, company_slug, org_number, location_text,
+                     municipality, remote (none|hybrid|full), job_type, seniority, ad_language,
+                     description_clean, ad_text_status (present|missing|imported), prefiltered,
+                     meta (json: kildens strukturerte felt, job_meta-biten), published_at,
+                     expires_at, deadline, deadline_text, application_url, application_url_norm,
+                     first_seen, last_seen, active, content_hash, reposted_from_id,
+                     filtered_out                                  ← skjult av hardfilter/filter-agent
 
 job_sources          id, job_id, source (finn_api|nav|teamtailor|page_watch|manual),
                      source_id, url, raw_path, fetched_at
@@ -549,7 +578,7 @@ job_contacts         id, job_id, name, role, email, phone, source (feed|llm|manu
 
 evaluations          id, job_id, score, confidence, role_category, job_type, seniority,
                      tech (json), summary, key_requirements (json), match_reasons (json),
-                     concerns (json), model, prompt_version, profile_hash, created_at
+                     concerns (json), model, prompt_version, profile_hash, content_hash, created_at
 
 hardfilter_log       id, job_id, rule, detail, created_at          ← "hvorfor forkastet"
 
@@ -573,12 +602,14 @@ scrape_runs          id, trigger (schedule|manual), source, started_at, finished
 source_state         source, key, cursor, etag, last_success_at       ← cursorer per kilde
 
 tasks                id, kind, params (json), status, progress, message, cancel_requested,
-                     created_at, finished_at                           ← bakgrunnsjobber
+                     result (json), created_at, finished_at            ← bakgrunnsjobber
 
 settings_overrides   key, value
 
 profile_revisions    id, path, content, content_hash, created_at        ← historikk for profilredigering
 ```
+
+Alle tidspunkter lagres som tidssonebevisst UTC. Datoer (frist, oppfølging, "i dag") er Oslo-datoer (`config.today()`). Migrasjoner ligger i `src/jobsearcher/db/migrations/` (Alembic, batch-modus for SQLite); `init_db()` kjører `upgrade head` ved `serve`, `run` og `init-db`.
 
 ### 9.1 Søknadsstatus
 
@@ -603,6 +634,7 @@ Hovedflyten over; tabellen er fasit. Backend validerer, ellers 409 `invalid_tran
 | Ikke aktuell | Interessant |
 | Avslag, Trukket, Utløpt | – |
 
+- Overgangstabellen og angre-logikken ligger i `tracking/status.py`. Triage til samme status gjør ingenting. Triage tilbake til Ikke vurdert avvises (409) hvis søknaden har utkast.
 - Hver overgang lagres i `application_events`. API-et sender lovlige neste statuser (`allowed_next`) og forrige status (`previous_status`, `from_status` i siste hendelse) på hvert kort.
 - **Angre:** overgang tilbake til `previous_status` er alltid lov og sletter siste hendelse. Første hendelse (fra Ikke vurdert) angres med triage, som sletter søknadsraden.
 - Ved `Søkt` settes `applied_at`, og `follow_up_at` til +14 dager hvis den ikke sendes med. Angre fra Søkt nullstiller `applied_at`.
@@ -618,9 +650,10 @@ Sider: Oversikt, Jobber, Jobbdetalj, Tracker, Søknadseditor, Profil, Innstillin
 
 ### 10.1 Bakgrunnsjobber
 
-- Brukerinitierte operasjoner (kjør nå, utkast, research, revisjon, ny scoring, destillering) og den planlagte kjøringen blir rader i `tasks` og kjøres av en `ThreadPoolExecutor` med 2 arbeidere i `serve`-prosessen.
+- Brukerinitierte operasjoner (kjør nå, utkast, research, revisjon, ny scoring, destillering) og den planlagte kjøringen blir rader i `tasks` og kjøres av en `ThreadPoolExecutor` med 2 arbeidere i `serve`-prosessen (`web/tasks.py`). Jobber som sto i kø eller kjørte da prosessen stoppet, markeres `failed` ("Avbrutt ved omstart") ved oppstart.
 - Frontend poller `GET /api/tasks/{id}` hvert 2. sekund for progresjon (FRONTEND §3.3).
-- Avbryt: `cancel_requested` sjekkes mellom steg, f.eks. mellom filter-batcher.
+- Avbryt: `cancel_requested` sjekkes mellom steg, f.eks. mellom kilder og filter-batcher. En jobb i kø avbrytes med en gang; en som kjører får status `cancelled` når den når neste sjekk.
+- FastAPI serverer `web/dist` på `/` (med `index.html` som fallback for klientruter) når mappen finnes.
 - `jobsearcher run` fra CLI finnes fortsatt for manuell kjøring. `data/run.lock` hindrer overlapp mellom CLI, planlegger og "Kjør nå".
 
 ### 10.2 Eksport
@@ -638,8 +671,8 @@ Filnavn: `Soknad_<Bedrift>_<Stilling>.docx` i `data/exports/`.
 
 ## 11. Planlegging og varsling
 
-- **Planlegger:** `jobsearcher serve` starter uvicorn og APScheduler i samme prosess. Klokkeslett i `settings.yaml` (`schedule.daily_at`, standard `07:00`, tidssone `Europe/Oslo`).
-  - Ved oppstart sjekkes siste vellykkede kjøring i `scrape_runs`. Er dagens kjøring tapt (maskinen var av), startes den med en gang.
+- **Planlegger:** `jobsearcher serve` starter uvicorn og APScheduler i samme prosess (`scheduler.py`, bygget i fase 2). Kjøringen legges i kø som en vanlig `run`-task med `trigger = schedule`. `SCHEDULER_ENABLED=false` slår planleggeren av (brukes i tester). Klokkeslett i `settings.yaml` (`schedule.daily_at`, standard `07:00`, tidssone `Europe/Oslo`).
+  - Ved oppstart: har dagens klokkeslett passert uten at noen kjøring (planlagt eller manuell) har startet etter det, startes en med en gang.
   - I drift holder Docker (`restart: unless-stopped`) prosessen i live. Under utvikling går planleggeren når `serve` kjører.
   - Ingen avhengighet til Windows Task Scheduler eller cron.
 - **Rekkefølge i kjøringen:** kilder → normalisering → hardfilter → filter-batcher → utløp/oppfølging → digest → backup.
@@ -690,7 +723,7 @@ Filnavn: `Soknad_<Bedrift>_<Stilling>.docx` i `data/exports/`.
 | `config/tech_aliases.yaml` | Teknologisynonymer | Ja |
 | `.env` | Hemmeligheter | **Nei** |
 
-Innstillinger endret i dashboardet lagres i `settings_overrides` og overstyrer YAML.
+Innstillinger endret i dashboardet lagres i `settings_overrides` og overstyrer YAML (`db/repo.py: effective_settings`).
 
 Stier styres av miljøvariabler, så samme kode kjører på PC og i container:
 
@@ -699,6 +732,7 @@ Stier styres av miljøvariabler, så samme kode kjører på PC og i container:
 | `DATA_DIR` | `data/` | `/data` |
 | `PROFILE_DIR` | `context/profile/` | `/data/profile` |
 | `DERIVED_DIR` | `context/derived/` | `/data/derived` |
+| `SCHEDULER_ENABLED` | `true` | `true` |
 
 ---
 
@@ -716,7 +750,7 @@ JobSearcher/
 ├── uv.lock, .python-version           Låste Python-avhengigheter, Python 3.12
 ├── .env.example
 ├── .gitignore
-├── alembic.ini
+├── alembic.ini                        Peker på src/jobsearcher/db/migrations; URL fra DATA_DIR
 ├── Dockerfile                         Multi-stage: Node bygger web/dist, Python kjører appen
 ├── docker-compose.yml                 Lokal kjøring i container; Pi-en bruker sin infra-stack
 │
@@ -746,15 +780,16 @@ JobSearcher/
 │       └── extractor.md
 │
 ├── src/jobsearcher/
-│   ├── cli.py                         run | serve | distill | rescore | eval | init-db | backup (bare `serve` finnes ennå)
-│   ├── config.py
+│   ├── cli.py                         typer: serve | run | distill | init-db (senere: rescore | eval | backup)
+│   ├── config.py                      Env (stier, hemmeligheter), settings.yaml-modeller, YAML-lasting, today()
 │   ├── scheduler.py                   APScheduler i serve, innhenting av tapt kjøring
 │   ├── api/           schemas.py      API-kontrakten (Pydantic), kilde for OpenAPI og TS-typer
-│   ├── logging.py
-│   ├── db/            models.py, session.py, repo.py, migrations/
+│   ├── logging.py                     JSON-linjer til data/logs/
+│   ├── db/            models.py, session.py, repo.py (effective_settings), migrations/
 │   ├── sources/
-│   │   ├── base.py
-│   │   ├── http.py
+│   │   ├── base.py                    JobSource, RawJob, CursorState, CollectResult
+│   │   ├── http.py                    HttpClient (rate-limit, retry, robots), save_raw
+│   │   ├── registry.py                build_sources() fra sources.yaml
 │   │   ├── finn_api.py                Finn: signert søk → RawJob, så annonsetekst fra JSON-LD på annonsesiden
 │   │   ├── finn_sig.py                HMAC-SHA512-signering, egen impl. (se spike 04)
 │   │   ├── nav_feed.py
@@ -762,16 +797,17 @@ JobSearcher/
 │   │   ├── page_watch.py
 │   │   └── manual.py                  import av limt inn annonsetekst
 │   ├── pipeline/      run.py, normalize.py, clean.py, dedupe.py, hardfilter.py, lifecycle.py, lock.py
-│   ├── context/       loader.py, slices.py, builder.py, budget.py, projects.py
-│   ├── agents/        base.py, schemas.py, filter.py, researcher.py, writer.py, reviser.py,
-│   │                  distiller.py, extractor.py
+│   ├── context/       loader.py, slices.py, builder.py, budget.py (projects.py i fase 3)
+│   ├── agents/        base.py, schemas.py, filter.py, distiller.py
+│   │                  (fase 3: researcher.py, writer.py, reviser.py; fase 5: extractor.py)
 │   │   (ingen enricher — Finn-annonsesiden gir full annonsetekst)
 │   ├── llm/           base.py, claude_code.py, anthropic_api.py, mock.py, costs.py
-│   ├── tracking/      status.py
+│   ├── tracking/      status.py       Overgangstabell §9.1, triage, angre
 │   ├── notify/        email.py, templates/digest.html
 │   ├── export/        docx.py, template.docx
 │   └── web/
-│       ├── app.py, tasks.py           FastAPI-app, /api-rutere, serverer web/dist
+│       ├── app.py, tasks.py           FastAPI-app med lifespan (DB, task-runner, planlegger), serverer web/dist
+│       ├── queries.py                 DB → API-skjema, cursor-paging
 │       ├── errors.py                  Feilformat `{detail, code}`, 501 for ruter uten backend
 │       └── routes/    overview.py, jobs.py, applications.py, drafts.py, profile.py,
 │                      settings.py, logs.py, tasks.py
@@ -803,18 +839,13 @@ JobSearcher/
 │   └── export_openapi.py              Skriver web/openapi.json fra FastAPI-appen
 │
 └── tests/
-    ├── fixtures/                      Finn-varsel-e-post, NAV-feedside og -annonse, Teamtailor-RSS, eksempelprofil
-    ├── test_api_contract.py           501-ruter, feilformat, web/openapi.json er oppdatert
-    ├── test_finn_api.py
-    ├── test_finn_sig.py
-    ├── test_nav_feed.py
-    ├── test_teamtailor.py
-    ├── test_clean.py
-    ├── test_dedupe.py
-    ├── test_hardfilter.py
-    ├── test_context_builder.py
-    ├── test_projects.py
-    ├── test_status_transitions.py
+    ├── conftest.py                    Egen DATA_DIR per test, migrert temp-DB, planlegger av
+    ├── fixtures/                      finn/ (søk, annonseside, filtre), nav/, profile/ (oppdiktet); private/ er gitignored
+    ├── test_api_*.py                  Kontrakt (501, openapi.json oppdatert), jobber, oversikt, tracker, tasks
+    ├── test_finn_api.py, test_finn_sig.py, test_nav_feed.py
+    ├── test_normalize.py, test_clean.py, test_dedupe.py, test_hardfilter.py, test_pipeline_run.py
+    ├── test_llm_backends.py, test_context_builder.py, test_filter_agent.py, test_distiller.py
+    ├── test_status_transitions.py, test_scheduler.py, test_db.py
     └── evals/
 ```
 
@@ -831,7 +862,8 @@ JobSearcher/
 | Container | Docker, multi-stage, `linux/arm64` + `linux/amd64` |
 | DB | `sqlmodel`, `alembic` |
 | Konfig | `pydantic-settings`, `pyyaml`, `python-frontmatter` |
-| HTTP og parsing | `httpx`, `selectolax`, `markdownify`, `feedparser` |
+| HTTP og parsing | `httpx`, `selectolax` (`lexbor`-parseren), `markdownify`, `feedparser` (fase 5) |
+| Tidssoner | `tzdata` (trengs for `Europe/Oslo` på Windows) |
 | Finn-signering | Egen impl. i `finn_sig.py` (bruker `hmac` + `hashlib` fra stdlib, se spike 04 §Signering) |
 | E-post | `smtplib` + `email` (stdlib). Ingen IMAP. |
 | Fuzzy-match | `rapidfuzz` |
@@ -844,19 +876,21 @@ JobSearcher/
 
 ## 17. Veikart
 
-**Frontend først.** Hele UI-et (bølgene F0–F4 i [FRONTEND.md §8](FRONTEND.md)) bygges mot API-kontrakten og mock-data og brukes av brukeren på PC og mobil før backend bygges. Det som oppdages ved bruk (skjermer, felt, flyt) rettes i kontrakten og i dette dokumentet mens det er billig. Backend-fasene bygger deretter mot en kontrakt som er prøvd i praksis, og hver fase kobler de bølgene den eier til ekte data.
+**Frontend først, så backend der den gir verdi.** F0–F2 (daglig sløyfe og tracker) er bygget mot mock og prøvd av brukeren. Fra v0.11 går backend-fasene 1 og 2 foran F3 og F4: de skjermene som allerede er prøvd får ekte data, så verktøyet kan brukes i jobbsøkingen nå. F3 (søknadseditor) bygges rett før fase 3, og F4 (profil, innstillinger, logg) før fase 4, siden kvaliteten på brev og profil bare kan vurderes med ekte LLM-output.
 
-Mock-data kan ikke vise kvaliteten på LLM-output (score, brev). Den vurderes når fase 2 og 3 kobles til.
+Rekkefølge: fase 1 → fase 2 → F3 → fase 3 → F4 → fase 4 → 4b/F5 → 5 → 6.
 
 | Fase | Innhold | Ferdig når |
 |---|---|---|
 | ~~0. Spikes~~ | Finn, NAV, Claude-abonnement, trainee-kilder | ✅ `docs/spikes/` |
 | ~~0b. Finn-sjekk~~ | Verifiser HMAC-signeringen og lagre filter-metadata som fixture. Ingen appkode. | ✅ 2026-10-10, spike 04 §Oppdatering |
-| **F0–F4. Frontend mot mock** (F0 ✅, F1 ✅, F2 ✅ 2026-10-10) | Bølgene i FRONTEND §8, med en brukertest etter F1 og etter F4. Funn rettes i FRONTEND, kontrakten (`api/schemas.py`) og her. | Brukeren har brukt hele flyten i mock-modus og godkjent kontrakten |
-| **1. Fundament** | Repo-oppsett, config med `DATA_DIR`/`PROFILE_DIR`, DB + Alembic, HTTP-lag, NAV-kilde, Finn-API-kilde (`finn_api.py` + `finn_sig.py`, se spike 04), normalisering, dedupe, hardfilter, `jobsearcher run` uten LLM, `serve` med de første ekte endepunktene. Ingen Windows-spesifikk kode. | Daglig kjøring fyller DB med filtrerte jobber, og dashboardet viser dem |
-| **2. Scoring + API v1** | LLM-backends, destiller, filter i batch, `/api` for oversikt, jobber, jobbdetalj, triage og tasks. Kobler F1. | Rangerte jobber med frister i dashboardet |
+| ~~F0–F2. Frontend mot mock~~ | Skjelett, daglig sløyfe og tracker (FRONTEND §8) | ✅ 2026-10-10 |
+| ~~1. Fundament~~ | Repo-oppsett, config med `DATA_DIR`/`PROFILE_DIR`, DB + Alembic, HTTP-lag, NAV-kilde, Finn-API-kilde (`finn_api.py` + `finn_sig.py`, se spike 04), normalisering, dedupe, hardfilter, `jobsearcher run` uten LLM, `serve` med de første ekte endepunktene. Ingen Windows-spesifikk kode. | ✅ 2026-10-10 |
+| ~~2. Scoring + API v1~~ | LLM-backends, destiller, filter i batch, `/api` for oversikt, jobber, jobbdetalj, triage og tasks. Kobler F1. Trukket frem fra fase 4: tracker-API-et (kobler F2), logg-API-et og planleggeren i `serve`. | ✅ 2026-10-10 |
+| **F3. Søknadseditor** | FRONTEND §5.5 mot mock | Brev kan itereres mot mock-agent |
 | **3. Søknader** | Research, writer, revisjon, versjoner, `.docx`-eksport, `/api` for utkast. Kobler F3. | Brev kan lages, itereres og lastes ned |
-| **4. Tracking + varsling** | Statusflyt, oppfølging, e-postdigest, planlegger i `serve`, backup, profil-API. Kobler F2 og F4. | Hele flyten går uten manuelt arbeid |
+| **F4. Profil, innstillinger, logg** | FRONTEND §5.6–5.8 mot mock | Profilen kan redigeres uten filsystemtilgang |
+| **4. Tracking + varsling** | E-postdigest, profil-API, innstillings-API, "score på nytt"-knapp. Kobler F4. (Statusflyt, oppfølging, planlegger og backup kom i fase 1–2.) | Hele flyten går uten manuelt arbeid |
 | **4b. Hjemmeserver** | Dockerfile (arm64), tjeneste i Pi-ens `infra`-stack, NPM-proxy, DNS, `claude setup-token`, flytte profil og DB til volumet, healthcheck i Uptime Kuma | Appen kjører på Pi-en og brukes fra mobil via Tailscale |
 | **5. Flere kilder** | Teamtailor, sideovervåker + extractor, kuratert selskapsliste | Trainee-programmer fanges opp |
 | **6. Polering** | Filter-eval, kostnadsside | Recall ≥ 90 % |
@@ -897,4 +931,5 @@ Finns lagrede søk og Gmail-etiketten `JobSearcher/Finn` trengs ikke lenger — 
 | 7   | Skrive-agenten finner på fakta                                                                                                              | Faktaregel og `claims_to_verify` i editoren                                                                                                                                                                              |
 | 8   | `claude -p` i container på arm64: innlogging med `CLAUDE_CODE_OAUTH_TOKEN`, isolasjonsflaggene og tokenets levetid er ikke verifisert       | Verifiseres først i fase 4b. Faller det, brukes `anthropic_api` på Pi-en.                                                                                                                                                |
 | 9   | Profilen finnes bare i Pi-ens datavolum i drift. Restic-repoet ligger på samme disk som dataene (runbook §10).                              | `profile_revisions` gir historikk. Mulighet for eksport av profilen fra dashboardet. Følger Pi-ens plan for backup til ekstern disk.                                                                                     |
+| 11  | NAV-feeden er treg (13–60 s per side) og svarte 500/504 under første live-forsøk 2026-10-10 | 90 s tidsavbrudd, ingen raske nye forsøk, første vindu 7 dager. Cursoren står urørt ved feil, og neste daglige kjøring prøver igjen. Kildehelsen viser `fail`. |
 | 10  | Frontend og backend glir fra hverandre mens frontend bygges mot mock                                                                        | Kontrakten er Pydantic-modellene; TS-typer genereres og fixtures typesjekkes (FRONTEND §3.1)                                                                                                                             |

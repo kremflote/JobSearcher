@@ -1,7 +1,13 @@
 from fastapi import APIRouter
 from fastapi.responses import Response
 
-from jobsearcher.api.schemas import Draft, DraftCreate, DraftSummary, ReviseRequest, TaskRef
+from jobsearcher.api.schemas import (
+    Draft,
+    DraftCreate,
+    DraftSummary,
+    ReviseRequest,
+    TaskRef,
+)
 from jobsearcher.web.errors import not_implemented
 
 router = APIRouter(tags=["drafts"])

@@ -1,0 +1,49 @@
+{
+  "version": "https://jsonfeed.org/version/1",
+  "title": "arbeidsplassen.no Job Vacancy Feed",
+  "home_page_url": "https://arbeidsplassen.nav.no/stillinger",
+  "feed_url": "/api/v1/feed/11111111-1111-4111-8111-111111111111",
+  "description": "Job Vacancy Feed from arbeidsplassen.no",
+  "next_url": "/api/v1/feed/22222222-2222-4222-8222-222222222222",
+  "id": "11111111-1111-4111-8111-111111111111",
+  "next_id": "22222222-2222-4222-8222-222222222222",
+  "items": [
+    {
+      "id": "e0000001-0000-4000-8000-000000000001",
+      "url": "/api/v1/feedentry/e0000001-0000-4000-8000-000000000001",
+      "title": "Junior utvikler",
+      "content_text": "Junior utvikler",
+      "date_modified": "2026-10-01T08:00:00.000Z",
+      "_feed_entry": {
+        "uuid": "a0000001-0000-4000-8000-00000000000a",
+        "status": "ACTIVE",
+        "title": "Junior utvikler",
+        "businessName": "Fjordbyte AS",
+        "municipal": "OSLO",
+        "sistEndret": "2026-10-01T08:00:00.000Z"
+      }
+    },
+    {
+      "id": "e0000002-0000-4000-8000-000000000002",
+      "url": "/api/v1/feedentry/e0000002-0000-4000-8000-000000000002",
+      "title": "Lagermedarbeider",
+      "content_text": "Lagermedarbeider",
+      "date_modified": "2026-10-01T09:00:00.000Z",
+      "_feed_entry": {
+        "uuid": "a0000002-0000-4000-8000-00000000000b",
+        "status": "INACTIVE",
+        "title": "Lagermedarbeider",
+        "businessName": "Nordlager Eksempel AS",
+        "municipal": "LILLESTRØM",
+        "sistEndret": "2026-10-01T09:00:00.000Z"
+      }
+    },
+    {
+      "id": "e0000003-0000-4000-8000-000000000003",
+      "url": "/api/v1/feedentry/e0000003-0000-4000-8000-000000000003",
+      "title": "Ødelagt element",
+      "content_text": "",
+      "date_modified": null
+    }
+  ]
+}

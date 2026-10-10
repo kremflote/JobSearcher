@@ -1,0 +1,37 @@
+{
+  "uuid": "e0000004-0000-4000-8000-000000000004",
+  "sistEndret": "2026-10-02T10:00:00.000Z",
+  "status": "ACTIVE",
+  "ad_content": {
+    "uuid": "a0000001-0000-4000-8000-00000000000a",
+    "published": "2026-10-01T08:00:00.000Z",
+    "expires": "2026-10-31T00:00:00",
+    "updated": "2026-10-02T10:00:00.000Z",
+    "workLocations": [
+      {"country": "NORGE", "address": "Eksempelgata 1", "city": "OSLO", "postalCode": "0150", "county": "OSLO", "municipal": "OSLO"},
+      {"country": "NORGE", "address": null, "city": "LILLESTRØM", "postalCode": "2000", "county": "AKERSHUS", "municipal": "LILLESTRØM"}
+    ],
+    "contactList": [
+      {"name": "Kari Eksempel", "email": "kari@fjordbyte.example", "phone": "+47 00 00 00 00", "role": "Kontaktperson", "title": "Teamleder"},
+      {"name": null, "email": null, "phone": null, "role": null, "title": null}
+    ],
+    "title": "Junior utvikler (oppdatert)",
+    "description": "<p>Vi søker en <strong>junior utvikler</strong> til teamet vårt.</p>",
+    "sourceurl": "https://jobs.fjordbyte.example/123",
+    "source": "EKSEMPEL_ATS",
+    "applicationUrl": "https://jobs.fjordbyte.example/123/apply",
+    "applicationDue": "2026-10-25",
+    "occupationCategories": [{"level1": "IT", "level2": "Utvikling"}],
+    "categoryList": [{"categoryType": "STYRK08", "code": "2512", "name": "Programvareutviklere", "description": null, "score": 1.0}],
+    "jobtitle": "Utvikler",
+    "link": "https://arbeidsplassen.nav.no/stillinger/stilling/a0000001-0000-4000-8000-00000000000a",
+    "employer": {"name": "Fjordbyte AS", "orgnr": "999999999", "description": "<p>Et oppdiktet konsulentselskap.</p>", "homepage": "https://fjordbyte.example"},
+    "engagementtype": "Fast",
+    "extent": "Heltid",
+    "starttime": "Etter avtale",
+    "positioncount": "2",
+    "sector": "Privat",
+    "workLanguage": ["Norsk", "Engelsk"],
+    "remote": "Hybridkontor"
+  }
+}

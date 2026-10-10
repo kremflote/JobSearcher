@@ -1,0 +1,42 @@
+{
+  "version": "https://jsonfeed.org/version/1",
+  "title": "arbeidsplassen.no Job Vacancy Feed",
+  "home_page_url": "https://arbeidsplassen.nav.no/stillinger",
+  "feed_url": "/api/v1/feed/22222222-2222-4222-8222-222222222222",
+  "description": "Job Vacancy Feed from arbeidsplassen.no",
+  "next_url": null,
+  "id": "22222222-2222-4222-8222-222222222222",
+  "next_id": null,
+  "items": [
+    {
+      "id": "e0000004-0000-4000-8000-000000000004",
+      "url": "/api/v1/feedentry/e0000004-0000-4000-8000-000000000004",
+      "title": "Junior utvikler (oppdatert)",
+      "content_text": "Junior utvikler (oppdatert)",
+      "date_modified": "2026-10-02T10:00:00.000Z",
+      "_feed_entry": {
+        "uuid": "a0000001-0000-4000-8000-00000000000a",
+        "status": "ACTIVE",
+        "title": "Junior utvikler (oppdatert)",
+        "businessName": "Fjordbyte AS",
+        "municipal": "OSLO",
+        "sistEndret": "2026-10-02T10:00:00.000Z"
+      }
+    },
+    {
+      "id": "e0000005-0000-4000-8000-000000000005",
+      "url": "/api/v1/feedentry/e0000005-0000-4000-8000-000000000005",
+      "title": "Trainee IT",
+      "content_text": "Trainee IT",
+      "date_modified": "2026-10-02T11:00:00.000Z",
+      "_feed_entry": {
+        "uuid": "a0000003-0000-4000-8000-00000000000c",
+        "status": "ACTIVE",
+        "title": "Trainee IT",
+        "businessName": "Eksempelkommune",
+        "municipal": "NITTEDAL",
+        "sistEndret": "2026-10-02T11:00:00.000Z"
+      }
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+{
+ "docs": [
+  {
+   "type": "job",
+   "id": "900000003",
+   "ad_id": 900000003,
+   "main_search_key": "SEARCH_ID_JOB_FULLTIME",
+   "heading": "Juniorutvikler - Backend",
+   "job_title": "Juniorutvikler",
+   "company_name": "Fjordbyte AS",
+   "location": "Oslo - Sentrum",
+   "locations": [
+    "Norge",
+    "Oslo",
+    "Sentrum"
+   ],
+   "work_locations": [
+    [
+     "Norge",
+     "Oslo",
+     "Sentrum",
+     "Oslo"
+    ]
+   ],
+   "published": 1791540000000,
+   "timestamp": 1791540000000,
+   "no_of_positions": 1,
+   "canonical_url": "https://www.finn.no/job/ad/900000003",
+   "extras": [
+    {
+     "id": "work_experience",
+     "label": "Arbeidserfaring",
+     "values": [
+      "456"
+     ]
+    },
+    {
+     "id": "education",
+     "label": "Utdanning",
+     "values": [
+      "464"
+     ]
+    }
+   ],
+   "flags": [],
+   "labels": [],
+   "ad_type": 40,
+   "deadline": 1792360799999,
+   "compensation": {
+    "salary_type_id": 447
+   }
+  },
+  {
+   "type": "job",
+   "id": "900000002",
+   "ad_id": 900000002,
+   "main_search_key": "SEARCH_ID_JOB_FULLTIME",
+   "heading": "Trainee IT",
+   "job_title": "Trainee IT",
+   "company_name": "Nordlys Data AS",
+   "location": "Fornebu",
+   "locations": [
+    "Norge",
+    "Akershus",
+    "Bærum"
+   ],
+   "work_locations": [
+    [
+     "Norge",
+     "Akershus",
+     "Bærum",
+     "Fornebu"
+    ]
+   ],
+   "published": 1791530000000,
+   "timestamp": 1791530000000,
+   "no_of_positions": 1,
+   "canonical_url": "https://www.finn.no/job/ad/900000002",
+   "extras": [
+    {
+     "id": "work_experience",
+     "label": "Arbeidserfaring",
+     "values": [
+      "456"
+     ]
+    },
+    {
+     "id": "education",
+     "label": "Utdanning",
+     "values": [
+      "464"
+     ]
+    }
+   ],
+   "flags": [],
+   "labels": [],
+   "ad_type": 40
+  },
+  {
+   "type": "job",
+   "id": "900000009",
+   "heading": "",
+   "published": 1791525000000
+  }
+ ],
+ "filters": [],
+ "metadata": {
+  "search_key": "SEARCH_ID_JOB_FULLTIME",
+  "paging": {
+   "param": "page",
+   "current": 1,
+   "last": 2
+  },
+  "result_size": {
+   "match_count": 5,
+   "group_count": 5
+  },
+  "is_end_of_paging": false,
+  "sort": "PUBLISHED_DESC"
+ }
+}

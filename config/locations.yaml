@@ -1,0 +1,12 @@
+# Geografi-moduser → kommuner (ARCHITECTURE §5.3). Redigeres fritt.
+# Navn sammenlignes uten store/små bokstaver. Modus `norge` godtar alle steder i Norge.
+# `bydeler` brukes bare når kilden oppgir bydel (Oslo) og modusen skal begrense til bestemte bydeler.
+
+modes:
+  nittedal:
+    municipalities: [Nittedal, Oslo, Lillestrøm, Lørenskog, Gjerdrum]
+    oslo_bydeler: [Grorud, Stovner, Bjerke, Nordre Aker]
+  oslo_omegn:
+    municipalities: [Oslo, Nittedal, Lillestrøm, Lørenskog, Rælingen, Gjerdrum, Bærum, Ullensaker]
+  norge:
+    all: true

@@ -1,0 +1,111 @@
+{
+ "docs": [
+  {
+   "type": "job",
+   "id": "900000001",
+   "ad_id": 900000001,
+   "main_search_key": "SEARCH_ID_JOB_FULLTIME",
+   "heading": "Frontendutvikler",
+   "job_title": "Frontendutvikler",
+   "company_name": "Granskog Software AS",
+   "location": "Asker",
+   "locations": [
+    "Norge",
+    "Akershus",
+    "Asker"
+   ],
+   "work_locations": [
+    [
+     "Norge",
+     "Akershus",
+     "Asker",
+     "Asker"
+    ]
+   ],
+   "published": 1791520000000,
+   "timestamp": 1791520000000,
+   "no_of_positions": 1,
+   "canonical_url": "https://www.finn.no/job/ad/900000001",
+   "extras": [
+    {
+     "id": "work_experience",
+     "label": "Arbeidserfaring",
+     "values": [
+      "456"
+     ]
+    },
+    {
+     "id": "education",
+     "label": "Utdanning",
+     "values": [
+      "464"
+     ]
+    }
+   ],
+   "flags": [],
+   "labels": [],
+   "ad_type": 40
+  },
+  {
+   "type": "job",
+   "id": "900000000",
+   "ad_id": 900000000,
+   "main_search_key": "SEARCH_ID_JOB_FULLTIME",
+   "heading": "Fullstackutvikler",
+   "job_title": "Fullstackutvikler",
+   "company_name": "Bølgetopp AS",
+   "location": "Oslo - Ullern",
+   "locations": [
+    "Norge",
+    "Oslo",
+    "Ullern"
+   ],
+   "work_locations": [
+    [
+     "Norge",
+     "Oslo",
+     "Ullern",
+     "Oslo"
+    ]
+   ],
+   "published": 1791510000000,
+   "timestamp": 1791510000000,
+   "no_of_positions": 1,
+   "canonical_url": "https://www.finn.no/job/ad/900000000",
+   "extras": [
+    {
+     "id": "work_experience",
+     "label": "Arbeidserfaring",
+     "values": [
+      "456"
+     ]
+    },
+    {
+     "id": "education",
+     "label": "Utdanning",
+     "values": [
+      "464"
+     ]
+    }
+   ],
+   "flags": [],
+   "labels": [],
+   "ad_type": 40
+  }
+ ],
+ "filters": [],
+ "metadata": {
+  "search_key": "SEARCH_ID_JOB_FULLTIME",
+  "paging": {
+   "param": "page",
+   "current": 2,
+   "last": 2
+  },
+  "result_size": {
+   "match_count": 5,
+   "group_count": 5
+  },
+  "is_end_of_paging": true,
+  "sort": "PUBLISHED_DESC"
+ }
+}

@@ -1,0 +1,75 @@
+# Kontekstmanifest per agent (ARCHITECTURE §6.2).
+#
+# model_tier: fast | balanced | best (→ haiku/sonnet/opus, §8.2)
+# effort:     low | medium | high (sendes som --effort / output_config.effort)
+# prompt:     systemprompt i context/prompts/ (versjonen i frontmatter lagres på resultatet)
+# context:    slices som er felles for kallet (caches på API-backend)
+# per_item:   slices per element i en batch (hver annonse pakkes i <job_ad id="…">)
+# priority:   1 kuttes aldri, deretter kuttes 3 før 2 når input_budget_tokens overskrides
+# input_budget_tokens: maks estimert input (tegn / 3.5), inkludert systemprompten
+# output_schema: Pydantic-modell i agents/schemas.py
+
+filter:
+  model_tier: fast
+  effort: low
+  prompt: prompts/filter.md
+  # Antall annonser per kall.
+  batch_size: 10
+  context: # felles for batchen
+    - { slice: profile_short, priority: 1 }
+    - { slice: search_prefs, priority: 1 } # jobbtyper, senioritetsregler, uønskede roller
+  per_item:
+    - { slice: job_meta, priority: 1 } # kildens strukturerte felt
+    - { slice: job_ad, priority: 1, max_tokens: 2500 }
+  input_budget_tokens: 30000
+  output_schema: FilterBatchResult
+
+researcher:
+  model_tier: balanced
+  effort: medium
+  tools: [web_search, web_fetch]
+  prompt: prompts/researcher.md
+  context:
+    - { slice: company_meta, priority: 1 } # navn, orgnr, hjemmeside, beskrivelse fra NAV
+    - { slice: job_ad_summary, priority: 1 }
+  input_budget_tokens: 4000
+  output_schema: CompanyNote
+
+writer:
+  model_tier: best
+  effort: high
+  prompt: prompts/writer.md
+  context:
+    - { slice: style_overrides, priority: 1 }
+    - { slice: voice, priority: 1 }
+    - { slice: profile_long, priority: 1 }
+    - { slice: job_ad, priority: 1, max_tokens: 3000 }
+    - { slice: company_note, priority: 2 }
+    - { slice: relevant_projects, priority: 2, top_k: 3 }
+    - { slice: evaluation, priority: 3 } # match_reasons / concerns
+  input_budget_tokens: 15000
+  output_schema: DraftResult
+
+reviser:
+  model_tier: balanced
+  effort: medium
+  prompt: prompts/reviser.md
+  context:
+    - { slice: style_overrides, priority: 1 }
+    - { slice: voice, priority: 1 }
+    - { slice: job_ad_summary, priority: 1 }
+    - { slice: current_draft, priority: 1 }
+    - { slice: user_message, priority: 1 }
+    - { slice: revision_log, priority: 2, max_items: 5 }
+    - { slice: profile_long, priority: 3 }
+  input_budget_tokens: 12000
+  output_schema: RevisionResult
+
+distiller:
+  model_tier: balanced
+  effort: medium
+  prompt: prompts/distiller.md
+  context:
+    - { slice: profile_all, priority: 1 } # alle kildefiler i lag 1
+  input_budget_tokens: 40000
+  output_schema: DistilledProfile
