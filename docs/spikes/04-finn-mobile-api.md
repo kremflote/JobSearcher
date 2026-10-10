@@ -356,3 +356,7 @@ Kjørt med et lite Python-skript (stdlib `hmac`/`urllib`, signering nøyaktig so
 - `tests/fixtures/private/finn/search_it_oslo_junior.json` (rå søkerespons med ekte annonser, gitignored).
 
 **Konsekvens for designet:** Finn blir to steg: signert søk (liste) og så detaljhenting fra annonsesiden for nye annonser som har passert hardfilteret. Se ARCHITECTURE §4.2 (v0.9).
+
+## Oppdatering 2026-10-10: APK-en er slettet
+
+APK-en (`FINN.no_261006-ec709768_APKPure.apk`) er slettet fra prosjektroten. Alt som trengs (base-URL, HMAC-nøkkel, signeringsregel, service-headere, appversjon) står i denne filen og i `04-finn-services.txt`. Roterer Finn nøkkelen eller endrer endepunktene, lastes en ny APK ned og dekompileres på samme måte (§Reverse engineering av APK-en). `*.apk` er fortsatt i `.gitignore`.
