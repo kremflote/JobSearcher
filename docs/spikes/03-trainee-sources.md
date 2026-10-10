@@ -37,3 +37,6 @@ Brukeren redigerer listen fritt.
 - `PageWatcherSource`: URL + valgfri CSS-selektor per selskap. Endringshash lagres i DB.
 - Dedupe mot NAV på fingerprint, siden samme annonse kan komme fra både ATS og NAV.
 - Etter 2–4 uker i drift: sjekk hvilke kilder som faktisk gir unike treff, og fjern de som ikke gjør det.
+
+## Update 2026-10-10
+Brukeren har gått gjennom startlisten og godkjent den som den er. Dedupe mot NAV/Finn skjer på normalisert søknads-URL før fingerprint (ARCHITECTURE §4.5).

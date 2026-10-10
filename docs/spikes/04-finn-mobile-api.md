@@ -309,3 +309,50 @@ Fallback om API-et blir ubrukelig: en manuell "lim inn annonsetekst"-flyt i dash
 - Hente filter-metadata (`include_results=false`) per `searchkey` og mappe `config/sources.yaml`-verdier til Finns ID-er for `occupation`, `location`, `experience`, `education`.
 - Implementere `src/jobsearcher/sources/finn_api.py` + `finn_sig.py` basert på dette.
 - Beslutte paginering: `page=N` vs. cursor. Mest sannsynlig `page` + lokalt `publishedAt`-filter.
+
+## Oppdatering 2026-10-10: fase 0b verifisert mot levende API
+
+Kjørt med et lite Python-skript (stdlib `hmac`/`urllib`, signering nøyaktig som §Signering) fra brukerens maskin. ~12 kall totalt.
+
+**Bekreftet:**
+- **Signeringen er riktig.** Usignert kall → `403` (tom body). Signert kall slipper gjennom gatewayen. Ingen innlogging, konto eller brukerspesifikk nøkkel trengs.
+- Minimumsheaderne i §Statiske headere holder (`User-Agent`, `FINN-Device-Info`, `X-FINN-API-Version`, `x-nmp-app-brand`, `FINN-App-Installation-Id`/`Visitor-Id` med lokalt generert UUID, `FINN-GW-Service`, `FINN-GW-KEY`).
+
+**Rettelser til spiken over:**
+
+| Antakelse over | Faktisk |
+|---|---|
+| Path er `/search/job-fulltime` | Path er **enum-navnet**: `/search/SEARCH_ID_JOB_FULLTIME` (også `_PARTTIME`, `_MANAGEMENT`, `_AGGREGATED`). `job-fulltime` gir `400` (Spring kan ikke konvertere til `SearchKey`). |
+| Søkeresponsen inneholder annonseteksten | **Nei.** Hver `doc` har `id`/`ad_id`, `heading`, `job_title`, `company_name`, `location`, `locations`, `work_locations`, `coordinates`, `published`/`timestamp` (ms), `deadline` (ms), `no_of_positions`, `extras` (erfaring/utdanning-ID-er), `canonical_url`, `logo`. Ingen beskrivelse eller kontaktpersoner. |
+| `/get/{searchkey}?adids=` henter annonser | `404` på `appsgw`. Ikke brukbart. |
+| Parameter `experience` | Heter `work_experience`. |
+| `location=norge`, `0.20061` = Oslo | Hierarkiske ID-er: `0.20001` = Norge, `1.20001.20061` = Oslo, `1.20001.20003` = Akershus, `2.…` = kommune. |
+
+**Annonsetekst:** den offentlige annonsesiden `https://www.finn.no/job/ad/{id}` (vanlig GET, ingen HMAC) har en `<script type="application/ld+json">` med `{"script:ld+json": {"@type": "JobPosting", ...}}`. Den inneholder `description` (HTML), `title`, `hiringOrganization`, `jobLocation`, `datePosted`, `validThrough`, `employmentType`, `identifier`, `url`. Siden er UTF-8. Dette er det samme som appens WebView viser.
+
+**Filter-ID-er (fra `SEARCH_ID_JOB_FULLTIME`, 2026-10-10):**
+
+| Filter | Verdier |
+|---|---|
+| `work_experience` | `455` ingen erfaring, `456` junior, `457` erfaren, `458` leder |
+| `education` | `459` doktorgrad, `461` fagbrev, `462` fagskole, `463` høyskole/univ. høyere, `464` høyskole/univ. lavere, `465` ingen, `466` vgs studieforb., `467` vgs yrkesfag |
+| `job_duration` | `3951` fast, `8098` trainee, `1816` sommer/sesong, `3659` vikariat, `3952` engasjement, `8099` prosjekt, `8900` lærling, `8901` bemanningsbyrå, `3954` selvstendig |
+| `extent` | `3947` heltid, `3942` deltid |
+| `occupation` | Hierarkisk, f.eks. `0.23` IT utvikling, `0.22` IT drift og vedlikehold |
+| `published` | `1` = nye i dag |
+| `applicationdeadline` | `1`, `3`, `7` |
+
+Øvrige filtre: `q` (fritekst), `industry`, `job_sector`, `working_language`, `home_office`, `manager_role`, `polylocation`/`radius`/`bbox`. Flere verdier for samme filter sendes som gjentatt parameter (`location=A&location=B`).
+
+**Søk og paginering:**
+- `sort=PUBLISHED_DESC` virker (standard er `RELEVANCE`).
+- 50 annonser per side. `metadata.paging = {param: "page", current, last}`, `metadata.is_end_of_paging`. `last` er maks 50 (ufiltrert: 28 875 treff, `last: 50`), så dype søk må snevres inn med filtre.
+- `metadata.result_size.match_count` teller stillinger, `group_count` teller annonser.
+- Testsøk `occupation=0.23` + Oslo + Akershus + `work_experience=455,456` + `PUBLISHED_DESC` → `200`, 66 annonser over 2 sider.
+- `include_results=false&include_filters=true` gir bare `filters` + `metadata` (ingen `docs`).
+
+**Fixtures:**
+- `tests/fixtures/finn/filters_search_id_job_*.json` (filter-metadata per searchkey, sporet i git, ingen persondata).
+- `tests/fixtures/private/finn/search_it_oslo_junior.json` (rå søkerespons med ekte annonser, gitignored).
+
+**Konsekvens for designet:** Finn blir to steg: signert søk (liste) og så detaljhenting fra annonsesiden for nye annonser som har passert hardfilteret. Se ARCHITECTURE §4.2 (v0.9).
