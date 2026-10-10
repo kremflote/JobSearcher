@@ -1,12 +1,13 @@
 # JobSearcher: frontend-design
 
-> Status: v0.3 (2026-10-10). Ingen kode er skrevet ennå.
+> Status: v0.4 (2026-10-10). F0 (skjelett) er bygget. Neste: F1.
 > Dokumentet eier UI-designet: skjermer, layout, komponenter, API-kontrakt og frontend-bølger. Resten av systemet står i [ARCHITECTURE.md](ARCHITECTURE.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato | Endring |
 |---|---|---|
+| v0.4 | 2026-10-10 | F0 bygget. Appnavn "Jobbsøk". Fixtures er TypeScript med datoer relativt til i dag (§3.2). `/soknader` får en egen listeside (F3). TypeScript låst til 5.9 (§2). Kontrakten dekker alle v0-ruter; mock svarer på lese-endepunktene. |
 | v0.3 | 2026-10-10 | Åpne spørsmål avklart og flyttet til §2: ingen triage-lenker i digesten, ingen offline-lesing, forkastede jobber bare i Logg. |
 | v0.2 | 2026-10-10 | Frontend først: F0–F4 bygges og brukertestes mot mock før backend-fasene starter (ARCHITECTURE §17). Brukertest etter F1 og F4. |
 | v0.1 | 2026-10-10 | Første utkast: React-SPA, PC + mobil, kontrakt-først mot mock, bølger F0–F5 |
@@ -51,6 +52,8 @@
 | Forkastede jobber | Vises bare i Logg (§5.8), ikke i Jobber. |
 | Søknadseditor | Markdown-tekstfelt + forhåndsvisning. Samme format som `drafts.content` og `.docx`-eksporten. |
 | Språk i UI | Norsk (bokmål). Datoer med `date-fns` og `nb`-locale. |
+| Appnavn | "Jobbsøk" i UI og PWA. Kodenavnet er fortsatt JobSearcher. |
+| TypeScript | 5.9. TS 7 (native) mangler JS-API-et som `openapi-typescript` trenger. Oppgraderes når den støtter det. |
 | Autentisering | Ingen i appen. Tilgang styres av Tailscale (ARCHITECTURE §12). |
 
 ---
@@ -66,16 +69,16 @@
  └──────────────────────────────┘              └──────────────────────────────┘
           │ VITE_MOCK=1                                  │
           ▼                                              ▼
-   MSW + web/src/mocks/fixtures/*.json           scripts/export_openapi.py
+   MSW + web/src/mocks/fixtures/*.ts             scripts/export_openapi.py
                                                  → web/openapi.json → npm run gen:api
 ```
 
 ### 3.1 Kontraktflyt
 
 1. Endre eller legg til modeller i `api/schemas.py` og rute-signaturer i `web/routes/*` (kan returnere `501` før backend finnes).
-2. `python scripts/export_openapi.py` skriver `web/openapi.json` (versjonert i git).
+2. `uv run python scripts/export_openapi.py` skriver `web/openapi.json` (versjonert i git). `tests/test_api_contract.py` feiler hvis filen er utdatert.
 3. `npm run gen:api` genererer `web/src/api/schema.d.ts`.
-4. MSW-handlere og fixtures typesjekkes mot de genererte typene. Brudd i kontrakten gir TypeScript-feil.
+4. MSW-handlere og fixtures typesjekkes mot de genererte typene (`npm run typecheck`). Brudd i kontrakten gir TypeScript-feil.
 
 ### 3.2 Utvikling
 
@@ -86,7 +89,7 @@
 | Test på mobil under utvikling | `npm run dev:mock -- --host` (eller `npm run dev -- --host`), åpne `http://<PC-ens Tailscale-IP>:5173` | Mock eller ekte API |
 | Drift | `jobsearcher serve` (container) | Ekte API, `web/dist` |
 
-Fixtures ligger i `web/src/mocks/fixtures/` og er **anonymiserte** (oppdiktede bedrifter og personer). Ekte data går aldri inn i `web/`.
+Fixtures ligger i `web/src/mocks/fixtures/*.ts` og er **oppdiktede** (bedrifter, personer, domener `*.example`). Ekte data går aldri inn i `web/`. Datoene regnes relativt til dagen mock-appen åpnes, så frister og "nye siden sist" alltid er aktuelle. `web/src/mocks/db.ts` bygger en minnedatabase fra dem ved hver sidelasting; `handlers.ts` svarer på kontrakten, og ruter som ikke er mocket ennå gir `501`. UI-et viser et `MOCK`-merke i mock-modus.
 
 ### 3.3 Bakgrunnsjobber i UI-et
 
@@ -116,7 +119,7 @@ Testes i Playwright på 390×844 (mobil) og 1440×900 (PC).
 | Oversikt | Oversikt | `/` |
 | Jobber | Jobber | `/jobber`, `/jobber/:id` |
 | Tracker | Tracker | `/tracker` |
-| Mer → | Søknader | `/soknader/:applicationId` |
+| Mer → | Søknader | `/soknader` (søknader med utkast, F3), `/soknader/:applicationId` |
 | Mer → | Profil | `/profil`, `/profil/*path` |
 | Mer → | Innstillinger | `/innstillinger` |
 | Mer → | Logg | `/logg` |
@@ -307,5 +310,7 @@ Rekkefølgen er F0 → F1 → brukertest → F2 → F3 → F4 → brukertest. Ve
 |---|---|---|
 | Enhet | Vitest + Testing Library | Hooks (`useTask`), formattering (frist, score), statusoverganger i UI |
 | Kontrakt | `tsc` mot genererte typer | At fixtures og komponenter matcher API-et |
-| Ende-til-ende | Playwright mot `dev:mock`, to viewporter (390×844, 1440×900) | Triage med sveip og tastatur, statusflytt, autosave |
+| Ende-til-ende | Playwright mot `dev:mock`, to viewporter (390×844, 1440×900) | Navigasjon, tema og manifest (F0); triage med sveip og tastatur, statusflytt, autosave |
+
+Kommandoer i `web/`: `npm test` (Vitest), `npm run typecheck`, `npm run e2e` (Playwright starter `dev:mock` selv på port 5174). Backend: `uv run pytest`.
 
