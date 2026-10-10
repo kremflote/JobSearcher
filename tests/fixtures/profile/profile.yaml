@@ -1,0 +1,11 @@
+# Invented test profile. Not a real person.
+name: Testa Testesen
+education:
+  - degree: Bachelor i informatikk
+    school: Eksempelhøgskolen
+    expected_done: 2026-06
+skills:
+  - { name: Python, level: 3 }
+  - { name: Kotlin, level: 2 }
+  - { name: SQL, level: 2 }
+languages: [norsk, engelsk]

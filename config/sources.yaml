@@ -1,0 +1,72 @@
+# Aktive kilder og søk (ARCHITECTURE §4, §14).
+
+finn_api:
+  enabled: true
+  # Appidentitet låst til APK-en gatewayen ble reverse-engineert fra (spike 04). Endres bare
+  # sammen med ny APK.
+  app_version: "261006-ec709768"
+  app_build: "1005273389"
+  # Første kjøring (ingen cursor): maks antall sider (à 50 annonser) per søk.
+  initial_max_pages: 3
+  # Senere kjøringer: sikkerhetsgrense; vi stopper normalt ved cursoren lenge før.
+  max_pages: 10
+  # Sjekk filter-ID-ene under mot ferske filter-metadata (ett ekstra kall per searchkey).
+  # Ukjente ID-er gir kildehelse "warn".
+  validate_filters: true
+  # Felles filtre for alle søk (spike 04 §Oppdatering). Flere verdier = gjentatt parameter.
+  common_params:
+    occupation: ["0.23"]            # IT utvikling
+    work_experience: ["455", "456"] # ingen erfaring, junior
+    education: ["465", "464"]       # ingen, høyskole/universitet lavere nivå
+  # Søk per id (§4.2). `job_type` er hint til normaliseringen; `geography` er dokumentasjon,
+  # selve stedsfilteret er `location`-parameteren.
+  searches:
+    it_oslo:
+      searchkey: SEARCH_ID_JOB_FULLTIME
+      job_type: permanent
+      params:
+        location: ["1.20001.20061", "1.20001.20003"]  # Oslo, Akershus
+    it_norge:
+      searchkey: SEARCH_ID_JOB_FULLTIME
+      job_type: permanent
+      params:
+        location: ["0.20001"]                         # Norge
+    trainee:
+      searchkey: SEARCH_ID_JOB_FULLTIME
+      job_type: trainee
+      params:
+        location: ["0.20001"]
+        job_duration: ["8098"]
+    graduate:
+      searchkey: SEARCH_ID_JOB_FULLTIME
+      job_type: graduate
+      params:
+        location: ["0.20001"]
+        q: ["graduate"]
+    summer:
+      searchkey: SEARCH_ID_JOB_FULLTIME
+      job_type: summer
+      params:
+        location: ["0.20001"]
+        job_duration: ["1816"]
+
+nav:
+  enabled: true
+  # Feed-API (spike 01). Token fra NAV_FEED_TOKEN i .env.
+  base_url: https://pam-stilling-feed.nav.no
+  # Første kjøring starter så mange dager tilbake (If-Modified-Since på /api/v1/feed).
+  initial_days_back: 7
+  # Tidsavbrudd per kall i sekunder. NAV-gatewayen bruker opptil 60 s per feed-side.
+  timeout_s: 90
+  # Antall nye forsøk ved 5xx/tidsavbrudd. 0: en treg NAV-gateway får hvile, og neste kjøring prøver igjen.
+  retries: 0
+  # Maks feed-sider per kjøring. Resten leses neste kjøring (cursoren peker på neste side).
+  max_pages_per_run: 200
+
+teamtailor:
+  enabled: false   # fase 5
+  feeds: []
+
+page_watch:
+  enabled: false   # fase 5
+  companies: []

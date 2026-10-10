@@ -360,3 +360,17 @@ Kjørt med et lite Python-skript (stdlib `hmac`/`urllib`, signering nøyaktig so
 ## Oppdatering 2026-10-10: APK-en er slettet
 
 APK-en (`FINN.no_261006-ec709768_APKPure.apk`) er slettet fra prosjektroten. Alt som trengs (base-URL, HMAC-nøkkel, signeringsregel, service-headere, appversjon) står i denne filen og i `04-finn-services.txt`. Roterer Finn nøkkelen eller endrer endepunktene, lastes en ny APK ned og dekompileres på samme måte (§Reverse engineering av APK-en). `*.apk` er fortsatt i `.gitignore`.
+
+## Oppdatering 2026-10-10: implementert (`finn_sig.py`, `finn_api.py`)
+
+Verifisert mot levende API ved implementering (~6 kall):
+
+| Funn | Detalj |
+|---|---|
+| Signering | `finn_sig.sign_url` signerer `httpx.URL(url).raw_path`, altså nøyaktig det som sendes. Godtatt av gatewayen. |
+| Sortering | `sort=PUBLISHED_DESC` er strengt synkende på `published` (og `timestamp == published`). Cursor-stopp på `published <= cursor` er trygt. |
+| `work_locations` | Liste av `[land, fylke, kommune, sted]`. For Oslo er tredje element bydel (`Sentrum`, `Ullern`) og fjerde `Oslo`, så kommune = `Oslo` når fylke er `Oslo`. Flere arbeidssteder = flere lister. |
+| JSON-LD | Også `BreadcrumbList` ligger i en `{"script:ld+json": …}`-wrapper; velg objektet med `@type == "JobPosting"`. `employmentType` er en liste (`["FULL_TIME", "TEMPORARY"]`), `validThrough` er `YYYY-MM-DD`, `hiringOrganization.url` kan være `null`. |
+| Søknadslenke | Står ikke i JSON-LD. Annonsesiden har `<a class="job-apply-button" href="https://www.finn.no/job-apply/{id}/apply">Søk her</a>` (Finn-redirect til arbeidsgivers ATS). Den brukes som `application_url`. |
+| robots.txt | `www.finn.no/robots.txt` tillater `/job/ad/` for `User-agent: *` (blokkerer bl.a. GPTBot/ClaudeBot fra `/job/`, men vi bruker agent `JobSearcher`). |
+| Filter-ID-er | `education=465,464` og resten av `config/sources.yaml` finnes i ferske filter-metadata. |

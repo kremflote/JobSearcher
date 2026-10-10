@@ -1,12 +1,13 @@
 # JobSearcher: frontend-design
 
-> Status: v0.6 (2026-10-10). F0, F1 og F2 er bygget. Neste: F3 (søknadseditor).
+> Status: v0.7 (2026-10-10). F0, F1 og F2 er bygget, og F1 og F2 er koblet til ekte API (backend-fase 1–2). Neste bølge: F3 (søknadseditor), bygget rett før backend-fase 3.
 > Dokumentet eier UI-designet: skjermer, layout, komponenter, API-kontrakt og frontend-bølger. Resten av systemet står i [ARCHITECTURE.md](ARCHITECTURE.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato | Endring |
 |---|---|---|
+| v0.7 | 2026-10-10 | Backend-fase 1–2: ekte API for oversikt, jobber, triage, tracker, tasks og logg (§7.1). F3 og F4 flyttes etter backend-fase 2 (ARCHITECTURE §17 v0.11). |
 | v0.6 | 2026-10-10 | F2 (tracker) bygget. Kortet i API-et har `allowed_next` og `previous_status`, så UI-et viser bare lovlige overganger uten egen kopi av tabellen (ARCHITECTURE §9.1). Statusflytt har angre-toast. Avsluttet er sammenlagt som standard. Panelet åpnes med `?app=<id>`. Oppfølginger på Oversikt lenker til Tracker. Status `ny` vises som "Ikke vurdert" og har eget merke i lister og detalj, som alle andre statuser. Merket for ny siden sist heter "Ny" og har samme form som de andre merkene. |
 | v0.5 | 2026-10-10 | F1 bygget. Etter brukertilbakemelding: triage i jobbdetaljen går rett til neste jobb, og angre-toasten dekker ikke handlingsraden. Jobber viser `Ny` som standard statusfilter. Triage er bare mellom `ny`/`interessant`/`ikke_aktuell` (ellers 409). `role` i `GET /api/jobs` er en enum. Kildestatus og kostnad på mobil ligger under "Mer". Mock-kjøring tar 6 s. |
 | v0.4 | 2026-10-10 | F0 bygget. Appnavn "Jobbsøk". Fixtures er TypeScript med datoer relativt til i dag (§3.2). `/soknader` får en egen listeside (F3). TypeScript låst til 5.9 (§2). Kontrakten dekker alle v0-ruter; mock svarer på lese-endepunktene. |
@@ -296,6 +297,22 @@ Alle ruter under `/api`. JSON. Datoer i ISO 8601. Feil som `{"detail": "...", "c
 
 Statusverdier i API-et er snake_case uten norske tegn (`ny`, `interessant`, `utkast`, `sokt`, `intervju`, `tilbud`, `ikke_aktuell`, `avslag`, `trukket`, `utlopt`). Visningsnavn ligger i frontend.
 
+### 7.1 Ekte API (backend-fase 1–2)
+
+Implementert: alle ruter merket F1 og F2, `GET /api/logs/*` og `GET /api/health`. Resten (utkast, profil, innstillinger) svarer `501 not_implemented` til sin fase. Der det ekte API-et oppfører seg annerledes enn MSW-mocken, gjelder dette:
+
+| Tema | Ekte API |
+|---|---|
+| Skjulte jobber | `GET /api/jobs` viser aldri forkastede jobber (`filtered_out`). Ikke vurderte jobber skjules også når annonsen er inaktiv eller fristen har passert. Vurderte jobber vises, også `ikke_aktuell` uten statusfilter. |
+| Søk (`q`) | Tittel, bedrift, sted og annonsetekst |
+| `is_new` | Først sett ved eller etter starten av siste fullførte kjøring. `scrape_runs`-rader som starter innen en time fra den nyeste regnes som samme kjøring. `new_since_last.since` er det tidspunktet. |
+| Avbryt | En jobb i kø avbrytes med en gang. En jobb som kjører får meldingen "Avbryter …" og status `cancelled` når pipelinen når neste sjekkpunkt. |
+| `POST /api/runs` | 409 `run_active` også når en kjøring fra CLI eller planleggeren holder `data/run.lock` |
+| Triage | Samme status igjen gjør ingenting. `interessant` ↔ `ikke_aktuell` tilbake til forrige status sletter siste hendelse (angre). Tilbake til `ny` gir 409 hvis søknaden har utkast. |
+| Ukjent søknad | `GET /api/applications/{id}/events` gir 404 |
+| Ugyldig cursor | `400 invalid_cursor` (ikke deklarert i OpenAPI) |
+| Kildestatus | Kildene som er slått på i `config/sources.yaml`, pluss kilder med kjøringer. `manual` vises ikke. |
+
 ---
 
 ## 8. Bølger
@@ -305,13 +322,13 @@ Bølgene F0–F4 bygges før backend-fasene i ARCHITECTURE §17. Hver bølge er 
 | Bølge | Innhold | Ferdig når | Avhenger av backend |
 |---|---|---|---|
 | ~~F0. Skjelett~~ | `web/` med Vite, TS, Tailwind, shadcn, React Router, TanStack Query, MSW. `api/schemas.py` + `export_openapi.py` + typegenerering. App-skall (sidemeny/bunnfaner), tema, PWA-manifest, fixture-sett. | ✅ 2026-10-10 (PR #4) | Nei |
-| ~~F1. Daglig sløyfe~~ | Oversikt, Jobber (faner, filtre, sveip, tastatur), Jobbdetalj, bakgrunnsjobb-indikator, "Kjør nå" | ✅ bygget 2026-10-10; venter på brukertest (triage av en mock-dag < 2 min på mobil) | Nei. Kobles til ekte data i fase 2. |
-| ~~F2. Tracker~~ | Kanban (PC), gruppert liste (mobil), statusoverganger, neste steg, hendelseslogg | ✅ 2026-10-10 | Nei. Kobles i fase 4. |
+| ~~F1. Daglig sløyfe~~ | Oversikt, Jobber (faner, filtre, sveip, tastatur), Jobbdetalj, bakgrunnsjobb-indikator, "Kjør nå" | ✅ bygget 2026-10-10; venter på brukertest (triage av en mock-dag < 2 min på mobil) | ✅ Koblet til ekte API i fase 2 |
+| ~~F2. Tracker~~ | Kanban (PC), gruppert liste (mobil), statusoverganger, neste steg, hendelseslogg | ✅ 2026-10-10 | ✅ Koblet til ekte API i fase 2 |
 | **F3. Søknadseditor** | Editor, forhåndsvisning, autosave/versjoner, diff, revisjonschat, `claims_to_verify`, `.docx` | Brev kan itereres mot mock-agent | Nei. Kobles i fase 3. |
-| **F4. Profil, innstillinger, logg** | Profileditor med historikk, innstillingsskjema, loggfaner | Profilen kan redigeres uten filsystemtilgang | Nei. Kobles når fase 2 (destiller) finnes. |
-| **F5. Drift** | FastAPI serverer `web/dist`, multi-stage Dockerfile, PWA-ikon, test på mobil via Tailscale | `docker compose up` gir hele appen på én port | Ja: fase 1 (`serve`) |
+| **F4. Profil, innstillinger, logg** | Profileditor med historikk, innstillingsskjema, loggfaner | Profilen kan redigeres uten filsystemtilgang | Nei. Kobles i fase 4 (destilleren finnes fra fase 2). |
+| **F5. Drift** | FastAPI serverer `web/dist`, multi-stage Dockerfile, PWA-ikon, test på mobil via Tailscale | `docker compose up` gir hele appen på én port | Ja: fase 1 (`serve`). `serve` serverer allerede `web/dist`; Dockerfile gjenstår. |
 
-Rekkefølgen er F0 → F1 → brukertest → F2 → F3 → F4 → brukertest. Ved brukertest kjører appen i mock-modus på PC og mobil (`npm run dev:mock -- --host`, §3.2). Funn rettes i dette dokumentet og i kontrakten før neste bølge. Fixture-settet må være realistisk nok til å teste flyten: ~40 jobber over alle jobbtyper, frister, reposts, forkastede jobber og søknader i alle statuser.
+Rekkefølgen er F0 → F1 → brukertest → F2 → backend-fase 1–2 → F3 → fase 3 → F4 → fase 4 (ARCHITECTURE §17). Ved brukertest kjører appen i mock-modus på PC og mobil (`npm run dev:mock -- --host`, §3.2). Funn rettes i dette dokumentet og i kontrakten før neste bølge. Fixture-settet må være realistisk nok til å teste flyten: ~40 jobber over alle jobbtyper, frister, reposts, forkastede jobber og søknader i alle statuser.
 
 ---
 

@@ -39,3 +39,15 @@
 ## Åpne punkter
 - Bestille privat token (brukerens navn og e-post).
 - Sjekke i praksis hvilke `source`-verdier som finnes, og hvor mange trainee/graduate-stillinger som kommer via ATS.
+
+## Oppdatering 2026-10-10: implementering og live-sjekk
+
+Kilde: OpenAPI-spesifikasjonen (`https://pam-stilling-feed.nav.no/api/openapi.json`) og ca. 25 live-kall med det offentlige tokenet.
+
+- **Endepunkter:** `GET /api/v1/feed` (støtter `If-Modified-Since`, `If-None-Match` og `?last=true`), `GET /api/v1/feed/{feedPageId}`, `GET /api/v1/feedentry/{entryId}`.
+- **Offentlig token:** hentes fra `https://pam-stilling-feed.nav.no/api/publicToken` (tekst, JWT). Lagt i `.env` for utvikling.
+- **Feed-elementer er sammendrag:** bare `uuid`, `status`, `title`, `businessName`, `municipal` og `sistEndret`. Hele annonsen (`ad_content`) krever ett kall per annonse mot `feedentry`. Elementets `url` peker dit, og i praksis er `id` lik annonsens uuid.
+- **Konsekvens:** `NavFeedSource.collect` gir sammendrag med `needs_detail=True`. `fetch_details` henter `ad_content` bare for nye jobber som har passert hardfilteret. Hardfilteret har bare tittel, arbeidsgiver og kommune å gå på for NAV, ikke yrkeskategori.
+- **Sideformat:** `ETag` er lik side-id-en. `Last-Modified` bruker lokal offset (`+0200`), ikke GMT. Siste side har `next_url = null`. Gjentatt kall mot siste side med `If-None-Match` ga `304`.
+- **Tidsstempler** i `ad_content` har offset (`+02:00`). `applicationDue` var `YYYY-MM-DD` i stikkprøven, men kan også være fritekst ("Snarest").
+- **Treg og ustabil 2026-10-10:** feed-sider tok 13–39 s. `If-Modified-Since` 30 dager tilbake ga `504` etter 60 s flere ganger, og tjenesten svarte `500`/treg `404` i ca. 15 min. Dette er over HTTP-lagets timeout på 30 s. Første kjøring kan derfor feile til NAV svarer raskere. Cursoren står da urørt, og neste kjøring prøver igjen.

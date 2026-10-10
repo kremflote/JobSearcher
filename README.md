@@ -2,7 +2,7 @@
 
 Et AI-basert verktøy som automatiserer jobbsøkingen: det henter stillinger, rangerer dem mot profilen din, skriver utkast til søknadsbrev og holder oversikt over hva du har søkt på.
 
-> **Status:** Under utvikling. Dashboardet bygges først mot oppdiktede data (frontend-bølge F0 av F4 er ferdig), deretter backend. Arkitekturen står i [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), UI-et i [docs/FRONTEND.md](docs/FRONTEND.md).
+> **Status:** Under utvikling. Innhenting fra Finn (NAV er bygget, men venter på at NAV-feeden svarer), filtrering, AI-scoring, dashboardets daglige visning og søknadstrackeren virker mot ekte data. Søknadsutkast (editor + skrive-agent), profilredigering i dashboardet og e-postdigest gjenstår. Arkitekturen står i [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), UI-et i [docs/FRONTEND.md](docs/FRONTEND.md).
 
 ## Hva det gjør
 
@@ -51,8 +51,8 @@ context/
   profile/       Din personlige profil (ikke i git, bare malene versjoneres)
   derived/       Automatisk destillert kontekst (ikke i git)
   prompts/       Systemprompter for hver agent
-config/          Innstillinger, agentmanifest, geografi og kilder   (kommer)
-src/jobsearcher/ Backend (FastAPI). Foreløpig bare API-kontrakten
+config/          Innstillinger, agentmanifest, geografi og kilder
+src/jobsearcher/ Backend: kilder, pipeline, LLM-agenter, FastAPI-API, planlegger
 web/             Dashboard (React + Vite + TypeScript)
 scripts/         Hjelpeskript, f.eks. eksport av API-kontrakten
 ```
@@ -65,6 +65,28 @@ Krever [uv](https://docs.astral.sh/uv/) og Node 22.
 uv sync
 cd web && npm install
 ```
+
+**Fyll inn `.env`** (kopier `.env.example`). `NAV_FEED_TOKEN` trengs for NAV-kilden. Claude brukes via `claude`-CLI-en på abonnementet ditt (logg inn med `claude` først); alternativt `ANTHROPIC_API_KEY` og `llm.backend: anthropic_api` i `config/settings.yaml`.
+
+**Kjør med ekte data:**
+
+```bash
+uv run jobsearcher serve
+```
+
+```bash
+cd web && npm run dev
+```
+
+Åpne http://localhost:5173. `serve` starter API-et på port 8765 og kjører innhentingen hver dag kl. 07:00 (og tar igjen en tapt kjøring ved oppstart). "Kjør nå" i dashboardet starter en kjøring med en gang. Etter `npm run build` i `web/` serverer `serve` også dashboardet selv på http://127.0.0.1:8765.
+
+Andre kommandoer:
+
+```bash
+uv run jobsearcher run
+```
+
+Én kjøring fra terminalen (`--no-score` hopper over AI-scoringen, `--source finn_api` begrenser til én kilde). `uv run jobsearcher distill` destillerer profilen på nytt. Data, logger og backuper ligger i `data/`.
 
 **Prøv dashboardet med oppdiktede data** (ingen backend nødvendig):
 
@@ -83,7 +105,7 @@ cd web && npm run gen:api
 
 **Tester:** `uv run pytest` (backend), og i `web/`: `npm test`, `npm run typecheck`, `npm run e2e`.
 
-Allerede nå kan du fylle ut profilen din:
+Profilen fyller du ut slik:
 
 1. Les [context/README.md](context/README.md).
 2. Kopier malene (`_template.md`) i `context/profile/projects/`, `experience/` og `writing_samples/`, og fyll dem ut.
