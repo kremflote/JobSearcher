@@ -5,7 +5,7 @@ const isMobile = (name: string) => name === 'mobile'
 test('navigates between all pages', async ({ page }, info) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { level: 1, name: 'Oversikt' })).toBeVisible()
-  await expect(page.getByTestId('overview-summary')).toContainText('frister')
+  await expect(page.getByTestId('deadlines')).toContainText('Frister neste 14 dager')
 
   const nav = page.getByRole('navigation', { name: 'Hovedmeny' }).locator('visible=true')
   await expect(nav).toHaveCount(1)

@@ -1,7 +1,9 @@
-import { NavLink, Outlet, useLocation } from 'react-router'
+import { NavLink, Outlet, ScrollRestoration, useLocation } from 'react-router'
 import { cn } from '@/lib/utils'
 import { MORE_PATHS, NAV_ITEMS, TAB_ITEMS } from './nav'
+import { TaskIndicator } from './tasks'
 import { ThemeMenu } from './ThemeMenu'
+import { ToastProvider } from './Toaster'
 
 export const IS_MOCK = import.meta.env.VITE_MOCK === '1'
 
@@ -10,13 +12,17 @@ export const IS_MOCK = import.meta.env.VITE_MOCK === '1'
  */
 export function AppShell() {
   return (
-    <div className="min-h-dvh md:flex">
-      <Sidebar />
-      <main className="min-w-0 flex-1 pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
-        <Outlet />
-      </main>
-      <BottomTabs />
-    </div>
+    <ToastProvider>
+      <div className="min-h-dvh md:flex">
+        <Sidebar />
+        <main className="min-w-0 flex-1 pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
+          <TaskIndicator />
+          <Outlet />
+        </main>
+        <BottomTabs />
+      </div>
+      <ScrollRestoration />
+    </ToastProvider>
   )
 }
 

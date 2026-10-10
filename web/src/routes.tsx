@@ -1,17 +1,16 @@
 import { createBrowserRouter, type RouteObject } from 'react-router'
 import { AppShell } from '@/components/AppShell'
+import { JobsRoute } from '@/features/jobs/JobsPage'
 import { MorePage } from '@/features/more/MorePage'
+import { OverviewPage } from '@/features/overview/OverviewPage'
+import { TrackerPage } from '@/features/tracker/TrackerPage'
 import {
   ApplicationsPage,
   EditorPage,
-  JobDetailPage,
-  JobsPage,
   LogsPage,
   NotFoundPage,
-  OverviewPage,
   ProfilePage,
   SettingsPage,
-  TrackerPage,
 } from '@/features/placeholders'
 
 /** Routes (FRONTEND §4.2). Same routes on mobile and PC. */
@@ -20,8 +19,8 @@ export const routes: RouteObject[] = [
     element: <AppShell />,
     children: [
       { index: true, element: <OverviewPage /> },
-      { path: 'jobber', element: <JobsPage /> },
-      { path: 'jobber/:id', element: <JobDetailPage /> },
+      { path: 'jobber', element: <JobsRoute /> },
+      { path: 'jobber/:id', element: <JobsRoute /> },
       { path: 'tracker', element: <TrackerPage /> },
       { path: 'soknader', element: <ApplicationsPage /> },
       { path: 'soknader/:applicationId', element: <EditorPage /> },

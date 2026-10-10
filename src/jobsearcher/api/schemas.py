@@ -187,6 +187,10 @@ class ApplicationCard(Model):
     contact_name: str | None
     notes: str | None
     created_at: datetime
+    allowed_next: list[ApplicationStatus]
+    """Legal next statuses (ARCHITECTURE §9.1). The UI offers only these."""
+    previous_status: ApplicationStatus | None
+    """`from_status` of the latest event. PATCHing back to it undoes that event."""
 
 
 class ApplicationList(Model):

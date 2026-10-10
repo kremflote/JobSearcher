@@ -1,13 +1,15 @@
 /**
- * MSW handlers for the v0 contract (FRONTEND §7). F0 serves the read endpoints from the
- * fixtures; mutations are added per wave. Anything else under /api gets the contract's 501.
+ * MSW handlers for the v0 contract (FRONTEND §7). Read endpoints are served from the
+ * fixtures; mutations are added per wave (F1: triage, runs, tasks; F2: applications). Anything else under /api
+ * gets the contract's 501.
  */
 import { addDays, parseISO } from 'date-fns'
 import { http, HttpResponse } from 'msw'
 import type { components } from '@/api/schema'
-import type { ApplicationStatus, JobDetail, JobListItem, JobType } from '@/api/types'
+import type { ApplicationStatus, JobDetail, JobListItem, JobType, Task } from '@/api/types'
 import { CLOSED_STATUSES } from '@/lib/status'
 import { createMockDb, toListItem, type MockDb } from './db'
+import type { MockCard } from './fixtures/applications'
 
 type S = components['schemas']
 
@@ -81,11 +83,149 @@ export function buildOverview(db: MockDb): S['Overview'] {
       counts_by_type: counts as S['NewSinceLast']['counts_by_type'],
       top: fresh.map(toListItem).sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 5),
     },
-    follow_ups: followUps,
+    follow_ups: followUps.map((a) => toCard(db, a)),
     sources: db.sources,
     cost: { month_usd: db.costMonthUsd, cap_usd: db.costCapUsd, warn: db.costMonthUsd >= db.costCapUsd * 0.8 },
     last_run_at: db.lastRunAt,
   }
+}
+
+const TRIAGE: readonly ApplicationStatus[] = ['ny', 'interessant', 'ikke_aktuell']
+
+/**
+ * Triage (FRONTEND §7): moves between ny, interessant and ikke_aktuell, creating or removing
+ * the application row. Later statuses belong to the tracker, so they return null (→ 409).
+ */
+export function setTriageStatus(db: MockDb, job: JobDetail, status: S['JobStatusUpdate']['status']): S['JobStatusResult'] | null {
+  if (!TRIAGE.includes(job.status)) return null
+  const cards = db.applications.cards
+  const now = new Date().toISOString()
+  if (status === 'ny') {
+    if (job.application) {
+      db.applications.cards = cards.filter((a) => a.id !== job.application!.id)
+      db.applications.events.delete(job.application.id)
+    }
+    job.application = null
+  } else if (job.application) {
+    const card = cards.find((a) => a.id === job.application!.id)!
+    db.applications.events.get(card.id)!.push({ id: nextEventId(db), from_status: card.status, to_status: status, at: now, comment: null })
+    card.status = status
+    job.application.status = status
+  } else {
+    const id = Math.max(0, ...cards.map((a) => a.id)) + 1
+    cards.push({
+      id,
+      job_id: job.id,
+      status,
+      job_title: job.title,
+      company: job.company,
+      deadline: job.deadline,
+      applied_at: null,
+      follow_up_at: null,
+      next_step: null,
+      next_step_at: null,
+      contact_name: job.contacts[0]?.name ?? null,
+      notes: null,
+      created_at: now,
+    })
+    db.applications.events.set(id, [{ id: nextEventId(db), from_status: 'ny', to_status: status, at: now, comment: null }])
+    job.application = { id, status, latest_draft_id: null }
+  }
+  job.status = status
+  return { job_id: job.id, status, application_id: job.application?.id ?? null }
+}
+
+/** Legal status transitions (ARCHITECTURE §9.1). `utlopt` is set automatically, never by hand. */
+export const TRANSITIONS: Record<ApplicationStatus, readonly ApplicationStatus[]> = {
+  ny: ['interessant', 'ikke_aktuell'],
+  interessant: ['utkast', 'sokt', 'ikke_aktuell'],
+  utkast: ['sokt', 'ikke_aktuell'],
+  sokt: ['intervju', 'avslag', 'trukket'],
+  intervju: ['tilbud', 'avslag', 'trukket'],
+  tilbud: ['trukket'],
+  ikke_aktuell: ['interessant'],
+  avslag: [],
+  trukket: [],
+  utlopt: [],
+}
+
+/** Status before the latest event; going back to it undoes that event. `ny` is triage's job. */
+function previousStatus(db: MockDb, card: MockCard): ApplicationStatus | null {
+  const from = db.applications.events.get(card.id)?.at(-1)?.from_status ?? null
+  return from === 'ny' ? null : from
+}
+
+export function toCard(db: MockDb, card: MockCard): S['ApplicationCard'] {
+  return { ...card, allowed_next: [...TRANSITIONS[card.status]], previous_status: previousStatus(db, card) }
+}
+
+const PATCH_FIELDS = ['next_step', 'next_step_at', 'follow_up_at', 'notes'] as const
+
+/**
+ * PATCH /api/applications/{id} (FRONTEND §7). Only fields present in the body change. A status
+ * change must follow TRANSITIONS or go back to `previous_status` (undo: the event is removed).
+ * Moving to `sokt` sets `applied_at` and, unless given, `follow_up_at` to +14 days.
+ * Returns null on an illegal transition (→ 409).
+ */
+export function patchApplication(db: MockDb, card: MockCard, patch: S['ApplicationPatch']): MockCard | null {
+  const to = patch.status
+  if (to && to !== card.status) {
+    const events = db.applications.events.get(card.id) ?? []
+    if (to === previousStatus(db, card)) {
+      events.pop()
+      if (card.status === 'sokt') {
+        card.applied_at = null
+        if (!('follow_up_at' in patch)) card.follow_up_at = null
+      }
+    } else if (TRANSITIONS[card.status].includes(to)) {
+      const now = new Date().toISOString()
+      events.push({ id: nextEventId(db), from_status: card.status, to_status: to, at: now, comment: patch.comment ?? null })
+      if (to === 'sokt') {
+        card.applied_at = now
+        if (!('follow_up_at' in patch)) card.follow_up_at = db.clock.day(14)
+      }
+    } else return null
+    card.status = to
+    const job = db.jobs.find((j) => j.id === card.job_id)
+    if (job) {
+      job.status = to
+      if (job.application) job.application.status = to
+    }
+  }
+  for (const k of PATCH_FIELDS) if (k in patch) card[k] = patch[k] ?? null
+  return card
+}
+
+function nextEventId(db: MockDb) {
+  return Math.max(0, ...[...db.applications.events.values()].flat().map((e) => e.id)) + 1
+}
+
+const isActive = (t: Task) => t.status === 'queued' || t.status === 'running'
+
+const RUN_STEPS = ['Henter fra Finn', 'Henter fra NAV', 'Henter fra Teamtailor', 'Sjekker karrieresider', 'Filtrerer og scorer']
+
+/** Advances a mock task from the wall clock, so polling sees progress without timers. */
+export function tick(db: MockDb, task: Task, now = Date.now()): Task {
+  if (!isActive(task)) return task
+  const p = Math.min(1, (now - Date.parse(task.created_at)) / db.runMs)
+  if (p < 1) {
+    task.status = 'running'
+    task.progress = Math.round(p * 100) / 100
+    task.message = RUN_STEPS[Math.min(RUN_STEPS.length - 1, Math.floor(p * RUN_STEPS.length))]!
+    return task
+  }
+  const at = new Date(now).toISOString()
+  task.status = 'done'
+  task.progress = 1
+  task.message = 'Ferdig: ingen nye jobber'
+  task.finished_at = at
+  db.lastRunAt = at
+  for (const s of db.sources) {
+    if (s.source === 'manual') continue
+    s.last_run_at = at
+    s.new = 0
+  }
+  return task
 }
 
 export function createHandlers(db: MockDb = createMockDb()) {
@@ -111,8 +251,19 @@ export function createHandlers(db: MockDb = createMockDb()) {
 
     http.get('/api/applications', ({ request }) => {
       const status = new URL(request.url).searchParams.get('status')
-      const items = db.applications.cards.filter((a) => !status || a.status === status)
+      const items = db.applications.cards.filter((a) => !status || a.status === status).map((a) => toCard(db, a))
       return json<S['ApplicationList']>({ items })
+    }),
+
+    http.patch('/api/applications/:id', async ({ params, request }) => {
+      const card = db.applications.cards.find((a) => a.id === Number(params.id))
+      if (!card) return error(404, 'not_found', 'Fant ikke søknaden.')
+      const patch = (await request.json()) as S['ApplicationPatch']
+      const from = card.status
+      const result = patchApplication(db, card, patch)
+      return result
+        ? json<S['ApplicationCard']>(toCard(db, result))
+        : error(409, 'invalid_transition', `Kan ikke gå fra ${from} til ${patch.status}.`)
     }),
 
     http.get('/api/applications/:id/events', ({ params }) =>
@@ -132,11 +283,51 @@ export function createHandlers(db: MockDb = createMockDb()) {
       return draft ? json<S['Draft']>(draft) : error(404, 'not_found', 'Fant ikke utkastet.')
     }),
 
-    http.get('/api/tasks', () => json<S['Task'][]>(db.tasks.filter((t) => t.status === 'queued' || t.status === 'running'))),
+    http.put('/api/jobs/:id/status', async ({ params, request }) => {
+      const job = db.jobs.find((j) => j.id === Number(params.id))
+      if (!job) return error(404, 'not_found', 'Fant ikke jobben.')
+      const { status } = (await request.json()) as S['JobStatusUpdate']
+      const result = setTriageStatus(db, job, status)
+      return result ? json<S['JobStatusResult']>(result) : error(409, 'invalid_transition', `Kan ikke gå fra ${job.status} til ${status} her.`)
+    }),
+
+    http.post('/api/runs', () => {
+      if (db.tasks.some((t) => t.kind === 'run' && isActive(tick(db, t))))
+        return error(409, 'run_active', 'En kjøring pågår allerede.')
+      const task: Task = {
+        id: `mock-run-${db.tasks.length + 1}`,
+        kind: 'run',
+        status: 'queued',
+        progress: 0,
+        message: 'I kø',
+        created_at: new Date().toISOString(),
+        finished_at: null,
+        result: null,
+      }
+      db.tasks.push(task)
+      return json<S['TaskRef']>({ task_id: task.id }, { status: 202 })
+    }),
+
+    http.get('/api/tasks', ({ request }) => {
+      const active = new URL(request.url).searchParams.get('active') === 'true'
+      const tasks = db.tasks.map((t) => tick(db, t))
+      return json<S['Task'][]>(active ? tasks.filter(isActive) : tasks)
+    }),
 
     http.get('/api/tasks/:id', ({ params }) => {
       const task = db.tasks.find((t) => t.id === params.id)
-      return task ? json<S['Task']>(task) : error(404, 'not_found', 'Fant ikke jobben.')
+      return task ? json<S['Task']>(tick(db, task)) : error(404, 'not_found', 'Fant ikke jobben.')
+    }),
+
+    http.post('/api/tasks/:id/cancel', ({ params }) => {
+      const task = db.tasks.find((t) => t.id === params.id)
+      if (!task) return error(404, 'not_found', 'Fant ikke jobben.')
+      if (isActive(tick(db, task))) {
+        task.status = 'cancelled'
+        task.message = 'Avbrutt'
+        task.finished_at = new Date().toISOString()
+      }
+      return json<S['Task']>(task)
     }),
 
     http.get('/api/profile/files', () =>
@@ -160,7 +351,7 @@ export function createHandlers(db: MockDb = createMockDb()) {
     http.get('/api/logs/agent-runs', () => json<S['AgentRunLog']>({ items: db.agentRuns })),
     http.get('/api/logs/discarded', () => json<S['DiscardedLog']>({ items: db.discarded })),
 
-    // Contract routes not mocked yet (mutations come in F1–F4).
+    // Contract routes not mocked yet (mutations come in F3–F4).
     http.all('/api/*', () => error(501, 'not_implemented', 'Ikke implementert i mock ennå.')),
   ]
 }

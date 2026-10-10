@@ -1,12 +1,15 @@
 import { ChevronRight } from 'lucide-react'
 import { Link } from 'react-router'
+import { useOverview } from '@/api/queries'
 import { IS_MOCK, MockBadge } from '@/components/AppShell'
 import { MORE_ITEMS } from '@/components/nav'
 import { Page } from '@/components/Page'
 import { ThemeMenu } from '@/components/ThemeMenu'
+import { CostCard, SourcesCard } from '@/features/overview/OverviewPage'
 
-/** "Mer" on mobile (FRONTEND §4.2). Last-run status and "Kjør nå" arrive in F1. */
+/** "Mer" on mobile (FRONTEND §4.2): the remaining pages, source status with "Kjør nå", and cost. */
 export function MorePage() {
+  const { data } = useOverview()
   return (
     <Page title="Mer" actions={IS_MOCK && <MockBadge />}>
       <ul className="divide-y rounded-lg border">
@@ -20,6 +23,12 @@ export function MorePage() {
           </li>
         ))}
       </ul>
+      {data && (
+        <div className="mt-4 flex flex-col gap-4">
+          <SourcesCard sources={data.sources} lastRunAt={data.last_run_at} />
+          <CostCard cost={data.cost} />
+        </div>
+      )}
       <div className="mt-4 flex items-center justify-between rounded-lg border px-3 py-1.5 text-sm">
         Utseende
         <ThemeMenu />

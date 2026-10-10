@@ -1,12 +1,14 @@
 # JobSearcher: frontend-design
 
-> Status: v0.4 (2026-10-10). F0 (skjelett) er bygget. Neste: F1.
+> Status: v0.6 (2026-10-10). F0, F1 og F2 er bygget. Neste: F3 (søknadseditor).
 > Dokumentet eier UI-designet: skjermer, layout, komponenter, API-kontrakt og frontend-bølger. Resten av systemet står i [ARCHITECTURE.md](ARCHITECTURE.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato | Endring |
 |---|---|---|
+| v0.6 | 2026-10-10 | F2 (tracker) bygget. Kortet i API-et har `allowed_next` og `previous_status`, så UI-et viser bare lovlige overganger uten egen kopi av tabellen (ARCHITECTURE §9.1). Statusflytt har angre-toast. Avsluttet er sammenlagt som standard. Panelet åpnes med `?app=<id>`. Oppfølginger på Oversikt lenker til Tracker. Status `ny` vises som "Ikke vurdert" og har eget merke i lister og detalj, som alle andre statuser. Merket for ny siden sist heter "Ny" og har samme form som de andre merkene. |
+| v0.5 | 2026-10-10 | F1 bygget. Etter brukertilbakemelding: triage i jobbdetaljen går rett til neste jobb, og angre-toasten dekker ikke handlingsraden. Jobber viser `Ny` som standard statusfilter. Triage er bare mellom `ny`/`interessant`/`ikke_aktuell` (ellers 409). `role` i `GET /api/jobs` er en enum. Kildestatus og kostnad på mobil ligger under "Mer". Mock-kjøring tar 6 s. |
 | v0.4 | 2026-10-10 | F0 bygget. Appnavn "Jobbsøk". Fixtures er TypeScript med datoer relativt til i dag (§3.2). `/soknader` får en egen listeside (F3). TypeScript låst til 5.9 (§2). Kontrakten dekker alle v0-ruter; mock svarer på lese-endepunktene. |
 | v0.3 | 2026-10-10 | Åpne spørsmål avklart og flyttet til §2: ingen triage-lenker i digesten, ingen offline-lesing, forkastede jobber bare i Logg. |
 | v0.2 | 2026-10-10 | Frontend først: F0–F4 bygges og brukertestes mot mock før backend-fasene starter (ARCHITECTURE §17). Brukertest etter F1 og F4. |
@@ -89,14 +91,14 @@
 | Test på mobil under utvikling | `npm run dev:mock -- --host` (eller `npm run dev -- --host`), åpne `http://<PC-ens Tailscale-IP>:5173` | Mock eller ekte API |
 | Drift | `jobsearcher serve` (container) | Ekte API, `web/dist` |
 
-Fixtures ligger i `web/src/mocks/fixtures/*.ts` og er **oppdiktede** (bedrifter, personer, domener `*.example`). Ekte data går aldri inn i `web/`. Datoene regnes relativt til dagen mock-appen åpnes, så frister og "nye siden sist" alltid er aktuelle. `web/src/mocks/db.ts` bygger en minnedatabase fra dem ved hver sidelasting; `handlers.ts` svarer på kontrakten, og ruter som ikke er mocket ennå gir `501`. UI-et viser et `MOCK`-merke i mock-modus.
+Fixtures ligger i `web/src/mocks/fixtures/*.ts` og er **oppdiktede** (bedrifter, personer, domener `*.example`). Ekte data går aldri inn i `web/`. Datoene regnes relativt til dagen mock-appen åpnes, så frister og "nye siden sist" alltid er aktuelle. `web/src/mocks/db.ts` bygger en minnedatabase fra dem ved hver sidelasting (endringer som triage forsvinner ved omlasting); `handlers.ts` svarer på kontrakten, og ruter som ikke er mocket ennå gir `501`. UI-et viser et `MOCK`-merke i mock-modus. "Kjør nå" i mock tar 6 s og finner ingen nye jobber; den oppdaterer bare kildestatus.
 
 ### 3.3 Bakgrunnsjobber i UI-et
 
 Utdyper ARCHITECTURE §10.1:
 - Handlinger som starter en jobb (`Kjør nå`, utkast, revisjon, regenerer profil) får `{task_id}` tilbake.
 - `useTask(id)` poller `GET /api/tasks/{id}` hvert 2. sekund til status er `done | failed | cancelled`, og invaliderer berørte queries.
-- Aktive jobber vises som en liten indikator i toppen (PC) / over bunnfanene (mobil), med "Avbryt".
+- Aktive jobber vises som en liten indikator i toppen (PC) / over bunnfanene (mobil), med "Avbryt". Indikatoren følger hver jobb den har sett til den er ferdig, og viser en toast med resultatet.
 
 ---
 
@@ -169,7 +171,7 @@ Bølge (§8) står i parentes. Alle skjermer har tilstandene laster (skjelett), 
 | Blokk | Innhold | Mobil | PC |
 |---|---|---|---|
 | Frister neste 14 dager | Jobber med status Interessant/Utkast og frist ≤ 14 d, sortert på frist | Først, full bredde | Venstre kolonne, øverst |
-| Nye siden sist | Antall per jobbtype + topp 5 etter score, lenke til Jobber filtrert på `ny` | Kort | Høyre kolonne |
+| Nye siden sist | Antall per jobbtype + topp 5 etter score, lenker til Jobber (status Ikke vurdert, sortert nyeste) | Kort | Høyre kolonne |
 | Oppfølginger | Søknader med `follow_up_at` eller `next_step_at` ≤ 7 d | Kort | Venstre kolonne |
 | Kildestatus | Siste kjøring per kilde (ok/warn/fail), tidspunkt, "Kjør nå" | Under "Mer" | Høyre kolonne, kompakt |
 | Kostnad | Denne måneden mot tak, varsel ved 80 % | Under "Mer" | Høyre kolonne, kompakt |
@@ -177,10 +179,11 @@ Bølge (§8) står i parentes. Alle skjermer har tilstandene laster (skjelett), 
 ### 5.2 Jobber `/jobber` (F1)
 
 - **Faner** per jobbtype: Alle, Fast, Trainee, Graduate, Sommerjobb.
-- **Filtre:** status (Ny / Interessant / Ikke aktuell / alle), min. score, kilde, frist før, rolle, fritekst. På mobil i et handlingsark; på PC som en rad over listen. Filtre lagres i URL-en (`?type=trainee&min_score=60`), så de kan bokmerkes.
+- **Filtre:** status (Ikke vurdert / Interessant / Ikke aktuell / Alle; standard Ikke vurdert, siden listen er for triage), min. score, kilde, frist før, rolle, fritekst. På mobil i et handlingsark; på PC som en rad over listen. Filtre lagres i URL-en (`?type=trainee&min_score=60`), så de kan bokmerkes.
 - **Sortering:** standard frist, deretter score. Alternativ: score, nyeste.
 - **Rad:** tittel, bedrift, sted, score-merke, frist (relativ + farge), merker (`NY`, `Lagt ut på nytt`, `Bare tittel kjent`).
-- **Triage mobil:** sveip med terskel 30 % bredde, farget bakgrunn og ikon under sveipet. Angre-toast i 5 s.
+- **Triage mobil:** sveip med terskel 30 % bredde, farget bakgrunn og ikon under sveipet. Angre-toast i 5 s (én toast om gangen; den gjelder siste triage).
+- Triage flytter bare mellom Ikke vurdert, Interessant og Ikke aktuell. Jobber med senere status viser status og "Status endres i Tracker".
 - **Triage PC:** `j`/`k` = neste/forrige, `i` = Interessant, `x` = Ikke aktuell, `u` = angre, `o` = åpne søknadslenke, `Enter` = åpne detalj (på smale vinduer). Knapper i detaljpanelet gjør det samme.
 - Etter triage hoppes det til neste jobb i listen, og raden blir værende som nedtonet med status til listen lastes på nytt (unngår at listen hopper under fingeren).
 - Paginering: uendelig scroll med cursor.
@@ -198,18 +201,25 @@ Rekkefølge, øverst først:
 8. Bedriftsnotat (sammenleggbart)
 9. Kilder og historikk (først sett, lagt ut på nytt fra)
 
-På mobil: egen skjerm med tilbake-knapp og en fast handlingsrad nederst (Interessant / Ikke aktuell / Søk ↗).
+På mobil: egen skjerm med tilbake-knapp og en fast handlingsrad nederst (Interessant / Ikke aktuell / Søk ↗). Triage går rett videre til neste jobb i listen (samme filtre, laster flere sider ved behov); når listen er tom, tilbake til listen. Tilbake-knappen går til listen, ikke gjennom jobbene som er triagert. "Angre" åpner jobben som ble angret. Mens handlingsraden vises, ligger toasten og jobbindikatoren over den. Under 1024 px er detaljen alltid en egen skjerm; 768–1023 px uten handlingsrad.
+
+"Lag søknadsutkast" er deaktivert til F3.
 
 ### 5.4 Tracker `/tracker` (F2)
 
-| | PC | Mobil |
+| | PC (≥ 1024 px) | Mobil og nettbrett (< 1024 px) |
 |---|---|---|
-| Visning | Kanban med kolonner per status (ARCHITECTURE §9.1). Ikke aktuell, Avslag, Trukket, Utløpt er sammenlagt under "Avsluttet". | Liste gruppert per status, sammenleggbare grupper. Filterchips for status. |
-| Flytte status | Dra og slipp (`@dnd-kit`), eller statusmeny på kortet | Trykk kort → handlingsark med lovlige neste statuser |
-| Kort | Tittel, bedrift, frist, neste steg + dato, kontaktperson | Samme, kompakt |
-| Redigere | Sidepanel: neste steg, dato, oppfølging, notater, hendelseslogg | Fullskjerm-ark |
+| Visning | Kanban: Interessant, Utkast, Søkt, Intervju, Tilbud, Avsluttet. Ikke aktuell, Avslag, Trukket og Utløpt er samlet i "Avsluttet", som er en smal, sammenlagt kolonne til den åpnes. | Liste gruppert som kolonnene, sammenleggbare grupper (Avsluttet lukket som standard). Statuschips (`?vis=<kolonne>`) viser én gruppe. |
+| Flytte status | Dra og slipp (`@dnd-kit/core`): under dra er lovlige kolonner markert og ulovlige dempet; slipp på ulovlig kolonne gir en toast. Slipp på Avsluttet med flere lovlige statuser spør hvilken. Statusmeny (⋮) på kortet gjør det samme uten dra. | Trykk kort → handlingsark med lovlige neste statuser, "Neste steg, oppfølging og notater" og "Åpne jobben" |
+| Kort | Tittel, bedrift, neste steg + dato, "Følg opp" + dato (rød når forfalt), frist (bare før søkt), kontaktperson, status (i Avsluttet) | Samme |
+| Redigere | Sidepanel fra høyre | Fullskjerm-ark |
+| Sortering | Aktive: tidligste dato først (neste steg, oppfølging, frist før søkt), udaterte sist. Avsluttet: nyeste først. | Samme |
 
-Bare lovlige overganger fra §9.1 vises. Backend validerer også.
+Panelet (`?app=<id>`, så Tilbake lukker det): bedrift, status, frist, "Åpne jobben", "Flytt til"-knapper, neste steg + dato, oppfølging, notater (lagres med "Lagre", bare endrede felt sendes) og hendelseslogg (nyeste først).
+
+Bare overgangene i kortets `allowed_next` vises; backend validerer også (ARCHITECTURE §9.1). Hver flytting gir en toast med "Angre" (5 s), som sender `status: previous_status` og gjenoppretter `follow_up_at`. Kortet flyttes med en gang (optimistisk) og rulles tilbake ved 409.
+
+Jobbdetaljen lenker til panelet ("Endre status i Tracker") når jobben er forbi triage, og Oppfølginger på Oversikt åpner panelet.
 
 ### 5.5 Søknadseditor `/soknader/:applicationId` (F3)
 
@@ -246,7 +256,8 @@ Faner: Kjøringer (per kilde, med feil), Agentkall (modell, tokens, kostnad, var
 | Tetthet | Radhøyde 44 px på mobil (trykkmål), 36 px på PC. Systemfont-stack. |
 | Score | ≥ 70 grønn, 50–69 nøytral, < 50 dempet. Viser tallet, aldri bare farge. |
 | Frist | ≤ 3 d rød, ≤ 7 d gul, ≤ 14 d nøytral, ukjent "—". Relativ tekst ("om 3 d") + dato i tooltip/detalj. |
-| Status | Ett fast fargepar per status, brukt likt i liste, kanban og merker |
+| Status | Ett fast fargepar per status, brukt likt i liste, kanban og merker. Alle statuser har merke, også Ikke vurdert. |
+| Merker | Alle merker (status, score, frist, "Ny" siden sist, "Lagt ut på nytt", "Bare tittel kjent", jobbtype) har samme form og skriftstørrelse |
 | Tema | Farger som CSS-variabler (shadcn-tokens). Mørk modus via `class` på `<html>`. |
 | Tilgjengelighet | Alt som kan sveipes eller dras kan også gjøres med knapp/meny. Fokusringer synlige. Kontrast AA. |
 | Ikoner | `lucide-react` (følger med shadcn) |
@@ -262,9 +273,9 @@ Alle ruter under `/api`. JSON. Datoer i ISO 8601. Feil som `{"detail": "...", "c
 | `GET /api/overview` | Frister, nye, oppfølginger, kildestatus, kostnad | F1 |
 | `GET /api/jobs` | Liste. Query: `type`, `status`, `min_score`, `source`, `deadline_before`, `role`, `q`, `sort`, `cursor`, `limit` | F1 |
 | `GET /api/jobs/{id}` | Detalj inkl. evaluering, kontakter, kilder, bedriftsnotat, søknad | F1 |
-| `PUT /api/jobs/{id}/status` | Triage: `{status: "interessant" \| "ikke_aktuell" \| "ny"}` (`ny` = angre). Oppretter søknadsrad ved behov. | F1 |
-| `GET /api/applications` | Tracker. Query: `status` | F2 |
-| `PATCH /api/applications/{id}` | `status`, `next_step`, `next_step_at`, `follow_up_at`, `notes`. Ugyldig overgang → 409. | F2 |
+| `PUT /api/jobs/{id}/status` | Triage: `{status: "interessant" \| "ikke_aktuell" \| "ny"}` (`ny` = angre). Oppretter søknadsrad ved behov, `ny` sletter den. Bare fra `ny`/`interessant`/`ikke_aktuell`; ellers 409 `invalid_transition`. | F1 |
+| `GET /api/applications` | Tracker. Query: `status`. Hvert kort har `allowed_next` og `previous_status` (ARCHITECTURE §9.1). | F2 |
+| `PATCH /api/applications/{id}` | `status`, `next_step`, `next_step_at`, `follow_up_at`, `notes`, `comment` (lagres på statushendelsen). Bare felt som sendes endres. `status: previous_status` = angre. Ugyldig overgang → 409 `invalid_transition`. Returnerer kortet. | F2 |
 | `GET /api/applications/{id}/events` | Hendelseslogg | F2 |
 | `POST /api/jobs/{id}/draft` | Start research + skriver → `{task_id}` | F3 |
 | `GET /api/applications/{id}/drafts` | Versjonsliste | F3 |
@@ -278,7 +289,7 @@ Alle ruter under `/api`. JSON. Datoer i ISO 8601. Feil som `{"detail": "...", "c
 | `POST /api/profile/distill` | → `{task_id}` | F4 |
 | `GET /api/settings` / `PATCH` | Effektive innstillinger (YAML + overstyringer) | F4 |
 | `GET /api/logs/runs`, `/agent-runs`, `/discarded` | Logg | F4 |
-| `POST /api/runs` | "Kjør nå" → `{task_id}` | F1 |
+| `POST /api/runs` | "Kjør nå" → `{task_id}`. 409 `run_active` hvis en kjøring pågår. | F1 |
 | `GET /api/tasks/{id}`, `POST /api/tasks/{id}/cancel` | Bakgrunnsjobber | F1 |
 | `GET /api/tasks?active=true` | Aktive jobber til indikatoren | F1 |
 | `GET /api/health` | Brukes av Docker healthcheck og Uptime Kuma | F5 |
@@ -294,8 +305,8 @@ Bølgene F0–F4 bygges før backend-fasene i ARCHITECTURE §17. Hver bølge er 
 | Bølge | Innhold | Ferdig når | Avhenger av backend |
 |---|---|---|---|
 | ~~F0. Skjelett~~ | `web/` med Vite, TS, Tailwind, shadcn, React Router, TanStack Query, MSW. `api/schemas.py` + `export_openapi.py` + typegenerering. App-skall (sidemeny/bunnfaner), tema, PWA-manifest, fixture-sett. | ✅ 2026-10-10 (PR #4) | Nei |
-| **F1. Daglig sløyfe** | Oversikt, Jobber (faner, filtre, sveip, tastatur), Jobbdetalj, bakgrunnsjobb-indikator, "Kjør nå" | Triage av en mock-dag tar < 2 min på mobil | Nei. Kobles til ekte data i fase 2. |
-| **F2. Tracker** | Kanban (PC), gruppert liste (mobil), statusoverganger, neste steg, hendelseslogg | Hele statusflyten i §9.1 kan gjøres fra mobil | Nei. Kobles i fase 4. |
+| ~~F1. Daglig sløyfe~~ | Oversikt, Jobber (faner, filtre, sveip, tastatur), Jobbdetalj, bakgrunnsjobb-indikator, "Kjør nå" | ✅ bygget 2026-10-10; venter på brukertest (triage av en mock-dag < 2 min på mobil) | Nei. Kobles til ekte data i fase 2. |
+| ~~F2. Tracker~~ | Kanban (PC), gruppert liste (mobil), statusoverganger, neste steg, hendelseslogg | ✅ 2026-10-10 | Nei. Kobles i fase 4. |
 | **F3. Søknadseditor** | Editor, forhåndsvisning, autosave/versjoner, diff, revisjonschat, `claims_to_verify`, `.docx` | Brev kan itereres mot mock-agent | Nei. Kobles i fase 3. |
 | **F4. Profil, innstillinger, logg** | Profileditor med historikk, innstillingsskjema, loggfaner | Profilen kan redigeres uten filsystemtilgang | Nei. Kobles når fase 2 (destiller) finnes. |
 | **F5. Drift** | FastAPI serverer `web/dist`, multi-stage Dockerfile, PWA-ikon, test på mobil via Tailscale | `docker compose up` gir hele appen på én port | Ja: fase 1 (`serve`) |
@@ -310,7 +321,7 @@ Rekkefølgen er F0 → F1 → brukertest → F2 → F3 → F4 → brukertest. Ve
 |---|---|---|
 | Enhet | Vitest + Testing Library | Hooks (`useTask`), formattering (frist, score), statusoverganger i UI |
 | Kontrakt | `tsc` mot genererte typer | At fixtures og komponenter matcher API-et |
-| Ende-til-ende | Playwright mot `dev:mock`, to viewporter (390×844, 1440×900) | Navigasjon, tema og manifest (F0); triage med sveip og tastatur, statusflytt, autosave |
+| Ende-til-ende | Playwright mot `dev:mock`, to viewporter (390×844, 1440×900) | Navigasjon, tema og manifest (F0); triage med sveip (mobil) og tastatur (PC), filtre, "Kjør nå" (F1); hele statusflyten fra mobil, dra og slipp med ulovlig kolonne og angre, statusmeny og sidepanel (F2); autosave (senere) |
 
 Kommandoer i `web/`: `npm test` (Vitest), `npm run typecheck`, `npm run e2e` (Playwright starter `dev:mock` selv på port 5174). Backend: `uv run pytest`.
 

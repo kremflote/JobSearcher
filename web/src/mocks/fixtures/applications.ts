@@ -32,14 +32,17 @@ Jeg ser frem til å høre fra dere.
 Med vennlig hilsen
 Ola Nordmann`
 
+/** Stored card; `allowed_next` and `previous_status` are derived when served (handlers.ts). */
+export type MockCard = Omit<ApplicationCard, 'allowed_next' | 'previous_status'>
+
 export type MockApplications = {
-  cards: ApplicationCard[]
+  cards: MockCard[]
   events: Map<number, ApplicationEvent[]>
   drafts: Draft[]
 }
 
 export function buildApplications(jobs: JobDetail[], c: Clock): MockApplications {
-  const cards: ApplicationCard[] = []
+  const cards: MockCard[] = []
   const events = new Map<number, ApplicationEvent[]>()
   const drafts: Draft[] = []
   let eventId = 1

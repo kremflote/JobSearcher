@@ -18,3 +18,7 @@ if (!window.matchMedia) {
       dispatchEvent: () => false,
     }) as MediaQueryList
 }
+
+// jsdom has no scrolling; ScrollRestoration and the job list call these.
+window.scrollTo = () => {}
+Element.prototype.scrollIntoView = () => {}
