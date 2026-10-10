@@ -6,7 +6,7 @@ Et AI-basert verktøy som automatiserer jobbsøkingen: det henter stillinger, ra
 
 ## Hva det gjør
 
-- **Samler inn stillinger daglig** fra Finn.no (via Finn sine egne e-postvarsler), NAVs stillingsfeed og kilder for trainee-, graduate- og sommerjobber.
+- **Samler inn stillinger daglig** fra Finn.no (via Finns mobil-API, HMAC-signert), NAVs stillingsfeed og kilder for trainee-, graduate- og sommerjobber.
 - **Filtrerer og rangerer** hver stilling mot profilen din. Først gratis regelbaserte filtre (geografi, rolle, senioritet), deretter en billig AI-modell som gir en score fra 0–100 med begrunnelse.
 - **Viser alt i et lokalt dashboard** med filtre for jobbtype, score, kilde og geografi.
 - **Skriver søknadsutkast** ut fra din profil, stillingsannonsen og research om bedriften. Utkastet kan redigeres manuelt eller forbedres i en chat med en AI-agent, med versjonshistorikk.
@@ -69,4 +69,4 @@ Profilen inneholder persondata og er derfor ekskludert fra git.
 
 ## Merknad om Finn.no
 
-Finn forbyr automatisert innhenting uten skriftlig samtykke. JobSearcher skraper derfor ikke Finn. Stillinger derfra kommer via Finn sine egne varsler for lagrede søk (e-post, lest via IMAP), og annonseteksten importeres fra brukerens egen nettleser. Se [docs/spikes/01-finn.md](docs/spikes/01-finn.md).
+Finn har ikke et offisielt tredjeparts-API. JobSearcher snakker med det samme mobil-API-et som Finns Android-app bruker: forespørsler signeres med en HMAC-nøkkel (via [`finnsig`](https://github.com/newis/finnsig)), og endepunktene er reverse-engineeret fra appens APK. Bruken er privat, lokal og lavvolum. Det er likevel en bevisst gråsone opp mot Finns ToS, og vurderingen står i [docs/spikes/04-finn-mobile-api.md](docs/spikes/04-finn-mobile-api.md).

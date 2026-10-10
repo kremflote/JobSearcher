@@ -24,3 +24,6 @@ context/profile/**
 
 # Ekte e-poster/data brukt som testgrunnlag (persondata)
 tests/fixtures/private/
+
+# Finn Android-APK (brukes lokalt for reverse engineering, se spike 04)
+*.apk

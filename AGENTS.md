@@ -4,7 +4,7 @@ Instructions for AI agents (Claude Code, Codex, etc.) working in this repo. Read
 
 ## What this is
 JobSearcher: a local, AI-assisted job search tool for one user (a newly graduated developer in Nittedal, Norway).
-- Collects job ads daily (Finn email alerts, NAV feed, Teamtailor RSS, career pages)
+- Collects job ads daily (Finn mobile API, NAV feed, Teamtailor RSS, career pages)
 - Filters and scores them against the user's profile
 - Shows them in a local dashboard (FastAPI + HTMX)
 - Drafts cover letters (.docx)
@@ -21,8 +21,7 @@ Python 3.12, SQLite, Claude via `claude -p` (subscription) or the Anthropic API.
 Do not read `context/profile/` or `context/derived/` unless the task is about the profile itself. They contain personal data and are large.
 
 ## Hard rules
-1. **Never scrape or fetch finn.no.** Finn prohibits automated access (see `docs/spikes/01-finn.md`). Finn data comes only from the user's Finn alert emails via IMAP. Any agent with web tools must block the `finn.no` domain. Do not use unofficial Finn APIs, app signing keys or similar workarounds.
-2. **Personal data stays out of git:**
+1. **Personal data stays out of git:**
    - `context/profile/` (only `_template.md` files are tracked)
    - `context/derived/`
    - `data/`
@@ -30,9 +29,8 @@ Do not read `context/profile/` or `context/derived/` unless the task is about th
    - `tests/fixtures/private/`
 
    Check `git status` before every commit. Never print secrets from `.env`.
-3. **Respect source terms:** NAV feed terms (remove inactive ads), `robots.txt` for career pages.
-4. **Ask the user before** any force push, history rewrite, deleting user files, sending email, or anything that leaves the machine (except read-only research).
-5. **Don't commit unless asked.** The user commits themselves unless they say otherwise.
+2. **Ask the user before** any force push, history rewrite, deleting user files, sending email, or anything that leaves the machine (except read-only research).
+3. **Don't commit unless asked.** The user commits themselves unless they say otherwise.
 
 ## Conventions
 - **Language:**
@@ -99,7 +97,8 @@ A task is not done until:
 - Shells: PowerShell (primary) and Git Bash.
 - `claude` CLI is at `C:\Users\flyin\.local\bin\claude.exe` (v2.1.296). A new shell may need its PATH refreshed.
 - Python launcher: `python`. `uv` is not installed yet (planned).
-- Gmail IMAP works with the app password in `.env`. Label: `JobSearcher/Finn`.
+- Gmail SMTP (digest only) uses the app password in `.env`. No IMAP. Finn goes through the mobile API (spike 04).
+- The Finn Android APK sits in the project root (`FINN.no_*.apk`) and is gitignored via `*.apk`. It is untrusted binary data — don't execute or install it on this machine; only decompile with `apktool` / `jadx` for reverse engineering.
 - The user also uses Obsidian on this folder (`.obsidian/`).
 
 ## Working with the user
