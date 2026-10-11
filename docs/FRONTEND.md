@@ -1,12 +1,13 @@
 # JobSearcher: frontend-design
 
-> Status: v0.16 (2026-10-11). F0–F5 og F2b er bygget og koblet til ekte API (backend-fase 1–4, 2b og 4b). Alle planlagte bølger er bygget.
+> Status: v0.17 (2026-10-11). F0–F5 og F2b er bygget og koblet til ekte API (backend-fase 1–4, 2b og 4b). Alle planlagte bølger er bygget.
 > Dokumentet eier UI-designet: skjermer, layout, komponenter, API-kontrakt og frontend-bølger. Resten av systemet står i [ARCHITECTURE.md](ARCHITECTURE.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato | Endring |
 |---|---|---|
+| v0.17 | 2026-10-11 | Søknader har «Slett utkast» per rad (bekreftelse); Tracker ber om bekreftelse før Utkast → Ikke aktuell, som sletter utkastene, og angre går til serverens `previous_status`. Jobbdetaljen har «Se annonsen ↗» (kildens annonse). Kontrakt (§7): `DELETE /api/applications/{id}/drafts`. |
 | v0.16 | 2026-10-11 | F5 bygget (§8): skjermene utenom Oversikt og Jobber lastes ved første besøk, så hovedbunten er under Vites grense på 500 kB. Dockerfile og deploy står i ARCHITECTURE §12. |
 | v0.15 | 2026-10-11 | F4 bygget og koblet (§5.6–5.8). Kontrakt (§7): `SettingItem` har `label`, `help`, `kind`, `options`, `min`, `max`, så skjemaet lages fra API-et; ny seksjon `notify`. `ProfileTree` har `folders` og `derived_at`; `base_hash: null` lager en ny fil (409 `file_exists`), feil hash gir 409 `conflict`, ugyldig YAML 422 `invalid_yaml`, ugyldig sti 400 `invalid_path`. Nye ruter: `GET /api/profile/derived`, `GET/POST /api/rescore`. Logg-fanen heter «Forkastet» og viser alle nylige, gruppert per dag. Mocken følger de samme reglene (`mocks/system.ts`). |
 | v0.14 | 2026-10-11 | «Lagre som stilregel» i revisjonschatten (§5.5): når meldingen er en preferanse for alle brev, viser agentsvaret en foreslått regel med knapp som legger den til i `style_overrides.md`. Kontrakt (§7): `DraftMessage.style_rule`/`style_rule_saved`, nytt `POST /api/applications/{id}/messages/{message_id}/style-rule`. Mock-revisoren foreslår en regel for meldinger som starter med «aldri»/«alltid»/«unngå». |
@@ -214,7 +215,7 @@ Kortet ligger under Kildestatus. Fra 1024 px åpner det detaljen i et sidepanel 
 Rekkefølge, øverst først:
 1. Tittel, bedrift, sted, jobbtype, score-merke
 2. Frist (dato + relativ), søknadslenke, statusknapper
-3. "Lag søknadsutkast" (starter bakgrunnsjobb, F3) / "Åpne søknad" hvis den finnes
+3. "Lag søknadsutkast" (starter bakgrunnsjobb, F3) / "Åpne søknad" hvis den finnes, og "Se annonsen ↗" (første kilde med URL, ellers søknadslenken)
 4. Hvorfor match (`match_reasons`) og bekymringer (`concerns`)
 5. Sammendrag og nøkkelkrav
 6. Kontaktpersoner (tlf/e-post som lenker)
@@ -254,7 +255,7 @@ Versjoner: valgt versjon (`?versjon=<id>`) vises i stedet for tekstfeltet som or
 
 Mobil: segmentert kontroll "Utkast | Chat | Versjoner" (`?vis=`). Versjoner er en liste; trykk viser diffen i samme fane. Redigering er mulig, men skjermen er laget for lesing, kopiering og nedlasting. Chatfeltet ligger over bunnfanene.
 
-`/soknader`: "Utkast" (søknader med utkast, sist endret først, med status og frist) og "Interessant, uten utkast" med "Lag søknadsutkast" på hver rad.
+`/soknader`: "Utkast" (søknader med utkast, sist endret først, med status og frist, og en slette-knapp som etter bekreftelse sletter alle versjoner og chatten; en søknad på Utkast går tilbake til Interessant) og "Interessant, uten utkast" med "Lag søknadsutkast" på hver rad. Flytt til Ikke aktuell (Tracker) sletter også utkastene og ber om bekreftelse først (ARCHITECTURE §9.1).
 
 ### 5.6 Profil `/profil` (F4)
 
@@ -309,6 +310,7 @@ Alle ruter under `/api`. JSON. Datoer i ISO 8601. Feil som `{"detail": "...", "c
 | `GET /api/applications/{id}/events` | Hendelseslogg | F2 |
 | `POST /api/jobs/{id}/draft` | Start research + skriver → `{task_id}`. Oppretter søknaden om nødvendig og flytter Interessant → Utkast når jobben er ferdig. `result` har `application_id` og `draft_id`. 409 `draft_exists` hvis søknaden har utkast. | F3 |
 | `GET /api/applications/{id}/drafts` | Versjonsliste | F3 |
+| `DELETE /api/applications/{id}/drafts` | Sletter alle versjoner og chatten → 204. Utkast går tilbake til Interessant. 404 hvis søknaden ikke finnes. | F3 |
 | `GET /api/drafts/{id}` | Én versjon med innhold og `claims_to_verify` | F3 |
 | `POST /api/applications/{id}/drafts` | Autosave: `{content, base_draft_id?}` → versjonen. Er nyeste versjon en brukerversjon yngre enn 10 min, oppdateres den på plass; ellers ny versjon. Brukerversjoner arver `claims_to_verify` fra `base_draft_id` (standard: nyeste). | F3 |
 | `POST /api/applications/{id}/revise` | Chatmelding `{instruction, draft_id?}` → `{task_id}`. Meldingen lagres med en gang. Jobben svarer med en agentmelding: på et spørsmål bare svar (`result.draft_id` null), ellers en ny agentversjon av `draft_id` (standard: nyeste). 409 `no_draft` uten utkast. | F3 |

@@ -79,8 +79,8 @@ export function JobDetailView({ id, onTriage, actionBar }: { id: number; onTriag
         {!actionBar && <ApplyLink job={job} />}
       </div>
 
-      {/* 3. Draft or open application */}
-      <div>
+      {/* 3. Draft or open application, original ad */}
+      <div className="flex flex-wrap gap-2">
         {job.application?.latest_draft_id ? (
           <Button asChild size="sm" variant="secondary">
             <Link to={`/soknader/${job.application.id}`}>
@@ -90,6 +90,7 @@ export function JobDetailView({ id, onTriage, actionBar }: { id: number; onTriag
         ) : (
           <StartDraftButton jobId={job.id} />
         )}
+        <AdLink job={job} />
       </div>
 
       {/* 4. Why it matches, concerns */}
@@ -255,6 +256,19 @@ function TriageButtons({ job, onTriage, big }: { job: JobDetail; onTriage: Triag
         <X /> Ikke aktuell
       </Button>
     </>
+  )
+}
+
+/** The ad at its source (Finn, NAV, …); falls back to the apply link when no source has a URL. */
+function AdLink({ job }: { job: JobDetail }) {
+  const url = job.source_refs.find((r) => r.url)?.url ?? job.application_url
+  if (!url) return null
+  return (
+    <Button asChild size="sm" variant="outline">
+      <a href={url} target="_blank" rel="noreferrer">
+        Se annonsen <ExternalLink />
+      </a>
+    </Button>
   )
 }
 

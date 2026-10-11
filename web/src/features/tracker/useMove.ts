@@ -9,7 +9,8 @@ import { STATUS_LABEL } from '@/lib/status'
 /**
  * Moves an application to a new status with an undo toast (FRONTEND §5.4). Undo PATCHes back to
  * the previous status, which the backend treats as removing the event, and restores the
- * follow-up date that a move to `sokt` sets.
+ * follow-up date that a move to `sokt` sets. Moving to `ikke_aktuell` deletes the drafts (after a
+ * confirm), so undo goes to the server's `previous_status` (`interessant`, not `utkast`).
  */
 export function useMove() {
   const qc = useQueryClient()
@@ -22,13 +23,20 @@ export function useMove() {
   return useCallback(
     (card: ApplicationCard, to: ApplicationStatus) => {
       if (card.status === to || !card.allowed_next.includes(to)) return
-      updateApplication(qc, card.id, { status: to }).then(() => {
+      if (
+        to === 'ikke_aktuell' &&
+        card.latest_draft_id !== null &&
+        !window.confirm(`Søknadsutkastet til ${card.company} slettes. Fortsette?`)
+      )
+        return
+      updateApplication(qc, card.id, { status: to }).then((moved) => {
+        const back = moved.previous_status ?? card.status
         toast({
           message: `${STATUS_LABEL[to]}: ${card.job_title}`,
           action: {
             label: 'Angre',
             onClick: () =>
-              updateApplication(qc, card.id, { status: card.status, follow_up_at: card.follow_up_at }).then(
+              updateApplication(qc, card.id, { status: back, follow_up_at: card.follow_up_at }).then(
                 () => toast({ message: `Angret: ${card.job_title}` }),
                 fail,
               ),

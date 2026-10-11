@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func
-from sqlmodel import Session, col, select
+from sqlmodel import Session, col, delete, select
 
 from jobsearcher.db.models import Draft, DraftMessage, utcnow
 
@@ -152,3 +152,12 @@ def messages_of(session: Session, application_id: int) -> list[DraftMessage]:
             .order_by(col(DraftMessage.created_at), col(DraftMessage.id))
         ).all()
     )
+
+
+def delete_all(session: Session, application_id: int) -> int:
+    """Delete every draft version and the revision chat of an application. Returns how many
+    versions were deleted. Messages go first: they reference drafts."""
+    session.exec(delete(DraftMessage).where(col(DraftMessage.application_id) == application_id))
+    result = session.exec(delete(Draft).where(col(Draft.application_id) == application_id))
+    session.flush()
+    return result.rowcount or 0

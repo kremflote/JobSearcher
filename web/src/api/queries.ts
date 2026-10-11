@@ -159,6 +159,7 @@ export async function updateApplication(qc: QueryClient, id: number, patch: Appl
     if (patch.status) {
       qc.invalidateQueries({ queryKey: ['jobs'] })
       qc.invalidateQueries({ queryKey: ['overview'] })
+      if (patch.status === 'ikke_aktuell') qc.invalidateQueries({ queryKey: ['drafts'] }) // deleted by the move
     } else if (PATCH_FIELDS.some((k) => k !== 'notes' && k in patch)) {
       qc.invalidateQueries({ queryKey: ['overview'] })
     }
@@ -216,6 +217,32 @@ export async function saveDraft(qc: QueryClient, applicationId: number, content:
 }
 
 /** "Lag søknadsutkast" (POST /api/jobs/{id}/draft) → background task. */
+/** DELETE /api/applications/{id}/drafts: all versions and the chat; `utkast` goes back to `interessant`. */
+export function useDeleteDrafts() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (applicationId: number) => {
+      // 204 has no body, so `unwrap` (which wants data) does not fit.
+      const { error, response } = await api.DELETE('/api/applications/{application_id}/drafts', {
+        params: { path: { application_id: applicationId } },
+      })
+      if (!response.ok) {
+        const e = (error ?? {}) as { detail?: unknown; code?: unknown }
+        throw new ApiError(
+          response.status,
+          typeof e.code === 'string' ? e.code : 'unknown',
+          typeof e.detail === 'string' ? e.detail : response.statusText,
+        )
+      }
+    },
+    onSuccess: (_, applicationId) => {
+      qc.removeQueries({ queryKey: ['drafts', 'list', applicationId] })
+      qc.removeQueries({ queryKey: ['drafts', 'messages', applicationId] })
+      for (const key of [['applications'], ['jobs'], ['overview']]) qc.invalidateQueries({ queryKey: key })
+    },
+  })
+}
+
 export function useStartDraft() {
   const qc = useQueryClient()
   return useMutation({
