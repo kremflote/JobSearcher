@@ -52,7 +52,7 @@
 | Rammeverk | Vite + React + TypeScript, ren SPA. Ingen Node-server i drift. |
 | Servering | `vite build` → `web/dist/`, servert av FastAPI som statiske filer på `/`. API-et ligger under `/api`. Én prosess, én port (8765). |
 | Styling | Tailwind CSS + shadcn/ui (Radix). Komponentene kopieres inn og eies av prosjektet. |
-| Stil | Ren og tett (Linear/GitHub-aktig). Nøytrale farger; farge brukes bare for score, frist og status. Lys + mørk modus (følger systemet, kan overstyres). |
+| Stil | Ren og tett (Linear/GitHub-aktig). Nøytrale farger; farge brukes bare for score, frist og status. Lys + mørk modus (følger systemet, kan overstyres), pluss «Styx» (palett fra et skogbilde): blåsvart sidemeny, dyp brun bakgrunn, seksjoner (kanban-kolonner, kort på Oversikt, lister) i mørk brun, og kort i seksjonene (kanban-kort, valgt jobb) i ravgult med mørk tekst. |
 | Ruting | React Router (library mode) |
 | Data | TanStack Query + `openapi-fetch` med typer generert fra OpenAPI (`openapi-typescript`) |
 | API-kontrakt | Kontrakt først. Pydantic-modeller i `src/jobsearcher/api/schemas.py` er kilden. OpenAPI eksporteres og TS-typer genereres. |
@@ -288,7 +288,7 @@ Faner (`?fane=`): Kjøringer (per kilde: tid, helse, manuell, funnet/nye/oppdate
 | Frist | ≤ 3 d rød, ≤ 7 d gul, ≤ 14 d nøytral, ukjent "—". Relativ tekst ("om 3 d") + dato i tooltip/detalj. |
 | Status | Ett fast fargepar per status, brukt likt i liste, kanban og merker. Alle statuser har merke, også Ikke vurdert. |
 | Merker | Alle merker (status, score, frist, "Ny" siden sist, "Lagt ut på nytt", "Bare tittel kjent", jobbtype) har samme form og skriftstørrelse |
-| Tema | Farger som CSS-variabler (shadcn-tokens). Mørk modus via `class` på `<html>`. |
+| Tema | Farger som CSS-variabler (shadcn-tokens). Mørk modus via `class` på `<html>`; Styx legger `styx` til i tillegg til `dark` og overstyrer bare nøytrale tokens, så statusfarger og `dark:`-varianter gjelder fortsatt. Flatetokens: `panel` (seksjon som holder kort) og `tile` (kort i en seksjon, utility-klassen `tile`). I Styx er `tile` en lys øy med mørk tekst og lys-modus-statusfarger; `styx:`-varianten finnes for oppsett som bare gjelder Styx (mobil-trackerlisten som kort). |
 | Tilgjengelighet | Alt som kan sveipes eller dras kan også gjøres med knapp/meny. Fokusringer synlige. Kontrast AA. |
 | Ikoner | `lucide-react` (følger med shadcn) |
 

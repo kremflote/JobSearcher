@@ -13,7 +13,7 @@ export function MorePage() {
   const { data } = useOverview()
   return (
     <Page title="Mer" actions={IS_MOCK && <MockBadge />}>
-      <ul className="divide-y rounded-lg border">
+      <ul className="bg-card divide-y rounded-lg border">
         {MORE_ITEMS.map(({ to, label, icon: Icon }) => (
           <li key={to}>
             <Link to={to} className="flex h-11 items-center gap-3 px-3 text-sm">

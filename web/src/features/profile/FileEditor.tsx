@@ -222,7 +222,7 @@ function RevisionHistory({
           Ingen lagrede versjoner ennå. Hver lagring fra dashboardet blir en versjon.
         </p>
       ) : (
-        <ul className="divide-y rounded-lg border text-sm">
+        <ul className="bg-card divide-y rounded-lg border text-sm">
           {list.map((r, i) => (
             <li key={r.id}>
               <button

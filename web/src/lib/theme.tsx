@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 
-export type Theme = 'system' | 'light' | 'dark'
+export type Theme = 'system' | 'light' | 'dark' | 'styx'
 
 const STORAGE_KEY = 'theme'
 
@@ -11,7 +11,7 @@ const ThemeContext = createContext<ThemeContextValue | null>(null)
 function readStored(): Theme {
   try {
     const v = localStorage.getItem(STORAGE_KEY)
-    return v === 'light' || v === 'dark' ? v : 'system'
+    return v === 'light' || v === 'dark' || v === 'styx' ? v : 'system'
   } catch {
     return 'system'
   }
@@ -19,11 +19,15 @@ function readStored(): Theme {
 
 function apply(theme: Theme) {
   const dark =
-    theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    theme === 'dark' ||
+    theme === 'styx' ||
+    (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   document.documentElement.classList.toggle('dark', dark)
+  // Styx is a dark palette on top of `.dark`, so `dark:` variants still apply.
+  document.documentElement.classList.toggle('styx', theme === 'styx')
 }
 
-/** Light/dark via `class` on <html> (FRONTEND §6). Follows the system unless overridden. */
+/** Light/dark/styx via `class` on <html> (FRONTEND §6). Follows the system unless overridden. */
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(readStored)
 

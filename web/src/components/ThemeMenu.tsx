@@ -1,4 +1,4 @@
-import { Monitor, Moon, Sun } from 'lucide-react'
+import { Monitor, Moon, Sun, Waves } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -13,6 +13,7 @@ const OPTIONS: { value: Theme; label: string; icon: typeof Sun }[] = [
   { value: 'system', label: 'Følg systemet', icon: Monitor },
   { value: 'light', label: 'Lys', icon: Sun },
   { value: 'dark', label: 'Mørk', icon: Moon },
+  { value: 'styx', label: 'Styx', icon: Waves },
 ]
 
 export function ThemeMenu() {

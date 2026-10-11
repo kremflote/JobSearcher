@@ -89,7 +89,7 @@ function SettingsSection({ id, title, intro, children }: { id: string; title: st
         {title}
       </h2>
       {intro && <p className="text-muted-foreground mt-0.5 text-xs">{intro}</p>}
-      <div className="mt-2 flex flex-col divide-y rounded-lg border px-3">{children}</div>
+      <div className="bg-card mt-2 flex flex-col divide-y rounded-lg border px-3">{children}</div>
     </section>
   )
 }

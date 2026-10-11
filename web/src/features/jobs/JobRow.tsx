@@ -61,7 +61,7 @@ export const JobRow = forwardRef<HTMLLIElement, Props>(function JobRow(
         className={cn(
           'bg-background relative flex min-h-11 touch-pan-y flex-col justify-center gap-0.5 px-3 py-2 select-none md:min-h-9 md:py-1.5',
           'hover:bg-accent/50 focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset',
-          active && 'bg-accent',
+          active && 'bg-accent styx:tile',
           dimmed && 'opacity-50',
         )}
         {...handlers}

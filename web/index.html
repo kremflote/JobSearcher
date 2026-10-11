@@ -15,8 +15,9 @@
       // Apply the theme before first paint to avoid a flash (see src/lib/theme.tsx).
       try {
         const t = localStorage.getItem('theme')
-        const dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+        const dark = t === 'dark' || t === 'styx' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
         document.documentElement.classList.toggle('dark', dark)
+        document.documentElement.classList.toggle('styx', t === 'styx')
       } catch {}
     </script>
   </head>

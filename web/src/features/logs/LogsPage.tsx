@@ -114,7 +114,7 @@ function DayGroups<T>({ rows, at, render }: { rows: T[]; at: (r: T) => string; r
       {byDay(rows, at).map(([key, items]) => (
         <section key={key} aria-label={day(at(items[0]!))}>
           <h2 className="text-muted-foreground mb-1.5 text-xs font-medium first-letter:uppercase">{day(at(items[0]!))}</h2>
-          <ul className="divide-y rounded-lg border">{items.map(render)}</ul>
+          <ul className="bg-card divide-y rounded-lg border">{items.map(render)}</ul>
         </section>
       ))}
     </div>
