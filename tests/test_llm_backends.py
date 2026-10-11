@@ -54,6 +54,14 @@ def test_output_schema_is_strict_and_inlined():
             assert set(node["required"]) == set(node["properties"])
 
 
+def test_output_schema_keeps_a_property_named_title():
+    from jobsearcher.agents.schemas import ExtractResult
+
+    item = output_json_schema(ExtractResult)["properties"]["postings"]["items"]
+    assert item["properties"]["title"] == {"type": "string"}  # the keyword `title` is still dropped
+    assert "title" in item["required"]
+
+
 # --- claude_code -------------------------------------------------------------------------
 
 CLI_OK = {

@@ -3,7 +3,7 @@
 > Keep this file short. Update it at the end of every session: status, next task, open questions, and one line in the log.
 
 **Last updated:** 2026-10-11
-**Phase:** 0, 0b, F0–F4, backend phases 1–4, wave 2b/F2b and DeepSeek as the only model done. Everything through F4 + phase 4 and the scrollbar/`serve`-rebuild fixes is merged to `main` (PRs #11–#18). The user commits and merges. 4b/F5 is done and **live on the Pi** (https://jobb.mariuskristensen.no) since 2026-10-11; code on `feat/phase4b-f5` (PR). Roadmap (ARCHITECTURE §17): … → 4b/F5 → **5 next** (ARCHITECTURE v0.23, FRONTEND v0.16).
+**Phase:** 0, 0b, F0–F4, backend phases 1–4, wave 2b/F2b and DeepSeek as the only model done. Everything through F4 + phase 4 and the scrollbar/`serve`-rebuild fixes is merged to `main` (PRs #11–#18). The user commits and merges. 4b/F5 is done and **live on the Pi** (https://jobb.mariuskristensen.no) since 2026-10-11; code on `feat/phase4b-f5` (PR). Phase 5 (Teamtailor + page watcher) is built on `feat/phase5-sources` (branched from `feat/phase4b-f5`), **not deployed yet**. Roadmap (ARCHITECTURE §17): … → 4b/F5 → 5 → **6 next** (ARCHITECTURE v0.24, FRONTEND v0.16).
 
 ## Status
 
@@ -90,10 +90,18 @@
   - Live: rescored all 63 active jobs with DeepSeek on the user's request ($0.038; 7 ≥ 70, 9 at 50–69, 47 < 50). Read-only smoke test of the new endpoints on live data OK.
   - Incident: while writing `tests/test_digest.py`, one test sent a real digest e-mail (invented job "Utvikler 1") to the user's own Gmail, because conftest didn't blank `GMAIL_*`. Fixed: conftest blanks the Gmail keys and makes `smtplib.SMTP`/`SMTP_SSL` raise; `send_email` looks the SMTP class up per call.
   - Tests: pytest 277, Vitest 96, Playwright 48 (+8 skipped), typecheck OK.
+- **Phase 5 (more sources) done, not deployed** (2026-10-11), see ARCHITECTURE v0.24 §4.4, spike 03 §Oppdatering 2026-10-11:
+  - `sources/teamtailor.py` (RSS with full ad text; guid = source id; guids gone from the feed → inactive; ETag; 3 h cooldown), `sources/page_watch.py` (page → Markdown with links, hash, extractor only on change, detail fetch from the posting's own page via JSON-LD or main text, postings gone from the page → inactive, 20 h per page), `sources/web.py` (honest `User-Agent`, `parse_job_posting` moved here from `finn_api.py`, `page_markdown`). Agent `agents/extractor.py` (tier fast, cost cap like the filter), schema `ExtractResult`, slice `career_page`, prompt `extractor` v0.2.
+  - Company list checked live: 9 Teamtailor feeds, 14 career pages in `config/sources.yaml`; the rest (Workday, SmartRecruiters, JS-only pages) is left to NAV/Finn. Settings toggles `sources.teamtailor.enabled` / `sources.page_watch.enabled` (both on in YAML).
+  - Bug fixed in `llm/base.py: output_json_schema`: it dropped *fields* named `title` (it strips the JSON Schema keyword), so strict structured output never asked for `ExtractedPosting.title`. Found in the live run; test added.
+  - Live run (both sources, DB copy in scratch, no scoring): Teamtailor 105 → 18 after the hard filter, career pages 86 → 9 (e.g. Kantega "Sommerjobb som utvikler 2027", Telenor summer internship, Computas NXT 2027, Sopra Steria graduate/summer). Extractor 18 calls, $0.036. Then 10 overview pages were swapped for their student/trainee/listing subpages (not re-run live).
+  - Tests: pytest 306 (new `test_teamtailor.py`, `test_page_watch.py`), Vitest 96, web typecheck OK. openapi.json unchanged.
 - Live Finn check 2026-10-11 after the politeness pass: only `it_norge` ran (weekly searches not due), one gateway call, 0 new ads since the cursor, so ad-page spacing is still unobserved live.
 
 ### Waiting on the user
+- [ ] **Phase 5 review + deploy:** look at the company list in `config/sources.yaml` (add/remove freely), then say go to deploy (`bash scripts/deploy_pi.sh`). The first run on the Pi reads all 14 pages (~$0.03) and scores the new jobs (~25, ~$0.03).
 - [x] Uptime Kuma monitor "JobSearcher" on `http://jobsearcher:8765/api/health` (added by the user 2026-10-11).
+- [x] Homepage tile "Jobbsøk" (Tools group) linking to https://jobb.mariuskristensen.no, with a health monitor (added by krem-pi 2026-10-11).
 - [ ] (Postponed by the user 2026-10-11) NAV private token → `NAV_FEED_TOKEN` in `.env` (email in ARCHITECTURE §18). `.env` currently has NAV's **public** dev token, which rotates. NAV has not completed a live run yet: its gateway returned 500/504 on 2026-10-10 (spike 01 §Oppdatering). The daily run retries; check `GET /api/logs/runs` or Oversikt › Kildestatus.
 - [x] Wave 2b setup: OpenRouter account with $10 credit; `OPENROUTER_API_KEY` (limit $10) and `OPENROUTER_MANAGEMENT_KEY` in `.env`, both verified live 2026-10-11. Copied to the Pi's `jobsearcher.env` 2026-10-11.
 - [ ] NAV token, when it arrives: put it in the Pi's `~/infra/config/jobsearcher/jobsearcher.env` (and the PC `.env`), then `ssh pi 'cd ~/infra && docker compose up -d jobsearcher'` to reload it.
@@ -110,12 +118,13 @@
 - (No longer needed: Finn saved searches, Gmail label `JobSearcher/Finn`, sample `.eml` fixture. The user can delete them.)
 
 ## Next task
-1. **User tests the live app before phase 5** (list in the PR/session summary): phone PWA install, triage, tracker, a draft, profile edit, settings, the 07:00 run + digest from the Pi.
-2. **Phase 5 (more sources):** Teamtailor, page watcher + extractor, curated company list (ARCHITECTURE §4.4, spike 03).
-3. After the first scheduled digest: check content and links with the user; tune `notify_min_score` against their triage.
-4. NAV: postponed until the user has the private token. Then `uv run jobsearcher run --source nav --no-score` and tune `search.title_require_any` from Logg › Forkastet.
+1. **Deploy phase 5 after the user's OK** (`bash scripts/deploy_pi.sh`), then check Oversikt › Kildestatus after the next run: Teamtailor and Karrieresider should be `ok`; a page with "nesten ingen tekst" or HTTP errors gets swapped or removed in `sources.yaml`.
+2. **User tests the live app** (list in the PR/session summary): phone PWA install, triage, tracker, a draft, profile edit, settings, the 07:00 run + digest from the Pi.
+3. After 2–4 weeks: which Teamtailor feeds and pages give jobs that NAV/Finn don't (spike 03). Then **phase 6** (filter eval, cost page).
+4. After the first scheduled digest: check content and links with the user; tune `notify_min_score` against their triage.
+5. NAV: postponed until the user has the private token. Then `uv run jobsearcher run --source nav --no-score` and tune `search.title_require_any` from Logg › Forkastet.
 
-Known small things: the API's `is_new` groups `scrape_runs` within 1 h as one run (no run id column; add one if it misbehaves). `by_backend.calls` for `claude_code` counts failed attempts too. Phase-3 gaps: at the cost cap, drafts and revisions fail with a message instead of asking for confirmation (ARCHITECTURE §8.3); a failed revision leaves the user's chat message without an answer; the editor only locks the text during a revision it started itself. Profile files can't be deleted or renamed from the dashboard (not in the spec). The digest is not sent if the scheduled run is cancelled. The F1 user test (triage a mock day in < 2 min on mobile) was never reported; the PC filter row on Jobber wraps to three lines.
+Known small things: `title_require_any` matches substrings, so "intern" lets "Jurist internasjonal beskatning" through the title rule (the filter agent scores it low). Big career pages (Kongsberg, Netcompany) change almost daily, so the extractor runs on them most days (~$0.002 each). the API's `is_new` groups `scrape_runs` within 1 h as one run (no run id column; add one if it misbehaves). `by_backend.calls` for `claude_code` counts failed attempts too. Phase-3 gaps: at the cost cap, drafts and revisions fail with a message instead of asking for confirmation (ARCHITECTURE §8.3); a failed revision leaves the user's chat message without an answer; the editor only locks the text during a revision it started itself. Profile files can't be deleted or renamed from the dashboard (not in the spec). The digest is not sent if the scheduled run is cancelled. The F1 user test (triage a mock day in < 2 min on mobile) was never reported; the PC filter row on Jobber wraps to three lines.
 
 ## Open questions and risks (details in ARCHITECTURE §19)
 1. **Finn mobile API is a ToS grey area.** Deliberate, informed decision; low-volume, private use. See spike 04.
@@ -164,3 +173,5 @@ Known small things: the API's `is_new` groups `scrape_runs` within 1 h as one ru
 - 2026-10-11: Built 4b/F5 on `feat/phase4b-f5`: multi-stage `Dockerfile` (arm64/amd64, uid 1000, `claude` CLI), `.dockerignore`, `deploy/compose.service.yml`, `scripts/deploy_pi.sh` (ships the working tree over `ssh pi`, builds on the Pi). Volume is `config/jobsearcher/data`. F5: lazy routes, main bundle 693 → 304 kB. pytest 285, Vitest 96, Playwright 48. Not deployed: Pi writes were blocked by the auto-mode guard. ARCHITECTURE v0.23, FRONTEND v0.16, README.
 - 2026-10-11: Added `scripts/migrate_to_pi.sh` (one-time data/secrets move, run by the user). AGENTS.md and the PC-wide `~/.claude/CLAUDE.md` now say Pi-side changes go to `krem-pi`, not SSH writes.
 - 2026-10-11: Deployed to the Pi. krem-pi added the compose service (after user approval), the agent ran `migrate_to_pi.sh` and `deploy_pi.sh` on the user's request: image built on the Pi, container healthy, live data via https://jobb.mariuskristensen.no, `claude -p` verified in the container (§19 #8 narrowed to token lifetime). PC `.env` has `SCHEDULER_ENABLED=false`. Runbook updated (service, data, secrets, change history). Uptime Kuma monitor delegated to krem-pi.
+- 2026-10-11: krem-pi added a "Jobbsøk" tile to the Pi's homepage dashboard (Tools group, siteMonitor on `/api/health`, no restart). Homeserver note updated. No code changes.
+- 2026-10-11: Phase 5 on `feat/phase5-sources`: Teamtailor RSS (9 companies) and page watcher + extractor (14 pages), company list checked live, `output_json_schema` no longer drops fields named `title`. Live run on a DB copy: 27 new jobs past the hard filter, extractor $0.036. Not deployed. ARCHITECTURE v0.24, spike 03, FRONTEND (settings text), README.

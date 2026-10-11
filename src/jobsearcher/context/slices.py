@@ -7,6 +7,7 @@ The phase-3 slices read what the caller puts in `extras` (agents/researcher.py, 
 reviser.py): `evaluation` (latest Evaluation row), `company` (Company row), `company_note`
 (markdown), `draft` (Draft row), `instruction` (the user's chat message) and `history`
 (earlier DraftMessage rows, oldest first). `extras["job"]` becomes `SliceContext.job`.
+The extractor's `career_page` reads `extras["page"]` (`company`, `url`, `text`).
 """
 
 from __future__ import annotations
@@ -291,3 +292,16 @@ def revision_log(ctx: SliceContext, spec: dict[str, Any]) -> str | None:
             text = text[:400] + " …"
         lines.append(f"- {who}: {text}")
     return escape_tag("\n".join(lines), "revision_log")
+
+
+@register("career_page")
+def career_page(ctx: SliceContext, spec: dict[str, Any]) -> str:
+    page = ctx.extras.get("page") or {}
+    # A plain cut from the top: a listing page has no "important" paragraphs to keep.
+    limit = int(int(spec.get("max_tokens") or 8000) * 3.5)
+    text = (page.get("text") or "").strip()
+    if len(text) > limit:
+        text = text[:limit].rstrip() + "\n[… siden er forkortet …]"
+    text = escape_tag(escape_tag(escape_untrusted(text), "page"), "career_page")
+    head = f"Arbeidsgiver: {page.get('company') or 'ukjent'}\nSide: {page.get('url') or 'ukjent'}"
+    return f"{head}\n\n<page>\n{text}\n</page>"

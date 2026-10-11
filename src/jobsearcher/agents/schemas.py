@@ -106,7 +106,25 @@ class RevisionResult(BaseModel):
     )
 
 
+class ExtractedPosting(BaseModel):
+    title: str
+    url: OptStr = Field(description="Lenken til utlysningen, som den står på siden, ellers null")
+    location: OptStr
+    deadline: Annotated[date | None, BeforeValidator(_lenient_date)] = Field(description="YYYY-MM-DD eller null")
+    deadline_text: OptStr = Field(description='f.eks. "snarest", "løpende"')
+    job_type: Literal["trainee", "graduate", "summer", "permanent", "unknown"]
+    summary: OptStr = Field(description="1–3 setninger fra siden om stillingen, ellers null")
+
+
+class ExtractResult(BaseModel):
+    postings: Annotated[list[ExtractedPosting], _max_items(50)] = Field(description="maks 50")
+    page_note: OptStr = Field(description='F.eks. "ingen ledige stillinger nå", "programmet åpner i januar"')
+
+
 SCHEMAS: dict[str, type[BaseModel]] = {
     m.__name__: m
-    for m in (FilterBatchResult, DistilledProfile, CompanyNote, DraftResult, RevisionResult, FilterResult)
+    for m in (
+        FilterBatchResult, DistilledProfile, CompanyNote, DraftResult, RevisionResult, FilterResult,
+        ExtractResult,
+    )
 }

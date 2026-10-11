@@ -150,6 +150,9 @@ def output_json_schema(model: type[BaseModel]) -> dict[str, Any]:
             name = node["$ref"].rsplit("/", 1)[-1]
             return walk(copy.deepcopy(defs[name]))
         out = {k: walk(v) for k, v in node.items() if k not in _DROP_KEYS}
+        if isinstance(node.get("properties"), dict):
+            # Property names are not keywords: a field called `title` must stay.
+            out["properties"] = {k: walk(v) for k, v in node["properties"].items()}
         if out.get("type") == "object" and "properties" in out:
             out["additionalProperties"] = False
             out["required"] = list(out["properties"].keys())

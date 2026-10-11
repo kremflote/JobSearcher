@@ -24,6 +24,14 @@ def _build(name: str, http: HttpClient, config: dict) -> JobSource | None:
         from jobsearcher.sources.nav_feed import NavFeedSource
 
         return NavFeedSource(http, config, env().nav_feed_token)
+    if name == "teamtailor":
+        from jobsearcher.sources.teamtailor import TeamtailorSource
+
+        return TeamtailorSource(http, config)
+    if name == "page_watch":
+        from jobsearcher.sources.page_watch import PageWatchSource
+
+        return PageWatchSource(http, config)
     return None
 
 

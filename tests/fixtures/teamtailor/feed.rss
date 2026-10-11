@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:tt="https://teamtailor.com/locations">
+  <channel>
+    <title>Eksempelbyrå</title>
+    <description>Current job openings</description>
+    <link>https://karriere.eksempelbyra.no/jobs</link>
+    <item>
+      <title>Trainee innen utvikling 2027</title>
+      <description>&lt;p&gt;Vi søker nyutdannede utviklere til traineeprogrammet vårt.&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Bachelor i informatikk&lt;/li&gt;&lt;li&gt;Interesse for Python og React&lt;/li&gt;&lt;/ul&gt;</description>
+      <pubDate>Mon, 05 Oct 2026 09:30:42 +0200</pubDate>
+      <link>https://karriere.eksempelbyra.no/jobs/1001-trainee-innen-utvikling-2027</link>
+      <remoteStatus>hybrid</remoteStatus>
+      <guid>aaaaaaaa-0000-4000-8000-000000000001</guid>
+      <company_name>Eksempelbyrå AS</company_name>
+      <tt:locations>
+        <tt:location>
+          <tt:name>Oslo</tt:name>
+          <tt:city>Oslo</tt:city>
+          <tt:country>Norway</tt:country>
+        </tt:location>
+        <tt:location>
+          <tt:name>Stockholm</tt:name>
+          <tt:city>Stockholm</tt:city>
+          <tt:country>Sweden</tt:country>
+        </tt:location>
+      </tt:locations>
+      <tt:department>Teknologi</tt:department>
+      <tt:role/>
+    </item>
+    <item>
+      <title>Senior Account Manager</title>
+      <description>&lt;p&gt;Minst 8 års erfaring fra salg.&lt;/p&gt;</description>
+      <pubDate>Tue, 06 Oct 2026 10:00:00 +0200</pubDate>
+      <link>https://karriere.eksempelbyra.no/jobs/1002-senior-account-manager</link>
+      <remoteStatus>none</remoteStatus>
+      <guid>aaaaaaaa-0000-4000-8000-000000000002</guid>
+      <company_name>Eksempelbyrå AS</company_name>
+      <tt:locations/>
+      <tt:department/>
+      <tt:role/>
+    </item>
+    <item>
+      <title></title>
+      <description>&lt;p&gt;Mangler tittel.&lt;/p&gt;</description>
+      <guid>aaaaaaaa-0000-4000-8000-000000000003</guid>
+    </item>
+  </channel>
+</rss>
