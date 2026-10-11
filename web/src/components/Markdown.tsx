@@ -1,15 +1,21 @@
 import { Fragment, type ReactNode } from 'react'
 
-/** Inline `**bold**` only. */
+/** Inline `**bold**` and `*italic*`. */
 function inline(text: string): ReactNode[] {
-  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-    part.startsWith('**') && part.endsWith('**') ? <strong key={i}>{part.slice(2, -2)}</strong> : part,
+  return text.split(/(\*\*[^*]+\*\*|\*[^*\s][^*]*\*)/g).map((part, i) =>
+    part.startsWith('**') && part.endsWith('**') ? (
+      <strong key={i}>{part.slice(2, -2)}</strong>
+    ) : part.length > 2 && part.startsWith('*') && part.endsWith('*') ? (
+      <em key={i}>{part.slice(1, -1)}</em>
+    ) : (
+      part
+    ),
   )
 }
 
 /**
- * Minimal Markdown for ad texts and company notes: paragraphs, `- ` lists and bold.
- * Anything else is shown as plain text. The F3 editor gets a full renderer.
+ * Minimal Markdown for ad texts, company notes and cover letters: paragraphs, `#` headings,
+ * `- ` lists, bold and italic. Anything else is shown as plain text.
  */
 export function Markdown({ text, className }: { text: string; className?: string }) {
   const blocks = text.trim().split(/\n\s*\n/)
@@ -45,6 +51,17 @@ export function Markdown({ text, className }: { text: string; className?: string
           para = []
         }
         for (const line of block.split('\n')) {
+          const h = /^#{1,3}\s+(.*)$/.exec(line)
+          if (h) {
+            flushPara()
+            flushList()
+            out.push(
+              <h3 key={`h${out.length}`} className="mb-1 font-semibold">
+                {inline(h[1]!)}
+              </h3>,
+            )
+            continue
+          }
           const m = /^\s*[-*]\s+(.*)$/.exec(line)
           if (m) {
             flushPara()

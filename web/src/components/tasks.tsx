@@ -1,5 +1,6 @@
 import { Loader2, Play } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { ApiError } from '@/api/client'
 import { isTaskActive, useActiveTasks, useCancelTask, useStartRun, useTask } from '@/api/queries'
 import type { Task } from '@/api/types'
@@ -54,6 +55,7 @@ function TaskRow({ id, onFinished }: { id: string; onFinished: () => void }) {
   const { data: task, isError } = useTask(id)
   const cancel = useCancelTask()
   const toast = useToast()
+  const navigate = useNavigate()
   const done = isError || (task && !isTaskActive(task))
 
   useEffect(() => {
@@ -66,7 +68,8 @@ function TaskRow({ id, onFinished }: { id: string; onFinished: () => void }) {
           : task.status === 'cancelled'
             ? `${label} avbrutt`
             : `${label} feilet${task.message ? `: ${task.message}` : ''}`
-      toast({ message: msg })
+      const appId = task.status === 'done' && task.kind === 'draft' ? task.result?.application_id : null
+      toast({ message: msg, action: appId ? { label: 'Åpne', onClick: () => navigate(`/soknader/${appId}`) } : undefined })
     }
     onFinished()
   }, [done]) // eslint-disable-line react-hooks/exhaustive-deps

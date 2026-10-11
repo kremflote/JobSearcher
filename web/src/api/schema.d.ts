@@ -192,6 +192,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{application_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Messages */
+        get: operations["list_messages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/applications/{application_id}/revise": {
         parameters: {
             query?: never;
@@ -535,6 +552,13 @@ export interface components {
              * @description `from_status` of the latest event. PATCHing back to it undoes that event.
              */
             previous_status: ("ny" | "interessant" | "utkast" | "sokt" | "intervju" | "tilbud" | "ikke_aktuell" | "avslag" | "trukket" | "utlopt") | null;
+            /**
+             * Latest Draft Id
+             * @description Newest draft version, null when the application has no drafts.
+             */
+            latest_draft_id: number | null;
+            /** Latest Draft At */
+            latest_draft_at: string | null;
         };
         /** ApplicationEvent */
         ApplicationEvent: {
@@ -693,13 +717,51 @@ export interface components {
              * @description Markdown.
              */
             content: string;
-            /** Claims To Verify */
+            /**
+             * Claims To Verify
+             * @description Agent versions: claims the writer could not back with the profile. User versions inherit
+             *     them from the version they were edited from.
+             */
             claims_to_verify: string[];
         };
-        /** DraftCreate */
+        /**
+         * DraftCreate
+         * @description A user version (autosave). If the newest version is a user version created less than
+         *     10 minutes ago, it is updated in place instead of adding a version.
+         */
         DraftCreate: {
             /** Content */
             content: string;
+            /**
+             * Base Draft Id
+             * @description Version the text was edited from (for `claims_to_verify`); default the newest.
+             */
+            base_draft_id?: number | null;
+        };
+        /**
+         * DraftMessage
+         * @description One chat message. The writer and reviser add an agent message per run: with `draft_id`
+         *     when it made a version, without when it only answered a question.
+         */
+        DraftMessage: {
+            /** Id */
+            id: number;
+            /** Application Id */
+            application_id: number;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "agent";
+            /** Text */
+            text: string;
+            /** Draft Id */
+            draft_id: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** DraftSummary */
         DraftSummary: {
@@ -1163,10 +1225,19 @@ export interface components {
             /** Derived Outdated */
             derived_outdated: boolean;
         };
-        /** ReviseRequest */
+        /**
+         * ReviseRequest
+         * @description A chat message to the reviser. Stored as a user message right away; the task then either
+         *     makes a new version or only answers (task `result.draft_id` is null).
+         */
         ReviseRequest: {
             /** Instruction */
             instruction: string;
+            /**
+             * Draft Id
+             * @description Version to revise; default the newest.
+             */
+            draft_id?: number | null;
         };
         /** RunLog */
         RunLog: {
@@ -1967,6 +2038,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Draft"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Not Implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_messages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftMessage"][];
                 };
             };
             /** @description Not Found */

@@ -18,6 +18,8 @@ const card = (over: Partial<ApplicationCard>): ApplicationCard => ({
   created_at: '2026-10-01T09:00:00Z',
   allowed_next: [],
   previous_status: null,
+  latest_draft_id: null,
+  latest_draft_at: null,
   ...over,
 })
 

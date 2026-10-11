@@ -4,6 +4,7 @@ from fastapi.responses import Response
 from jobsearcher.api.schemas import (
     Draft,
     DraftCreate,
+    DraftMessage,
     DraftSummary,
     ReviseRequest,
     TaskRef,
@@ -22,6 +23,11 @@ def list_drafts(application_id: int) -> list[DraftSummary]:
 
 @router.post("/applications/{application_id}/drafts", status_code=201)
 def create_draft(application_id: int, body: DraftCreate) -> Draft:
+    raise not_implemented()
+
+
+@router.get("/applications/{application_id}/messages")
+def list_messages(application_id: int) -> list[DraftMessage]:
     raise not_implemented()
 
 

@@ -1038,6 +1038,82 @@
         }
       }
     },
+    "/api/applications/{application_id}/messages": {
+      "get": {
+        "tags": [
+          "drafts"
+        ],
+        "summary": "List Messages",
+        "operationId": "list_messages",
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Application Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DraftMessage"
+                  },
+                  "title": "Response List Messages"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/applications/{application_id}/revise": {
       "post": {
         "tags": [
@@ -2402,6 +2478,30 @@
             ],
             "title": "Previous Status",
             "description": "`from_status` of the latest event. PATCHing back to it undoes that event."
+          },
+          "latest_draft_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Draft Id",
+            "description": "Newest draft version, null when the application has no drafts."
+          },
+          "latest_draft_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Draft At"
           }
         },
         "type": "object",
@@ -2420,7 +2520,9 @@
           "notes",
           "created_at",
           "allowed_next",
-          "previous_status"
+          "previous_status",
+          "latest_draft_id",
+          "latest_draft_at"
         ],
         "title": "ApplicationCard"
       },
@@ -2885,7 +2987,8 @@
               "type": "string"
             },
             "type": "array",
-            "title": "Claims To Verify"
+            "title": "Claims To Verify",
+            "description": "Agent versions: claims the writer could not back with the profile. User versions inherit\nthem from the version they were edited from."
           }
         },
         "type": "object",
@@ -2907,13 +3010,77 @@
           "content": {
             "type": "string",
             "title": "Content"
+          },
+          "base_draft_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Draft Id",
+            "description": "Version the text was edited from (for `claims_to_verify`); default the newest."
           }
         },
         "type": "object",
         "required": [
           "content"
         ],
-        "title": "DraftCreate"
+        "title": "DraftCreate",
+        "description": "A user version (autosave). If the newest version is a user version created less than\n10 minutes ago, it is updated in place instead of adding a version."
+      },
+      "DraftMessage": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "application_id": {
+            "type": "integer",
+            "title": "Application Id"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "agent"
+            ],
+            "title": "Role"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "draft_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draft Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "application_id",
+          "role",
+          "text",
+          "draft_id",
+          "created_at"
+        ],
+        "title": "DraftMessage",
+        "description": "One chat message. The writer and reviser add an agent message per run: with `draft_id`\nwhen it made a version, without when it only answered a question."
       },
       "DraftSummary": {
         "properties": {
@@ -4265,13 +4432,26 @@
             "type": "string",
             "minLength": 1,
             "title": "Instruction"
+          },
+          "draft_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draft Id",
+            "description": "Version to revise; default the newest."
           }
         },
         "type": "object",
         "required": [
           "instruction"
         ],
-        "title": "ReviseRequest"
+        "title": "ReviseRequest",
+        "description": "A chat message to the reviser. Stored as a user message right away; the task then either\nmakes a new version or only answers (task `result.draft_id` is null)."
       },
       "RunLog": {
         "properties": {

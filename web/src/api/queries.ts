@@ -9,7 +9,7 @@ import {
 import { useEffect } from 'react'
 import { api, ApiError, unwrap } from './client'
 import type { paths } from './schema'
-import type { ApplicationCard, ApplicationList, ApplicationPatch, JobDetail, JobList, Task } from './types'
+import type { ApplicationCard, ApplicationList, ApplicationPatch, Draft, DraftSummary, JobDetail, JobList, Task } from './types'
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -154,6 +154,104 @@ export async function updateApplication(qc: QueryClient, id: number, patch: Appl
   }
 }
 
+// --- Drafts (søknadseditor, FRONTEND §5.5) ---------------------------------------
+
+export function useDrafts(applicationId: number | null) {
+  return useQuery({
+    queryKey: ['drafts', 'list', applicationId],
+    queryFn: () =>
+      unwrap(api.GET('/api/applications/{application_id}/drafts', { params: { path: { application_id: applicationId! } } })),
+    enabled: applicationId !== null,
+  })
+}
+
+/** Revision chat history (FRONTEND §5.5). */
+export function useMessages(applicationId: number) {
+  return useQuery({
+    queryKey: ['drafts', 'messages', applicationId],
+    queryFn: () =>
+      unwrap(api.GET('/api/applications/{application_id}/messages', { params: { path: { application_id: applicationId } } })),
+  })
+}
+
+export const draftQuery = (id: number) => ({
+  queryKey: ['drafts', 'detail', id],
+  queryFn: () => unwrap(api.GET('/api/drafts/{draft_id}', { params: { path: { draft_id: id } } })),
+  staleTime: Infinity, // a version only changes through our own autosave, which updates the cache
+})
+
+export function useDraft(id: number | null) {
+  return useQuery({ ...draftQuery(id ?? 0), enabled: id !== null })
+}
+
+/**
+ * Autosave (POST /api/applications/{id}/drafts). The server updates a recent user version in
+ * place or adds one; either way the returned version goes into the cache.
+ */
+export async function saveDraft(qc: QueryClient, applicationId: number, content: string, baseDraftId: number | null) {
+  const draft = await unwrap(
+    api.POST('/api/applications/{application_id}/drafts', {
+      params: { path: { application_id: applicationId } },
+      body: { content, base_draft_id: baseDraftId },
+    }),
+  )
+  qc.setQueryData<Draft>(['drafts', 'detail', draft.id], draft)
+  const { content: _c, claims_to_verify: _v, ...summary } = draft
+  qc.setQueryData<DraftSummary[]>(['drafts', 'list', applicationId], (list) =>
+    list && (list.some((d) => d.id === draft.id) ? list.map((d) => (d.id === draft.id ? summary : d)) : [...list, summary]),
+  )
+  qc.invalidateQueries({ queryKey: ['applications', 'list'] })
+  return draft
+}
+
+/** "Lag søknadsutkast" (POST /api/jobs/{id}/draft) → background task. */
+export function useStartDraft() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (jobId: number) => unwrap(api.POST('/api/jobs/{job_id}/draft', { params: { path: { job_id: jobId } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks', 'active'] }),
+  })
+}
+
+/**
+ * Revision chat (POST /api/applications/{id}/revise) → background task. The server stores the
+ * message at once, so the history is refetched before the mutation resolves.
+ */
+export function useRevise(applicationId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { instruction: string; draft_id?: number | null }) =>
+      unwrap(
+        api.POST('/api/applications/{application_id}/revise', { params: { path: { application_id: applicationId } }, body }),
+      ),
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: ['drafts', 'messages', applicationId] }),
+        qc.invalidateQueries({ queryKey: ['tasks', 'active'] }),
+      ]),
+  })
+}
+
+/** Downloads `GET /api/drafts/{id}/docx`, named by the server's Content-Disposition when given. */
+export async function downloadDocx(draftId: number, fallbackName: string) {
+  const { data, error, response } = await api.GET('/api/drafts/{draft_id}/docx', {
+    params: { path: { draft_id: draftId } },
+    parseAs: 'blob',
+  })
+  if (error !== undefined || !data) throw new ApiError(response.status, 'download_failed', 'Kunne ikke laste ned .docx.')
+  const header = response.headers.get('Content-Disposition') ?? ''
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(header)?.[1]
+  const plain = /filename="?([^";]+)"?/i.exec(header)?.[1]
+  const name = star ? decodeURIComponent(star) : (plain ?? fallbackName)
+  const url = URL.createObjectURL(data as Blob)
+  const a = Object.assign(document.createElement('a'), { href: url, download: name })
+  document.body.append(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  return name
+}
+
 // --- Background tasks (FRONTEND §3.3) -------------------------------------------
 
 const TERMINAL: readonly Task['status'][] = ['done', 'failed', 'cancelled']
@@ -162,9 +260,9 @@ export const isTaskActive = (t: Task) => !TERMINAL.includes(t.status)
 /** Queries a finished task of each kind may have changed. */
 const AFFECTS: Record<Task['kind'], string[][]> = {
   run: [['overview'], ['jobs'], ['logs']],
-  draft: [['jobs'], ['applications'], ['drafts']],
+  draft: [['jobs'], ['applications'], ['drafts'], ['overview']],
   research: [['jobs']],
-  revise: [['drafts']],
+  revise: [['drafts'], ['applications']],
   rescore: [['jobs'], ['overview']],
   distill: [['profile']],
 }

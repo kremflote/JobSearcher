@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { deadlineInfo } from '@/lib/format'
 import { JOB_TYPE_LABEL } from '@/lib/status'
 import { cn } from '@/lib/utils'
+import { StartDraftButton } from '@/features/drafts/StartDraftButton'
 import { isDimmed, SOURCE_OPTIONS, toApiQuery, useJobFilters } from './filters'
 import { canTriage, useTriage } from './useTriage'
 
@@ -78,7 +79,7 @@ export function JobDetailView({ id, onTriage, actionBar }: { id: number; onTriag
         {!actionBar && <ApplyLink job={job} />}
       </div>
 
-      {/* 3. Draft (F3) or open application */}
+      {/* 3. Draft or open application */}
       <div>
         {job.application?.latest_draft_id ? (
           <Button asChild size="sm" variant="secondary">
@@ -87,9 +88,7 @@ export function JobDetailView({ id, onTriage, actionBar }: { id: number; onTriag
             </Link>
           </Button>
         ) : (
-          <Button size="sm" variant="secondary" disabled title="Kommer i bølge F3">
-            <FileText /> Lag søknadsutkast
-          </Button>
+          <StartDraftButton jobId={job.id} />
         )}
       </div>
 

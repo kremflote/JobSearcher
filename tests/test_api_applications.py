@@ -4,9 +4,9 @@ from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, select
 
-from jobsearcher.db.models import Job, JobContact
+from jobsearcher.db.models import Draft, Job, JobContact
 from jobsearcher.tracking.status import local_today
 from jobsearcher.web.app import create_app
 
@@ -112,3 +112,14 @@ def test_illegal_transition_is_409(client, app_id):
 def test_unknown_application_is_404(client, engine):
     assert client.patch("/api/applications/999", json={"notes": "x"}).status_code == 404
     assert client.get("/api/applications/999/events").status_code == 404
+
+
+def test_card_shows_latest_draft(client, engine, app_id):
+    assert client.get("/api/applications").json()["items"][0]["latest_draft_id"] is None
+    with Session(engine) as s:
+        for v in (1, 2):
+            s.add(Draft(application_id=app_id, version=v, content=f"v{v}", author="agent"))
+        s.commit()
+        newest = s.exec(select(Draft.id).where(Draft.version == 2)).one()
+    card = client.get("/api/applications").json()["items"][0]
+    assert card["latest_draft_id"] == newest and card["latest_draft_at"] is not None

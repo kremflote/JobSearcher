@@ -2,25 +2,7 @@
  * F0 placeholder screens. Each is replaced by its feature folder in the wave noted
  * (FRONTEND §5 and §8).
  */
-import { useParams } from 'react-router'
 import { ComingSoon, Page } from '@/components/Page'
-
-export function ApplicationsPage() {
-  return (
-    <Page title="Søknader">
-      <ComingSoon wave="F3" />
-    </Page>
-  )
-}
-
-export function EditorPage() {
-  const { applicationId } = useParams()
-  return (
-    <Page title={`Søknad ${applicationId}`}>
-      <ComingSoon wave="F3" />
-    </Page>
-  )
-}
 
 export function ProfilePage() {
   return (

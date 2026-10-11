@@ -172,6 +172,21 @@ class Draft(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow)
 
 
+class DraftMessage(SQLModel, table=True):
+    """Revision chat (FRONTEND §5.5): the user's messages and the reviser's replies."""
+
+    __tablename__ = "draft_messages"
+
+    id: int | None = Field(default=None, primary_key=True)
+    application_id: int = Field(foreign_key="applications.id", index=True)
+    role: str  # user | agent
+    text: str
+    draft_id: int | None = Field(default=None, foreign_key="drafts.id")
+    """Version an agent message produced; None for answers and user messages."""
+    agent_run_id: int | None = Field(default=None, foreign_key="agent_runs.id")
+    created_at: datetime = Field(default_factory=utcnow)
+
+
 class AgentRun(SQLModel, table=True):
     __tablename__ = "agent_runs"
 

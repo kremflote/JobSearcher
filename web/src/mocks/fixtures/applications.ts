@@ -1,4 +1,5 @@
-import type { ApplicationCard, ApplicationEvent, ApplicationStatus, Draft, JobDetail } from '@/api/types'
+import type { ApplicationCard, ApplicationEvent, ApplicationStatus, Draft, DraftMessage, JobDetail } from '@/api/types'
+import { DRAFT_CLAIMS, draftText, reviseText } from './drafts'
 import type { Clock } from './time'
 
 /** Status path from `ny` to each status, following ARCHITECTURE §9.1. */
@@ -21,30 +22,23 @@ const NEXT_STEP: Partial<Record<ApplicationStatus, [string, number]>> = {
   utkast: ['Les over og send', 1],
 }
 
-const DRAFT_TEXT = (job: JobDetail) => `Hei,
-
-Jeg søker på stillingen som ${job.title.toLowerCase()} hos ${job.company}. Jeg er nyutdannet utvikler og har de siste årene bygget flere prosjekter med ${job.evaluation?.tech.slice(0, 2).join(' og ') ?? 'moderne verktøy'}.
-
-I bachelorprosjektet ledet jeg arbeidet med backend og testoppsett, og jeg liker å jobbe tett med teamet for å levere noe som faktisk blir brukt. Det dere skriver om kodegjennomgang og hyppige leveranser passer godt med hvordan jeg liker å jobbe.
-
-Jeg ser frem til å høre fra dere.
-
-Med vennlig hilsen
-Ola Nordmann`
-
-/** Stored card; `allowed_next` and `previous_status` are derived when served (handlers.ts). */
-export type MockCard = Omit<ApplicationCard, 'allowed_next' | 'previous_status'>
+/** Stored card; `allowed_next`, `previous_status` and the latest draft are derived when served (handlers.ts). */
+export type MockCard = Omit<ApplicationCard, 'allowed_next' | 'previous_status' | 'latest_draft_id' | 'latest_draft_at'>
 
 export type MockApplications = {
   cards: MockCard[]
   events: Map<number, ApplicationEvent[]>
   drafts: Draft[]
+  messages: DraftMessage[]
 }
 
 export function buildApplications(jobs: JobDetail[], c: Clock): MockApplications {
   const cards: MockCard[] = []
   const events = new Map<number, ApplicationEvent[]>()
   const drafts: Draft[] = []
+  const messages: DraftMessage[] = []
+  const say = (application_id: number, role: DraftMessage['role'], text: string, draft_id: number | null, created_at: string) =>
+    messages.push({ id: messages.length + 1, application_id, role, text, draft_id, created_at })
   let eventId = 1
   let draftId = 1
 
@@ -88,6 +82,9 @@ export function buildApplications(jobs: JobDetail[], c: Clock): MockApplications
       const versions = job.status === 'utkast' ? 3 : 2
       for (let v = 1; v <= versions; v++) {
         const agent = v !== 2
+        const at = c.at(started + step, 10 + v)
+        if (v === 3) say(id, 'user', 'Gjør andre avsnitt kortere og mer konkret.', null, at)
+        if (agent) say(id, 'agent', v === 1 ? 'Første utkast.' : 'Strammet inn andre avsnitt.', draftId, at)
         drafts.push({
           id: draftId++,
           application_id: id,
@@ -95,9 +92,9 @@ export function buildApplications(jobs: JobDetail[], c: Clock): MockApplications
           author: agent ? 'agent' : 'user',
           instruction: v === 3 ? 'Gjør andre avsnitt kortere og mer konkret.' : null,
           change_summary: v === 1 ? 'Første utkast.' : v === 2 ? null : 'Strammet inn andre avsnitt.',
-          created_at: c.at(started + step, 10 + v),
-          content: DRAFT_TEXT(job),
-          claims_to_verify: agent ? ['"ledet arbeidet med backend": stemmer det med CV-en?'] : [],
+          created_at: at,
+          content: v === 3 ? reviseText(draftText(job), 'kortere').content : draftText(job),
+          claims_to_verify: DRAFT_CLAIMS.slice(0, v === 1 ? 2 : 1),
         })
       }
     }
@@ -106,5 +103,5 @@ export function buildApplications(jobs: JobDetail[], c: Clock): MockApplications
     job.application = { id, status: job.status, latest_draft_id: latest?.id ?? null }
   }
 
-  return { cards, events, drafts }
+  return { cards, events, drafts, messages }
 }

@@ -1,12 +1,14 @@
 # JobSearcher: design- og arkitekturdokument
 
-> Status: v0.16 (2026-10-11). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F2, backend-fase 1 og 2 og bølge 2b/F2b er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), dashboardets oversikt, jobbliste og tracker går mot ekte data, og alle LLM-kall går til DeepSeek via `openrouter`. Neste: F3.
+> Status: v0.18 (2026-10-11). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F2, backend-fase 1 og 2 og bølge 2b/F2b er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), dashboardets oversikt, jobbliste og tracker går mot ekte data, og alle LLM-kall går til DeepSeek via `openrouter`. F3 (søknadseditor) er bygget mot mock. Neste: backend-fase 3.
 > Dokumentet er "source of truth" for designet. UI-designet står i [FRONTEND.md](FRONTEND.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato       | Endring                                                                                                                                                                                                                                                                           |
 | ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v0.18   | 2026-10-11 | Revisjonschatten skiller spørsmål fra endringer: revisoren svarer i chatten uten ny versjon når meldingen er et spørsmål (`RevisionResult.kind`, §7.2; prompt `reviser` v0.2). Chatten lagres i ny tabell `draft_messages` (migrasjon `0004`, §9). Grunn: i brukertesten av F3 ble et spørsmål om en påstand limt inn i brevet. |
+| v0.17   | 2026-10-11 | F3 bygget mot mock (FRONTEND §5.5, §17). Utkastregler presisert (§9.1): et utkast flytter Interessant → Utkast og oppretter søknaden for en jobb som ikke er vurdert; autosave oppdaterer en brukerversjon yngre enn 10 min på plass i stedet for å lage en ny; brukerversjoner arver `claims_to_verify` fra versjonen de bygger på. Tracker-kortet har nyeste utkast. |
 | v0.16   | 2026-10-11 | Én modell for alle agenter: `openrouter` (DeepSeek V4.1 Flash) er standard-backend, og reserven er av som standard (§2, §8). Grunn: scorer og senere søknadsutkast skal være sammenlignbare, og DeepSeek scorer på en annen skala enn Claude (spike 05). `claude_code` finnes fortsatt og kan settes som standard eller reserve. Filter-prompten v0.3 har en strengere skala, så snittet treffer den gamle (terskler som 65 og 70 beholder betydningen). Ny CLI-kommando `jobsearcher rescore [--all]` (§5.5). |
 | v0.15   | 2026-10-11 | Kostnadstaket gjelder bare betalte kall (§2, §8.3): `claude_code`-estimatet teller ikke, siden abonnementet betaler. Taket er senket fra $25 til $10/mnd. Nås det, stopper reserven, men `claude_code` scorer videre. Saldoen fra OpenRouter har også totalt forbruk (`used_usd`), så forskjellen mot appens egne tall kan forklares. |
 | v0.14   | 2026-10-11 | Bølge 2b bygget. Presisert etter implementering (§8.1): hvilke feil som gir bytte til reserven, en bryter som sender alle kall til reserven i 30 min etter en backendfeil, egen `llm.openrouter.timeout_s`, og saldo uten `usage_monthly`. `anthropic_api` og `anthropic`-pakken er fjernet (§2, §15). Migrasjon `0003` (§9). |
@@ -424,7 +426,7 @@ distiller:
 | Agent | Livssyklus |
 |---|---|
 | Filter, researcher, writer, distiller | Ett kall er én agent, uten historikk |
-| Reviser | Rullerende: hver brukermelding starter en ny agent med gjeldende utkast, de siste 5 instruksjonene som en kompakt logg og fast kontekst. Konteksten er like stor i runde 20 som i runde 1. |
+| Reviser | Rullerende: hver brukermelding starter en ny agent med gjeldende utkast, de siste 5 chatmeldingene (`draft_messages`) som en kompakt logg og fast kontekst. Konteksten er like stor i runde 20 som i runde 1. |
 
 ### 6.4 Valg av relevante prosjekter
 
@@ -501,8 +503,9 @@ class DraftResult(BaseModel):
     notes_for_user: str | None    # f.eks. "annonsen ber om attester"
 
 class RevisionResult(BaseModel):
-    letter_markdown: str
-    change_summary: str           # én linje, går inn i revision_log
+    kind: Literal["revision", "answer"]  # answer = spørsmål besvart, ingen ny versjon
+    reply: str                    # chatsvaret; ved revision også change_summary (én linje)
+    letter_markdown: str          # tom ved answer
     claims_to_verify: list[str]
 ```
 
@@ -635,6 +638,9 @@ application_events   id, application_id, from_status, to_status, at, comment
 drafts               id, application_id, version, content, author (agent|user),
                      instruction, change_summary, claims_to_verify (json), agent_run_id, created_at
 
+draft_messages       id, application_id, role (user|agent), text, draft_id (versjonen svaret laget,
+                     null for spørsmål og brukermeldinger), agent_run_id, created_at   ← chatten, migrasjon 0004
+
 agent_runs           id, agent, job_ids (json), application_id, backend, model, prompt_version,
                      input_tokens, output_tokens, cost_usd, duration_ms, status, error,
                      fallback_from (backend som feilet, migrasjon 0003), created_at
@@ -682,6 +688,9 @@ Hovedflyten over; tabellen er fasit. Backend validerer, ellers 409 `invalid_tran
 - **Angre:** overgang tilbake til `previous_status` er alltid lov og sletter siste hendelse. Første hendelse (fra Ikke vurdert) angres med triage, som sletter søknadsraden.
 - Ved `Søkt` settes `applied_at`, og `follow_up_at` til +14 dager hvis den ikke sendes med. Angre fra Søkt nullstiller `applied_at`.
 - `next_step` og `next_step_at` er fritekst og dato ("Intervju 2. runde", "Case-oppgave"). Ingen kalenderintegrasjon.
+- **Utkast:** "Lag søknadsutkast" oppretter søknaden hvis jobben ikke er vurdert, og flytter Interessant → Utkast når første versjon er skrevet (senere statuser endres ikke). Har søknaden utkast fra før, avvises det (409 `draft_exists`).
+- **Chat** (`draft_messages`): brukerens melding lagres med en gang. Revisoren svarer med en agentmelding; er meldingen et spørsmål, blir det bare et svar (`kind: answer`), ellers en ny versjon som svaret lenker til. Skriveren legger også inn en agentmelding for første utkast.
+- **Versjoner** (`drafts`): agenten lager en ny versjon per utkast og revisjon (ikke for svar). Autosave fra editoren lager en brukerversjon, men oppdaterer nyeste versjon på plass hvis den er en brukerversjon yngre enn 10 minutter, så en redigeringsøkt blir én versjon. Brukerversjoner arver `claims_to_verify` fra versjonen de er redigert fra.
 
 ---
 
@@ -864,9 +873,9 @@ JobSearcher/
 │   │   ├── api/                       schema.d.ts (generert), types.ts, client.ts, queries.ts
 │   │   ├── components/ui/             shadcn-komponenter
 │   │   ├── components/                AppShell, badges (score/frist/status), tasks (indikator, Kjør nå), Toaster, Sheet, Markdown
-│   │   ├── features/                  overview/, jobs/, tracker/, editor/, profile/, settings/, logs/, more/
+│   │   ├── features/                  overview/, jobs/, tracker/, drafts/ (søknadsliste og editor), profile/, settings/, logs/, more/
 │   │   │                              (placeholders.tsx holder skjermene som ikke er bygget ennå)
-│   │   ├── mocks/                     MSW: handlers.ts, db.ts, browser.ts, fixtures/*.ts (oppdiktet)
+│   │   ├── mocks/                     MSW: handlers.ts, db.ts, browser.ts, drafts.ts (mock-skriver/-reviser), docx.ts, fixtures/*.ts (oppdiktet)
 │   │   ├── test/                      Vitest-oppsett
 │   │   ├── routes.tsx, main.tsx
 │   │   └── lib/                       format (dato, frist), status, tema, useMediaQuery
@@ -931,7 +940,7 @@ Rekkefølge: fase 1 → fase 2 → 2b/F2b → F3 → fase 3 → F4 → fase 4 �
 | ~~1. Fundament~~ | Repo-oppsett, config med `DATA_DIR`/`PROFILE_DIR`, DB + Alembic, HTTP-lag, NAV-kilde, Finn-API-kilde (`finn_api.py` + `finn_sig.py`, se spike 04), normalisering, dedupe, hardfilter, `jobsearcher run` uten LLM, `serve` med de første ekte endepunktene. Ingen Windows-spesifikk kode. | ✅ 2026-10-10 |
 | ~~2. Scoring + API v1~~ | LLM-backends, destiller, filter i batch, `/api` for oversikt, jobber, jobbdetalj, triage og tasks. Kobler F1. Trukket frem fra fase 4: tracker-API-et (kobler F2), logg-API-et og planleggeren i `serve`. | ✅ 2026-10-10 |
 | ~~2b. OpenRouter-reserve~~ | `llm/openrouter.py`, reserve-regel med bryter (§8.1), `anthropic_api` fjernet, migrasjon `0003`, `GET /api/llm/usage`, forbrukskortet (F2b). Sjekk mot Haiku: spike 05 §Oppdatering. | ✅ 2026-10-11 |
-| **F3. Søknadseditor** | FRONTEND §5.5 mot mock | Brev kan itereres mot mock-agent |
+| ~~F3. Søknadseditor~~ | FRONTEND §5.5 mot mock | ✅ 2026-10-11 |
 | **3. Søknader** | Research, writer, revisjon, versjoner, `.docx`-eksport, `/api` for utkast. Kobler F3. | Brev kan lages, itereres og lastes ned |
 | **F4. Profil, innstillinger, logg** | FRONTEND §5.6–5.8 mot mock | Profilen kan redigeres uten filsystemtilgang |
 | **4. Tracking + varsling** | E-postdigest, profil-API, innstillings-API, "score på nytt"-knapp. Kobler F4. (Statusflyt, oppfølging, planlegger og backup kom i fase 1–2.) | Hele flyten går uten manuelt arbeid |
