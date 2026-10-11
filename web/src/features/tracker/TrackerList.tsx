@@ -57,7 +57,7 @@ export function TrackerList({ cards, onOpen }: { cards: ApplicationCard[]; onOpe
                   type="button"
                   aria-expanded={open}
                   onClick={() => setCollapsed((c) => ({ ...c, [column.id]: open }))}
-                  className="bg-muted/50 flex h-10 w-full items-center gap-2 border-b px-4 text-sm font-medium"
+                  className="bg-panel flex h-10 w-full items-center gap-2 border-b px-4 text-sm font-medium"
                 >
                   {column.label}
                   <span className="text-muted-foreground text-xs tabular-nums">{cards.length}</span>
@@ -65,9 +65,9 @@ export function TrackerList({ cards, onOpen }: { cards: ApplicationCard[]; onOpe
                 </button>
               </h2>
               {open && (
-                <ul className="divide-y border-b">
+                <ul className="styx:bg-panel styx:flex styx:flex-col styx:gap-2 styx:divide-y-0 styx:p-2 divide-y border-b">
                   {cards.map((card) => (
-                    <li key={card.id} data-testid="tracker-card" data-app-id={card.id} data-status={card.status}>
+                    <li key={card.id} className="styx:tile styx:rounded-md" data-testid="tracker-card" data-app-id={card.id} data-status={card.status}>
                       <button
                         type="button"
                         onClick={() => setActionId(card.id)}

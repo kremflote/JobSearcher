@@ -69,7 +69,7 @@ export function KanbanBoard({ cards, onOpen }: { cards: ApplicationCard[]; onOpe
       </div>
       <DragOverlay dropAnimation={null}>
         {dragging && (
-          <div className="bg-card w-60 rotate-1 rounded-md border p-2.5 shadow-lg">
+          <div className="tile w-60 rotate-1 rounded-md border p-2.5 shadow-lg">
             <TrackerCardBody card={dragging} />
           </div>
         )}
@@ -122,7 +122,7 @@ function Column({
       data-testid={`column-${column.id}`}
       data-legal={dragging ? String(legal) : undefined}
       className={cn(
-        'bg-muted/40 flex min-h-0 flex-col rounded-lg border transition-[opacity,box-shadow]',
+        'bg-panel flex min-h-0 flex-col rounded-lg border transition-[opacity,box-shadow]',
         collapsed ? 'w-12 shrink-0' : 'min-w-56 flex-1',
         dragging && !legal && !home && 'opacity-40',
         legal && 'ring-primary/30 ring-2',
@@ -174,7 +174,7 @@ function DraggableCard({ card, onOpen, onMove }: { card: ApplicationCard; onOpen
       data-app-id={card.id}
       data-status={card.status}
       className={cn(
-        'bg-card hover:border-foreground/20 relative cursor-grab touch-none rounded-md border p-2.5 shadow-xs',
+        'tile hover:border-foreground/30 relative cursor-grab touch-none rounded-md border p-2.5 shadow-xs',
         isDragging && 'opacity-30',
       )}
     >
