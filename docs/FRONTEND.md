@@ -1,12 +1,14 @@
 # JobSearcher: frontend-design
 
-> Status: v0.10 (2026-10-11). F0, F1, F2 og F2b er bygget og koblet til ekte API (backend-fase 1–2 og bølge 2b). Neste bølge: F3 (søknadseditor).
+> Status: v0.12 (2026-10-11). F0, F1, F2 og F2b er bygget og koblet til ekte API (backend-fase 1–2 og bølge 2b). F3 (søknadseditor) er bygget mot mock og kobles i backend-fase 3. Neste bølge: F4.
 > Dokumentet eier UI-designet: skjermer, layout, komponenter, API-kontrakt og frontend-bølger. Resten av systemet står i [ARCHITECTURE.md](ARCHITECTURE.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato | Endring |
 |---|---|---|
+| v0.12 | 2026-10-11 | Etter brukertest av F3: chatten skiller spørsmål fra endringer. Et spørsmål får et svar i chatten uten ny versjon. Historikken kommer fra nytt endepunkt `GET /api/applications/{id}/messages` i stedet for versjonslisten (§5.5, §7). Mock-revisoren svarer på spørsmål (§3.2). |
+| v0.11 | 2026-10-11 | F3 bygget mot mock (§5.5): editor med autosave, revisjonschat, versjoner med ord-diff og "Gjenopprett", påstander som krysses av, "Kopier" (ren tekst), `.docx` og "Merk som søkt". `/soknader` lister utkast og interessante jobber uten utkast. Kontrakt (§7): kortet har `latest_draft_id`/`latest_draft_at`; autosave oppdaterer en fersk brukerversjon (< 10 min) i stedet for å lage en ny; `base_draft_id` og `draft_id` velger versjonen det bygges på; 409 `draft_exists` og `no_draft`. |
 | v0.10 | 2026-10-11 | Kostnadstaket gjelder bare betalte kall, og kortet sier det. Saldodelen viser totalt forbruk hos OpenRouter (`used_usd`, også kall utenfor appen). |
 | v0.9 | 2026-10-11 | F2b bygget: LLM-forbruk-kortet ligger under Kildestatus (PC: høyre kolonne, mobil: "Mer") og åpner detaljen i sidepanel ≥ 1024 px, ellers handlingsark. Varselet sier "Nærmer seg kostnadstaket" (terskelen kan endres). Mock-tilstand for saldoen velges med `?mock_llm=` (§3.2). `GET /api/llm/usage` er ekte (§7.1). |
 | v0.8 | 2026-10-11 | Ny bølge F2b: kortet Kostnad på Oversikt blir LLM-forbruk, med tokens og kostnad per backend denne måneden, OpenRouter-saldo og tokens per dag (§5.1). Nytt endepunkt `GET /api/llm/usage` (§7). Bygges sammen med backend-bølge 2b (ARCHITECTURE §17). |
@@ -95,7 +97,7 @@
 | Test på mobil under utvikling | `npm run dev:mock -- --host` (eller `npm run dev -- --host`), åpne `http://<PC-ens Tailscale-IP>:5173` | Mock eller ekte API |
 | Drift | `jobsearcher serve` (container) | Ekte API, `web/dist` |
 
-Fixtures ligger i `web/src/mocks/fixtures/*.ts` og er **oppdiktede** (bedrifter, personer, domener `*.example`). Ekte data går aldri inn i `web/`. Datoene regnes relativt til dagen mock-appen åpnes, så frister og "nye siden sist" alltid er aktuelle. `web/src/mocks/db.ts` bygger en minnedatabase fra dem ved hver sidelasting (endringer som triage forsvinner ved omlasting); `handlers.ts` svarer på kontrakten, og ruter som ikke er mocket ennå gir `501`. UI-et viser et `MOCK`-merke i mock-modus. "Kjør nå" i mock tar 6 s og finner ingen nye jobber; den oppdaterer bare kildestatus. LLM-forbruket har seks mock-tilstander som velges med `?mock_llm=<tilstand>` i URL-en appen lastes med: `account` (standard), `key_limit`, `unknown`, `unset`, `low`, `warn`. I Vitest: `createMockDb(now, { llmState })`.
+Fixtures ligger i `web/src/mocks/fixtures/*.ts` og er **oppdiktede** (bedrifter, personer, domener `*.example`). Ekte data går aldri inn i `web/`. Datoene regnes relativt til dagen mock-appen åpnes, så frister og "nye siden sist" alltid er aktuelle. `web/src/mocks/db.ts` bygger en minnedatabase fra dem ved hver sidelasting (endringer som triage forsvinner ved omlasting); `handlers.ts` svarer på kontrakten, og ruter som ikke er mocket ennå gir `501`. UI-et viser et `MOCK`-merke i mock-modus. "Kjør nå" i mock tar 6 s og finner ingen nye jobber; den oppdaterer bare kildestatus. LLM-forbruket har seks mock-tilstander som velges med `?mock_llm=<tilstand>` i URL-en appen lastes med: `account` (standard), `key_limit`, `unknown`, `unset`, `low`, `warn`. I Vitest: `createMockDb(now, { llmState })`. Søknadsutkast i mock tar 5 s og revisjon 3 s (`mocks/drafts.ts`). Mock-revisjonen kutter siste setning i lengste avsnitt når instruksjonen inneholder "kort", "stram" eller "kutt", ellers legger den til en merket setning. Et spørsmål (slutter på "?" eller starter med et spørreord som "hvorfor", "hva", "er") får et fast mock-svar uten ny versjon. `.docx` fra mock er en ekte, enkel Word-fil (`mocks/docx.ts`).
 
 ### 3.3 Bakgrunnsjobber i UI-et
 
@@ -218,7 +220,7 @@ Rekkefølge, øverst først:
 
 På mobil: egen skjerm med tilbake-knapp og en fast handlingsrad nederst (Interessant / Ikke aktuell / Søk ↗). Triage går rett videre til neste jobb i listen (samme filtre, laster flere sider ved behov); når listen er tom, tilbake til listen. Tilbake-knappen går til listen, ikke gjennom jobbene som er triagert. "Angre" åpner jobben som ble angret. Mens handlingsraden vises, ligger toasten og jobbindikatoren over den. Under 1024 px er detaljen alltid en egen skjerm; 768–1023 px uten handlingsrad.
 
-"Lag søknadsutkast" er deaktivert til F3.
+"Lag søknadsutkast" starter bakgrunnsjobben og viser "Skriver utkast …" til den er ferdig; da blir knappen "Åpne søknad", og toasten fra jobbindikatoren har "Åpne" til editoren. Jobben flyttes til Utkast (ARCHITECTURE §9.1).
 
 ### 5.4 Tracker `/tracker` (F2)
 
@@ -230,7 +232,7 @@ På mobil: egen skjerm med tilbake-knapp og en fast handlingsrad nederst (Intere
 | Redigere | Sidepanel fra høyre | Fullskjerm-ark |
 | Sortering | Aktive: tidligste dato først (neste steg, oppfølging, frist før søkt), udaterte sist. Avsluttet: nyeste først. | Samme |
 
-Panelet (`?app=<id>`, så Tilbake lukker det): bedrift, status, frist, "Åpne jobben", "Flytt til"-knapper, neste steg + dato, oppfølging, notater (lagres med "Lagre", bare endrede felt sendes) og hendelseslogg (nyeste først).
+Panelet (`?app=<id>`, så Tilbake lukker det): bedrift, status, frist, "Åpne jobben", "Åpne søknadsutkastet" (når det finnes), "Flytt til"-knapper, neste steg + dato, oppfølging, notater (lagres med "Lagre", bare endrede felt sendes) og hendelseslogg (nyeste først).
 
 Bare overgangene i kortets `allowed_next` vises; backend validerer også (ARCHITECTURE §9.1). Hver flytting gir en toast med "Angre" (5 s), som sender `status: previous_status` og gjenoppretter `follow_up_at`. Kortet flyttes med en gang (optimistisk) og rulles tilbake ved 409.
 
@@ -239,12 +241,16 @@ Jobbdetaljen lenker til panelet ("Endre status i Tracker") når jobben er forbi 
 ### 5.5 Søknadseditor `/soknader/:applicationId` (F3)
 
 PC (≥ 1024 px), tre soner:
-- **Venstre:** Markdown-tekstfelt med fane for forhåndsvisning. Autosave 2 s etter siste tastetrykk → ny versjon (`author=user`). Ordtelling.
-- **Høyre:** chat med revisjonsagenten. Instruksjon → bakgrunnsjobb → ny versjon (`author=agent`) med `change_summary`.
-- **Over teksten:** `claims_to_verify` som gule advarsler som kan krysses av.
-- **Verktøylinje:** versjonsvelger med diff mot forrige eller valgt versjon, "Kopier", "Last ned .docx", status.
+- **Venstre:** Markdown-tekstfelt med fanene "Rediger | Forhåndsvis" og ordtelling. Autosave 2 s etter siste tastetrykk → brukerversjon (`author=user`). En brukerversjon yngre enn 10 min oppdateres på plass, så en redigeringsøkt blir én versjon. Lagringsstatus ("Lagret", "Ikke lagret", "Lagrer …", "Kunne ikke lagre") står i tittellinjen. Teksten følger nyeste versjon så lenge det ikke finnes ulagrede endringer. Lukkes fanen med ulagret tekst, spør nettleseren først.
+- **Høyre:** chat med revisjonsagenten, alltid synlig (fast høyde). Historikken er de lagrede meldingene (`GET /api/applications/{id}/messages`): brukerens meldinger og agentens svar. Et svar som laget en versjon lenker til den; et svar på et spørsmål står alene, og brevet er uendret. Brukerversjoner flettes inn som "Du redigerte · versjon N". Forslagsknapper: "Gjør den kortere", "Mer formell tone", "Mer konkret om prosjektene mine". Enter sender, Shift+Enter gir ny linje. Sending lagrer først, starter en bakgrunnsjobb mot gjeldende versjon og låser tekstfeltet til agenten har svart (og en eventuell ny versjon er lastet).
+- **Over teksten:** `claims_to_verify` fra gjeldende versjon som gule advarsler som kan krysses av. Avkryssingen huskes i nettleseren (localStorage) per søknad og påstand.
+- **Verktøylinje:** bedrift, status, frist (før søkt), lenke til jobben; versjonsmeny, "Kopier" (ren tekst uten Markdown-tegn), ".docx" (lagrer først) og "Merk som søkt" (når overgangen er lovlig, med angre-toast som i Tracker).
 
-Mobil: segmentert kontroll "Utkast | Chat | Versjoner". Redigering er mulig, men skjermen er laget for lesing, kopiering og nedlasting.
+Versjoner: valgt versjon (`?versjon=<id>`) vises i stedet for tekstfeltet som ord-diff (lagt til grønt, fjernet rødt og gjennomstreket) mot forrige versjon eller mot gjeldende, med antall ord lagt til og fjernet. "Gjenopprett" lagrer den som ny brukerversjon.
+
+Mobil: segmentert kontroll "Utkast | Chat | Versjoner" (`?vis=`). Versjoner er en liste; trykk viser diffen i samme fane. Redigering er mulig, men skjermen er laget for lesing, kopiering og nedlasting. Chatfeltet ligger over bunnfanene.
+
+`/soknader`: "Utkast" (søknader med utkast, sist endret først, med status og frist) og "Interessant, uten utkast" med "Lag søknadsutkast" på hver rad.
 
 ### 5.6 Profil `/profil` (F4)
 
@@ -290,15 +296,16 @@ Alle ruter under `/api`. JSON. Datoer i ISO 8601. Feil som `{"detail": "...", "c
 | `GET /api/jobs` | Liste. Query: `type`, `status`, `min_score`, `source`, `deadline_before`, `role`, `q`, `sort`, `cursor`, `limit` | F1 |
 | `GET /api/jobs/{id}` | Detalj inkl. evaluering, kontakter, kilder, bedriftsnotat, søknad | F1 |
 | `PUT /api/jobs/{id}/status` | Triage: `{status: "interessant" \| "ikke_aktuell" \| "ny"}` (`ny` = angre). Oppretter søknadsrad ved behov, `ny` sletter den. Bare fra `ny`/`interessant`/`ikke_aktuell`; ellers 409 `invalid_transition`. | F1 |
-| `GET /api/applications` | Tracker. Query: `status`. Hvert kort har `allowed_next` og `previous_status` (ARCHITECTURE §9.1). | F2 |
+| `GET /api/applications` | Tracker. Query: `status`. Hvert kort har `allowed_next` og `previous_status` (ARCHITECTURE §9.1), og `latest_draft_id`/`latest_draft_at` (null uten utkast). | F2, F3 |
 | `PATCH /api/applications/{id}` | `status`, `next_step`, `next_step_at`, `follow_up_at`, `notes`, `comment` (lagres på statushendelsen). Bare felt som sendes endres. `status: previous_status` = angre. Ugyldig overgang → 409 `invalid_transition`. Returnerer kortet. | F2 |
 | `GET /api/applications/{id}/events` | Hendelseslogg | F2 |
-| `POST /api/jobs/{id}/draft` | Start research + skriver → `{task_id}` | F3 |
+| `POST /api/jobs/{id}/draft` | Start research + skriver → `{task_id}`. Oppretter søknaden om nødvendig og flytter Interessant → Utkast når jobben er ferdig. `result` har `application_id` og `draft_id`. 409 `draft_exists` hvis søknaden har utkast. | F3 |
 | `GET /api/applications/{id}/drafts` | Versjonsliste | F3 |
 | `GET /api/drafts/{id}` | Én versjon med innhold og `claims_to_verify` | F3 |
-| `POST /api/applications/{id}/drafts` | Lagre brukerversjon | F3 |
-| `POST /api/applications/{id}/revise` | `{instruction}` → `{task_id}` | F3 |
-| `GET /api/drafts/{id}/docx` | Last ned `.docx` | F3 |
+| `POST /api/applications/{id}/drafts` | Autosave: `{content, base_draft_id?}` → versjonen. Er nyeste versjon en brukerversjon yngre enn 10 min, oppdateres den på plass; ellers ny versjon. Brukerversjoner arver `claims_to_verify` fra `base_draft_id` (standard: nyeste). | F3 |
+| `POST /api/applications/{id}/revise` | Chatmelding `{instruction, draft_id?}` → `{task_id}`. Meldingen lagres med en gang. Jobben svarer med en agentmelding: på et spørsmål bare svar (`result.draft_id` null), ellers en ny agentversjon av `draft_id` (standard: nyeste). 409 `no_draft` uten utkast. | F3 |
+| `GET /api/applications/{id}/messages` | Chathistorikk: `role` (`user` \| `agent`), `text`, `draft_id` (versjonen svaret laget), `created_at`, eldste først | F3 |
+| `GET /api/drafts/{id}/docx` | Last ned `.docx`. Filnavnet kommer i `Content-Disposition`. | F3 |
 | `GET /api/profile/files` | Filtre + status (`profile_hash`, destillert utdatert?) | F4 |
 | `GET /api/profile/files/{path}` / `PUT` | Les / skriv én profilfil. Sti valideres mot `PROFILE_DIR`. | F4 |
 | `GET /api/profile/files/{path}/revisions` | Historikk | F4 |
@@ -341,7 +348,7 @@ Bølgene F0–F4 bygges før backend-fasene i ARCHITECTURE §17. Hver bølge er 
 | ~~F1. Daglig sløyfe~~ | Oversikt, Jobber (faner, filtre, sveip, tastatur), Jobbdetalj, bakgrunnsjobb-indikator, "Kjør nå" | ✅ bygget 2026-10-10; venter på brukertest (triage av en mock-dag < 2 min på mobil) | ✅ Koblet til ekte API i fase 2 |
 | ~~F2. Tracker~~ | Kanban (PC), gruppert liste (mobil), statusoverganger, neste steg, hendelseslogg | ✅ 2026-10-10 | ✅ Koblet til ekte API i fase 2 |
 | ~~F2b. LLM-forbruk~~ | Kortet LLM-forbruk med detaljpanel (§5.1), mock-fixtures for alle saldotilstander (konto, nøkkelgrense, ukjent, ikke satt opp, lav) | ✅ 2026-10-11 | ✅ Koblet i backend-bølge 2b |
-| **F3. Søknadseditor** | Editor, forhåndsvisning, autosave/versjoner, diff, revisjonschat, `claims_to_verify`, `.docx` | Brev kan itereres mot mock-agent | Nei. Kobles i fase 3. |
+| ~~F3. Søknadseditor~~ | Editor, forhåndsvisning, autosave/versjoner, diff, revisjonschat, `claims_to_verify`, `.docx`, `/soknader` | ✅ 2026-10-11 (mock) | Kobles i fase 3 |
 | **F4. Profil, innstillinger, logg** | Profileditor med historikk, innstillingsskjema, loggfaner | Profilen kan redigeres uten filsystemtilgang | Nei. Kobles i fase 4 (destilleren finnes fra fase 2). |
 | **F5. Drift** | FastAPI serverer `web/dist`, multi-stage Dockerfile, PWA-ikon, test på mobil via Tailscale | `docker compose up` gir hele appen på én port | Ja: fase 1 (`serve`). `serve` serverer allerede `web/dist`; Dockerfile gjenstår. |
 
@@ -353,9 +360,9 @@ Rekkefølgen er F0 → F1 → brukertest → F2 → backend-fase 1–2 → 2b/F2
 
 | Nivå | Verktøy | Dekker |
 |---|---|---|
-| Enhet | Vitest + Testing Library | Hooks (`useTask`), formattering (frist, score), statusoverganger i UI |
+| Enhet | Vitest + Testing Library | Hooks (`useTask`), formattering (frist, score), statusoverganger i UI, ord-diff, mock-agentene og `.docx`-zip |
 | Kontrakt | `tsc` mot genererte typer | At fixtures og komponenter matcher API-et |
-| Ende-til-ende | Playwright mot `dev:mock`, to viewporter (390×844, 1440×900) | Navigasjon, tema og manifest (F0); triage med sveip (mobil) og tastatur (PC), filtre, "Kjør nå" (F1); hele statusflyten fra mobil, dra og slipp med ulovlig kolonne og angre, statusmeny og sidepanel (F2); forbrukskortet → detalj, trykk på søyle, "OpenRouter ikke satt opp" (F2b); autosave (senere) |
+| Ende-til-ende | Playwright mot `dev:mock`, to viewporter (390×844, 1440×900) | Navigasjon, tema og manifest (F0); triage med sveip (mobil) og tastatur (PC), filtre, "Kjør nå" (F1); hele statusflyten fra mobil, dra og slipp med ulovlig kolonne og angre, statusmeny og sidepanel (F2); forbrukskortet → detalj, trykk på søyle, "OpenRouter ikke satt opp" (F2b); autosave, revisjon via chat, diff og gjenoppretting, påstander, kopier og `.docx`, "Lag søknadsutkast" → toast → editor (F3) |
 
 Kommandoer i `web/`: `npm test` (Vitest), `npm run typecheck`, `npm run e2e` (Playwright starter `dev:mock` selv på port 5174). Backend: `uv run pytest`.
 

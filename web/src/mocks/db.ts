@@ -1,5 +1,6 @@
 /** In-memory mock database built from the invented fixtures. Rebuilt on every page load. */
 import type { JobDetail, JobListItem, Task } from '@/api/types'
+import type { TaskSpec } from './handlers'
 import { buildApplications } from './fixtures/applications'
 import { buildJobs } from './fixtures/jobs'
 import {
@@ -29,8 +30,11 @@ export function createMockDb(now = new Date(), { llmState = 'account' }: { llmSt
     profileFiles: buildProfileFiles(c),
     settings: buildSettings(),
     tasks: [] as Task[],
-    /** How long a mock run takes: short enough to watch, long enough to cancel. */
+    taskSpecs: new Map<string, TaskSpec>(),
+    /** How long mock tasks take: short enough to watch, long enough to cancel. */
     runMs: 6000,
+    draftMs: 5000,
+    reviseMs: 3000,
     lastRunAt: c.at(0, 7, 2),
     costMonthUsd: 4.37,
     costCapUsd: 25,

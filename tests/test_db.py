@@ -62,3 +62,26 @@ def test_migration_0003_downgrade(engine):
         cfg.attributes["connection"] = conn
         command.upgrade(cfg, "head")
     assert "fallback_from" in {c["name"] for c in inspect(engine).get_columns("agent_runs")}
+
+
+def test_migration_0004_draft_messages(engine):
+    from sqlmodel import Session
+
+    from jobsearcher.db.models import Application, Draft, DraftMessage, Job
+
+    with Session(engine) as s:
+        job = Job(fingerprint="f", title="Utvikler", company="Eksempel AS", company_slug="eksempel-as")
+        s.add(job)
+        s.flush()
+        app = Application(job_id=job.id, status="utkast")
+        s.add(app)
+        s.flush()
+        draft = Draft(application_id=app.id, version=1, content="Hei", author="agent")
+        s.add(draft)
+        s.flush()
+        draft_id = draft.id
+        s.add(DraftMessage(application_id=app.id, role="agent", text="Første utkast.", draft_id=draft_id))
+        s.commit()
+        s.expunge_all()
+        msg = s.exec(select(DraftMessage)).one()
+        assert msg.draft_id == draft_id and msg.created_at.tzinfo is not None

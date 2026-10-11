@@ -4,9 +4,9 @@ import { JobsRoute } from '@/features/jobs/JobsPage'
 import { MorePage } from '@/features/more/MorePage'
 import { OverviewPage } from '@/features/overview/OverviewPage'
 import { TrackerPage } from '@/features/tracker/TrackerPage'
+import { ApplicationsPage } from '@/features/drafts/ApplicationsPage'
+import { EditorPage } from '@/features/drafts/EditorPage'
 import {
-  ApplicationsPage,
-  EditorPage,
   LogsPage,
   NotFoundPage,
   ProfilePage,

@@ -1,6 +1,6 @@
 /**
  * MSW handlers for the v0 contract (FRONTEND §7). Read endpoints are served from the
- * fixtures; mutations are added per wave (F1: triage, runs, tasks; F2: applications). Anything else under /api
+ * fixtures; mutations are added per wave (F1: triage, runs, tasks; F2: applications; F3: drafts). Anything else under /api
  * gets the contract's 501.
  */
 import { addDays, parseISO } from 'date-fns'
@@ -9,6 +9,8 @@ import type { components } from '@/api/schema'
 import type { ApplicationStatus, JobDetail, JobListItem, JobType, Task } from '@/api/types'
 import { CLOSED_STATUSES } from '@/lib/status'
 import { createMockDb, toListItem, type MockDb } from './db'
+import { markdownToDocx } from './docx'
+import { saveUserDraft, startDraft, startRevise } from './drafts'
 import type { MockCard } from './fixtures/applications'
 import { buildLlmUsage } from './fixtures/llm'
 
@@ -157,7 +159,14 @@ function previousStatus(db: MockDb, card: MockCard): ApplicationStatus | null {
 }
 
 export function toCard(db: MockDb, card: MockCard): S['ApplicationCard'] {
-  return { ...card, allowed_next: [...TRANSITIONS[card.status]], previous_status: previousStatus(db, card) }
+  const latest = db.applications.drafts.filter((d) => d.application_id === card.id).at(-1)
+  return {
+    ...card,
+    allowed_next: [...TRANSITIONS[card.status]],
+    previous_status: previousStatus(db, card),
+    latest_draft_id: latest?.id ?? null,
+    latest_draft_at: latest?.created_at ?? null,
+  }
 }
 
 const PATCH_FIELDS = ['next_step', 'next_step_at', 'follow_up_at', 'notes'] as const
@@ -203,29 +212,65 @@ function nextEventId(db: MockDb) {
 
 const isActive = (t: Task) => t.status === 'queued' || t.status === 'running'
 
+/** How a mock task progresses and what it does when it finishes. */
+export type TaskSpec = {
+  ms: number
+  steps: string[]
+  finish: (at: string) => { message: string; result: Task['result'] }
+}
+
 const RUN_STEPS = ['Henter fra Finn', 'Henter fra NAV', 'Henter fra Teamtailor', 'Sjekker karrieresider', 'Filtrerer og scorer']
+
+export function runSpec(db: MockDb): TaskSpec {
+  return {
+    ms: db.runMs,
+    steps: RUN_STEPS,
+    finish: (at) => {
+      db.lastRunAt = at
+      for (const s of db.sources) {
+        if (s.source === 'manual') continue
+        s.last_run_at = at
+        s.new = 0
+      }
+      return { message: 'Ferdig: ingen nye jobber', result: null }
+    },
+  }
+}
+
+export function startTask(db: MockDb, kind: Task['kind'], spec: TaskSpec): S['TaskRef'] {
+  const task: Task = {
+    id: `mock-${kind}-${db.tasks.length + 1}`,
+    kind,
+    status: 'queued',
+    progress: 0,
+    message: 'I kø',
+    created_at: new Date().toISOString(),
+    finished_at: null,
+    result: null,
+  }
+  db.tasks.push(task)
+  db.taskSpecs.set(task.id, spec)
+  return { task_id: task.id }
+}
 
 /** Advances a mock task from the wall clock, so polling sees progress without timers. */
 export function tick(db: MockDb, task: Task, now = Date.now()): Task {
   if (!isActive(task)) return task
-  const p = Math.min(1, (now - Date.parse(task.created_at)) / db.runMs)
+  const spec = db.taskSpecs.get(task.id)!
+  const p = Math.min(1, (now - Date.parse(task.created_at)) / spec.ms)
   if (p < 1) {
     task.status = 'running'
     task.progress = Math.round(p * 100) / 100
-    task.message = RUN_STEPS[Math.min(RUN_STEPS.length - 1, Math.floor(p * RUN_STEPS.length))]!
+    task.message = spec.steps[Math.min(spec.steps.length - 1, Math.floor(p * spec.steps.length))]!
     return task
   }
   const at = new Date(now).toISOString()
+  const { message, result } = spec.finish(at)
   task.status = 'done'
   task.progress = 1
-  task.message = 'Ferdig: ingen nye jobber'
+  task.message = message
+  task.result = result
   task.finished_at = at
-  db.lastRunAt = at
-  for (const s of db.sources) {
-    if (s.source === 'manual') continue
-    s.last_run_at = at
-    s.new = 0
-  }
   return task
 }
 
@@ -281,9 +326,47 @@ export function createHandlers(db: MockDb = createMockDb()) {
       ),
     ),
 
+    http.get('/api/applications/:id/messages', ({ params }) =>
+      json<S['DraftMessage'][]>(db.applications.messages.filter((m) => m.application_id === Number(params.id))),
+    ),
+
     http.get('/api/drafts/:id', ({ params }) => {
       const draft = db.applications.drafts.find((d) => d.id === Number(params.id))
       return draft ? json<S['Draft']>(draft) : error(404, 'not_found', 'Fant ikke utkastet.')
+    }),
+
+    http.get('/api/drafts/:id/docx', ({ params }) => {
+      const draft = db.applications.drafts.find((d) => d.id === Number(params.id))
+      if (!draft) return error(404, 'not_found', 'Fant ikke utkastet.')
+      const card = db.applications.cards.find((a) => a.id === draft.application_id)
+      const name = `Søknad ${card?.company ?? ''} v${draft.version}.docx`.replace(/\s+/g, ' ')
+      return new HttpResponse(markdownToDocx(draft.content), {
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
+        },
+      })
+    }),
+
+    http.post('/api/jobs/:id/draft', ({ params }) => {
+      const job = db.jobs.find((j) => j.id === Number(params.id))
+      if (!job) return error(404, 'not_found', 'Fant ikke jobben.')
+      const ref = startDraft(db, job)
+      return ref ? json<S['TaskRef']>(ref, { status: 202 }) : error(409, 'draft_exists', 'Søknaden har allerede et utkast.')
+    }),
+
+    http.post('/api/applications/:id/drafts', async ({ params, request }) => {
+      const id = Number(params.id)
+      if (!db.applications.cards.some((a) => a.id === id)) return error(404, 'not_found', 'Fant ikke søknaden.')
+      const draft = saveUserDraft(db, id, (await request.json()) as S['DraftCreate'])
+      return draft ? json<S['Draft']>(draft, { status: 201 }) : error(404, 'not_found', 'Fant ikke versjonen.')
+    }),
+
+    http.post('/api/applications/:id/revise', async ({ params, request }) => {
+      const id = Number(params.id)
+      if (!db.applications.cards.some((a) => a.id === id)) return error(404, 'not_found', 'Fant ikke søknaden.')
+      const ref = startRevise(db, id, (await request.json()) as S['ReviseRequest'])
+      return ref ? json<S['TaskRef']>(ref, { status: 202 }) : error(409, 'no_draft', 'Søknaden har ikke noe utkast ennå.')
     }),
 
     http.put('/api/jobs/:id/status', async ({ params, request }) => {
@@ -297,18 +380,7 @@ export function createHandlers(db: MockDb = createMockDb()) {
     http.post('/api/runs', () => {
       if (db.tasks.some((t) => t.kind === 'run' && isActive(tick(db, t))))
         return error(409, 'run_active', 'En kjøring pågår allerede.')
-      const task: Task = {
-        id: `mock-run-${db.tasks.length + 1}`,
-        kind: 'run',
-        status: 'queued',
-        progress: 0,
-        message: 'I kø',
-        created_at: new Date().toISOString(),
-        finished_at: null,
-        result: null,
-      }
-      db.tasks.push(task)
-      return json<S['TaskRef']>({ task_id: task.id }, { status: 202 })
+      return json<S['TaskRef']>(startTask(db, 'run', runSpec(db)), { status: 202 })
     }),
 
     http.get('/api/tasks', ({ request }) => {
@@ -354,7 +426,7 @@ export function createHandlers(db: MockDb = createMockDb()) {
     http.get('/api/logs/agent-runs', () => json<S['AgentRunLog']>({ items: db.agentRuns })),
     http.get('/api/logs/discarded', () => json<S['DiscardedLog']>({ items: db.discarded })),
 
-    // Contract routes not mocked yet (mutations come in F3–F4).
+    // Contract routes not mocked yet (mutations come in F4).
     http.all('/api/*', () => error(501, 'not_implemented', 'Ikke implementert i mock ennå.')),
   ]
 }

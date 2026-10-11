@@ -1,5 +1,7 @@
-import { createMockDb } from './db'
-import { patchApplication, setTriageStatus, tick, toCard } from './handlers'
+import { createMockDb, type MockDb } from './db'
+import { patchApplication, runSpec, setTriageStatus, startTask, tick, toCard } from './handlers'
+
+const startRun = (db: MockDb) => startTask(db, 'run', runSpec(db))
 
 const fresh = () => createMockDb(new Date(2026, 9, 10, 12))
 
@@ -88,17 +90,9 @@ describe('mock application PATCH (ARCHITECTURE §9.1)', () => {
 describe('mock run task', () => {
   it('progresses with the clock and finishes by updating sources', () => {
     const db = fresh()
-    const created = Date.parse('2026-10-10T10:00:00Z')
-    const task = {
-      id: 't1',
-      kind: 'run' as const,
-      status: 'queued' as const,
-      progress: 0,
-      message: null,
-      created_at: new Date(created).toISOString(),
-      finished_at: null,
-      result: null,
-    }
+    const { task_id } = startRun(db)
+    const task = db.tasks.find((t) => t.id === task_id)!
+    const created = Date.parse(task.created_at)
     expect(tick(db, task, created + db.runMs / 2)).toMatchObject({ status: 'running', progress: 0.5 })
     const done = tick(db, task, created + db.runMs)
     expect(done.status).toBe('done')

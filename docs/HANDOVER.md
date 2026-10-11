@@ -3,7 +3,7 @@
 > Keep this file short. Update it at the end of every session: status, next task, open questions, and one line in the log.
 
 **Last updated:** 2026-10-11
-**Phase:** 0, 0b, F0–F2, backend phases 1 + 2, the Finn politeness pass, wave 2b/F2b and the **switch to DeepSeek as the only model** done. Open PRs: #9 (cost-cap commit, `feat/backend-phase1-2`) and the DeepSeek switch (`feat/deepseek-primary`); the user merges. Roadmap (ARCHITECTURE §17): … → 2b/F2b → **F3 next** → 3 → F4 → 4 (ARCHITECTURE v0.16, FRONTEND v0.10).
+**Phase:** 0, 0b, F0–F2, backend phases 1 + 2, the Finn politeness pass, wave 2b/F2b, the switch to DeepSeek as the only model and **F3 (søknadseditor, mock)** done. Open PRs: #9 (cost-cap commit, `feat/backend-phase1-2`) and the DeepSeek switch (`feat/deepseek-primary`); F3 is on `feat/frontend-f3`, branched from `feat/deepseek-primary`, uncommitted. The user merges. Roadmap (ARCHITECTURE §17): … → F3 → **phase 3 next** → F4 → 4 (ARCHITECTURE v0.18, FRONTEND v0.12).
 
 ## Status
 
@@ -68,6 +68,13 @@
   - New CLI `jobsearcher rescore [--all]`. Ran `--all` live: 63/63 jobs rescored with DeepSeek ($0.07); none left on Haiku. Backup `data/backups/pre-deepseek-2026-10-11.db`.
   - Usage card copy: "OpenRouter ikke satt opp", low balance stops AI scoring.
   - Tests: pytest 235, Vitest 76, LLM e2e 6, typecheck OK.
+- **Frontend F3 (søknadseditor) done against mock** (2026-10-11), see FRONTEND v0.11 §5.5/§7, ARCHITECTURE v0.17 §9.1:
+  - `features/drafts/`: `/soknader` (drafts, last edited first + "Interessant, uten utkast" with "Lag søknadsutkast"), editor at `/soknader/:id`: Markdown field with preview and word count, autosave 2 s (`useDraftEditor`), revision chat built from the version list, version menu (PC) / Versjoner tab (mobile) with word diff (`diff.ts`, own LCS) against previous or current and "Gjenopprett", claims as tickable warnings (localStorage), Kopier (plain text), `.docx`, "Merk som søkt". Mobile: Utkast | Chat | Versjoner (`?vis=`), `?versjon=<id>` opens a diff.
+  - "Lag søknadsutkast" in the job detail is live (task → toast with "Åpne"); the tracker panel links to the draft.
+  - Contract: `ApplicationCard.latest_draft_id/latest_draft_at` (backend fills them already, test added), `DraftCreate.base_draft_id`, `ReviseRequest.draft_id`. Autosave updates a user version < 10 min old in place. Draft routes stay 501 in the backend until phase 3.
+  - Mock: generic task specs in `handlers.ts` (run/draft/revise), `mocks/drafts.ts` (writer 5 s, reviser 3 s), `mocks/docx.ts` writes a real stored-zip `.docx`.
+  - Tests: pytest 236, Vitest 86, Playwright 32 (+8 skipped), typecheck and build OK.
+  - After the user's first try (a question about a claim was pasted into the letter by the mock reviser): the chat now separates questions from edits. New table `draft_messages` (model + Alembic `0004`, route `GET /api/applications/{id}/messages` still 501), `RevisionResult.kind/reply` in ARCHITECTURE §7.2, prompt `reviser` v0.2. The mock answers questions without a new version. Tests now: pytest 237, Vitest 89, Playwright 34 (+8 skipped).
 - Live Finn check 2026-10-11 after the politeness pass: only `it_norge` ran (weekly searches not due), one gateway call, 0 new ads since the cursor, so ad-page spacing is still unobserved live.
 
 ### Waiting on the user
@@ -84,19 +91,16 @@
 - (No longer needed: Finn saved searches, Gmail label `JobSearcher/Finn`, sample `.eml` fixture. The user can delete them.)
 
 ## Next task
-1. **F3 below**, then backend phase 3 (writer/reviser on DeepSeek too, tiers `balanced`/`best` all map to it).
+1. **User test of F3** in mock mode (`npm run dev:mock -- --host`): write a letter end to end on PC and phone. Then **backend phase 3** below (writer/reviser on DeepSeek too, tiers `balanced`/`best` all map to it). The UI is ready; phase 3 only has to fill the 501 routes per FRONTEND §7 (incl. the 10-min in-place rule and `draft_exists`/`no_draft`).
 2. Collect the user's feedback on the new DeepSeek scores while they triage; check `notify_min_score: 70` against triage before the digest (phase 4). The first Finn run with new ads should show ad pages ~5–10 s apart in the log.
 3. NAV: postponed until the user has the private token. Then `uv run jobsearcher run --source nav --no-score` and tune `search.title_require_any` from `GET /api/logs/discarded`.
 
 Known small things: the API's `is_new` groups `scrape_runs` within 1 h as one run (no run id column; add one if it misbehaves). `agents.filter.rescore()` has no UI/CLI yet (F4). Phase-3 context slices are not written. `llm.fallback` is read from `settings.yaml` only (dashboard overrides don't apply). `by_backend.calls` for `claude_code` counts failed attempts too.
 
-### Next: frontend wave F3 (søknadseditor), see FRONTEND §5.5
-Editor with Markdown preview, autosave 2 s → new version (`author=user`), version picker with diff, revision chat against a mock agent (background task → new version with `change_summary`), `claims_to_verify` as checkable warnings, copy and `.docx` download. Mock: `POST /api/jobs/{id}/draft`, `POST /api/applications/{id}/drafts`, `POST /api/applications/{id}/revise`, `GET /api/drafts/{id}/docx`; "Lag søknadsutkast" in the job detail and `/soknader` list page. Creating a draft should move the application to `utkast` (ARCHITECTURE §9.1).
-
 The F1 user test (triage a mock day in < 2 min on mobile) has not been reported; the user gave F1 feedback and asked to start F2. Known small things: the main JS chunk is > 500 kB (code-split in F5); the PC filter row on Jobber wraps to three lines.
 
-### Later: backend phase 3 (søknader)
-Research, writer and reviser agents, the phase-3 context slices + `context/projects.py`, drafts API, `.docx` export. Connects F3.
+### Next: backend phase 3 (søknader)
+Research, writer and reviser agents, the phase-3 context slices + `context/projects.py`, drafts and chat API (`web/routes/drafts.py` incl. `messages`, `POST /api/jobs/{id}/draft` in `routes/jobs.py`; writer and reviser write `draft_messages`, reviser returns `kind: answer|revision`), `.docx` export with python-docx (`Content-Disposition` filename). Connects F3; the mock in `web/src/mocks/drafts.ts` shows the expected behaviour. Known F3 gaps: the editor only locks the text during a revision it started itself (after a reload mid-revision it is editable); the main JS chunk is still > 500 kB.
 
 ## Open questions and risks (details in ARCHITECTURE §19)
 1. **Finn mobile API is a ToS grey area.** Deliberate, informed decision; low-volume, private use. See spike 04.
@@ -132,3 +136,5 @@ Research, writer and reviser agents, the phase-3 context slices + `context/proje
 - 2026-10-11: Committed the Finn politeness pass; live Finn check OK (only `it_norge`, 0 new). Built wave 2b/F2b with two parallel subagents (backend, frontend) against a contract written first: OpenRouter backend, fallback with breaker, `fallback_from` (0003), `/api/llm/usage`, LLM-forbruk card; `anthropic_api` removed. Verified fallback live and compared DeepSeek with Haiku on 63 jobs (same order, +20 points). ARCHITECTURE v0.14, FRONTEND v0.9, spike 05 update, README. Opened PR to `main`.
 - 2026-10-11: User feedback on the usage card: cost cap now counts paid calls only and defaults to $10 (ARCHITECTURE v0.15 §8.3), card labels the cap and shows OpenRouter's total spend (`used_usd`, FRONTEND v0.10). Added a `web-mock` preview config.
 - 2026-10-11: Opened PR #9 for the unmerged cost-cap commit (auto-merge needs the user). Switched to DeepSeek via OpenRouter as the only model (no fallback), filter prompt v0.3 calibrated against Haiku over three runs (spike 05), added `jobsearcher rescore [--all]`, rescored all 63 live jobs. User postponed NAV. ARCHITECTURE v0.16, spike 05 update, README, AGENTS.
+- 2026-10-11: Built frontend wave F3 (søknadseditor) against mock on `feat/frontend-f3`: `/soknader`, editor with autosave, revision chat, versions with word diff/restore, claims, copy, `.docx`, "Merk som søkt"; "Lag søknadsutkast" live in the job detail. Contract: latest draft on tracker cards (backend filled), `base_draft_id`/`draft_id`, in-place autosave < 10 min. FRONTEND v0.11, ARCHITECTURE v0.17.
+- 2026-10-11: User tried F3 in mock mode and asked the chat a question, which the mock pasted into the letter (the letter text is a template, not DeepSeek). Chat now separates questions from edits: `draft_messages` table (`0004`), `GET /api/applications/{id}/messages`, `RevisionResult.kind`, reviser prompt v0.2, mock answers questions. ARCHITECTURE v0.18, FRONTEND v0.12.

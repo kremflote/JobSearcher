@@ -193,6 +193,9 @@ class ApplicationCard(Model):
     """Legal next statuses (ARCHITECTURE §9.1). The UI offers only these."""
     previous_status: ApplicationStatus | None
     """`from_status` of the latest event. PATCHing back to it undoes that event."""
+    latest_draft_id: int | None
+    """Newest draft version, null when the application has no drafts."""
+    latest_draft_at: datetime | None
 
 
 class ApplicationList(Model):
@@ -236,14 +239,38 @@ class Draft(DraftSummary):
     content: str
     """Markdown."""
     claims_to_verify: list[str]
+    """Agent versions: claims the writer could not back with the profile. User versions inherit
+    them from the version they were edited from."""
+
+
+class DraftMessage(Model):
+    """One chat message. The writer and reviser add an agent message per run: with `draft_id`
+    when it made a version, without when it only answered a question."""
+
+    id: int
+    application_id: int
+    role: Literal["user", "agent"]
+    text: str
+    draft_id: int | None
+    created_at: datetime
 
 
 class DraftCreate(Model):
+    """A user version (autosave). If the newest version is a user version created less than
+    10 minutes ago, it is updated in place instead of adding a version."""
+
     content: str
+    base_draft_id: int | None = None
+    """Version the text was edited from (for `claims_to_verify`); default the newest."""
 
 
 class ReviseRequest(Model):
+    """A chat message to the reviser. Stored as a user message right away; the task then either
+    makes a new version or only answers (task `result.draft_id` is null)."""
+
     instruction: str = Field(min_length=1)
+    draft_id: int | None = None
+    """Version to revise; default the newest."""
 
 
 # --- Overview ----------------------------------------------------------------

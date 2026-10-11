@@ -290,6 +290,13 @@ def application_cards(
         first_contact[c.job_id] = (
             c.name
         )  # descending ids: the first contact is written last
+    latest_draft: dict[int, tuple[int, datetime]] = {}
+    for d in session.exec(
+        select(m.Draft)
+        .where(col(m.Draft.application_id).in_([a.id for a in apps]))
+        .order_by(col(m.Draft.version), col(m.Draft.id))
+    ):
+        latest_draft[d.application_id] = (d.id, d.created_at)  # ascending: newest wins
     cards = []
     for app in apps:
         job = jobs[app.job_id]
@@ -310,6 +317,8 @@ def application_cards(
                 created_at=app.created_at,
                 allowed_next=allowed_next(app.status),
                 previous_status=previous_status(session, app),
+                latest_draft_id=latest_draft.get(app.id, (None,))[0],
+                latest_draft_at=latest_draft.get(app.id, (None, None))[1],
             )
         )
     return cards

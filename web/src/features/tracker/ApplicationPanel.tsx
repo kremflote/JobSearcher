@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { nb } from 'date-fns/locale'
-import { ExternalLink, Loader2 } from 'lucide-react'
+import { ExternalLink, FileText, Loader2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { ApiError } from '@/api/client'
@@ -82,6 +82,14 @@ export function ApplicationPanel({ card }: { card: ApplicationCard }) {
           >
             <ExternalLink className="size-3.5" aria-hidden /> Åpne jobben
           </Link>
+          {card.latest_draft_id && (
+            <Link
+              to={`/soknader/${card.id}`}
+              className="text-primary inline-flex w-fit items-center gap-1 text-sm underline-offset-4 hover:underline"
+            >
+              <FileText className="size-3.5" aria-hidden /> Åpne søknadsutkastet
+            </Link>
+          )}
         </div>
 
         {card.allowed_next.length > 0 && (
