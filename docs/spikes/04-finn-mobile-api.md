@@ -374,3 +374,39 @@ Verifisert mot levende API ved implementering (~6 kall):
 | Søknadslenke | Står ikke i JSON-LD. Annonsesiden har `<a class="job-apply-button" href="https://www.finn.no/job-apply/{id}/apply">Søk her</a>` (Finn-redirect til arbeidsgivers ATS). Den brukes som `application_url`. |
 | robots.txt | `www.finn.no/robots.txt` tillater `/job/ad/` for `User-agent: *` (blokkerer bl.a. GPTBot/ClaudeBot fra `/job/`, men vi bruker agent `JobSearcher`). |
 | Filter-ID-er | `education=465,464` og resten av `config/sources.yaml` finnes i ferske filter-metadata. |
+
+## Oppdatering 2026-10-10: hensyn til Finn
+
+Gjennomgang av hvor mye og hvordan vi spør Finn, etter første live-kjøring (manuell, 2026-10-10). Ingen nye kall mot Finn i denne runden; tallene er fra rå-cachen og `scrape_runs`.
+
+**Hva første kjøring sendte:**
+
+| Vert | Kall | Avstand | Identitet |
+|---|---|---|---|
+| `appsgw.finn.no` | 8 søkesider + 1 filtersjekk | 2,5 s, fast | Finn-appen |
+| `www.finn.no` | 63 annonsesider + `robots.txt` | 1,0 s (standard) | `python-httpx/0.28.1` |
+
+Søkesiden var bra (cursor, sidetak, stopp på 401/403, ingen parallelle kall). Annonsesidene var det mest bot-aktige: Python-standard-`User-Agent` og ett kall i sekundet. Risiko F4 over lovet "random jitter", som ikke var bygget.
+
+**Endret (ARCHITECTURE v0.12 §4.2 punkt 6 og 8):**
+
+| Funn | Tiltak |
+|---|---|
+| Annonsesider med `python-httpx` | Hentes som appens WebView: Android WebView-UA (`; wv`) for samme enhet, `X-Requested-With: no.finn.android`, `Accept`/`Accept-Language`/`Sec-Fetch-*`. `robots.txt` hentes med samme headere, og sjekken bruker fortsatt agentnavnet `JobSearcher`. |
+| 1 s mellom annonsesider | Tilfeldig 5–10 s, maks 40 per kjøring (resten neste kjøring). |
+| Fast 2,5 s mellom søkekall, fast starttid 07:00:00 | Tilfeldig 2–4 s; planlagt kjøring starter 0–40 min etter `daily_at`. |
+| Annonsesider fortsatte etter 403/429 | 403/429 stopper resten av annonsesidene i kjøringen (ingen automatiske nye forsøk på annonsesider). 429 på søk stopper alle søk, som 401/403. |
+| Borte annonser (404/410) prøvd i 14 dager | Jobben blir inaktiv. Andre feil prøves igjen etter 1, 3 og 7 dager, så gis den opp. |
+| `it_oslo` er en delmengde av `it_norge`; typesøkene er også delmengder | `it_oslo` fjernet (geografi avgjøres lokalt). `trainee`/`graduate`/`summer` kjøres ukentlig (`every_days: 7`). Normal dag: 1–2 søkekall i stedet for ~6. |
+| Filtersjekk hver kjøring | Cachet i `DATA_DIR/finn_filters.json` i 7 dager. |
+| "Kjør nå" flere ganger traff Finn hver gang | Finn hoppes over hvis forrige vellykkede Finn-henting var for under 3 timer siden. `jobsearcher run --force` overstyrer. |
+| Headersettet manglet `x-nmp-os-version`, `x-nmp-device`, `Ab-Test-Device-Id` (appen sender dem) | Lagt til. Enheten (`os_version: 14`, `device_model: Pixel 8`) står i `sources.yaml` og brukes også i WebView-UA-en, så de henger sammen. `Ab-Test-Device-Id` er en egen UUID i `finn_device.json`. |
+
+**Ikke verifisert (ARCHITECTURE §19 #12):**
+- Formatet på appens `User-Agent`. `HttpUserAgent.getUserAgent()` ble ikke lest før APK-en ble slettet. Dagens streng er et anslag.
+- WebView-Chrome-versjonen (`129.0.6668.100`) og enhetsbygget (`AP2A.240805.005`) er plausible verdier, ikke målt. En gammel Chrome-versjon blir et kjennetegn over tid.
+- Appversjonen `261006-ec709768` blir gammel. Ekte brukere oppdaterer automatisk.
+
+Neste gang en APK dekompileres: les `HttpUserAgent`, og oppdater `app_version`, `app_build` og `webview_chrome_version` samtidig.
+
+**robots.txt:** `www.finn.no/robots.txt` tillater `/job/ad/` for `User-agent: *`, men stenger AI-crawlere (GPTBot, ClaudeBot) ute fra `/job/`. Vi crawler ikke (bare nye annonser fra egne søk), men annonseteksten sendes til Claude for scoring. Notert som del av gråsonen i risiko F1 / ARCHITECTURE §19 #1.

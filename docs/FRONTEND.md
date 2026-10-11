@@ -1,12 +1,13 @@
 # JobSearcher: frontend-design
 
-> Status: v0.7 (2026-10-10). F0, F1 og F2 er bygget, og F1 og F2 er koblet til ekte API (backend-fase 1–2). Neste bølge: F3 (søknadseditor), bygget rett før backend-fase 3.
+> Status: v0.8 (2026-10-11). F0, F1 og F2 er bygget, og F1 og F2 er koblet til ekte API (backend-fase 1–2). Neste bølge: F2b (forbrukskort, sammen med backend-bølge 2b), så F3 (søknadseditor).
 > Dokumentet eier UI-designet: skjermer, layout, komponenter, API-kontrakt og frontend-bølger. Resten av systemet står i [ARCHITECTURE.md](ARCHITECTURE.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato | Endring |
 |---|---|---|
+| v0.8 | 2026-10-11 | Ny bølge F2b: kortet Kostnad på Oversikt blir LLM-forbruk, med tokens og kostnad per backend denne måneden, OpenRouter-saldo og tokens per dag (§5.1). Nytt endepunkt `GET /api/llm/usage` (§7). Bygges sammen med backend-bølge 2b (ARCHITECTURE §17). |
 | v0.7 | 2026-10-10 | Backend-fase 1–2: ekte API for oversikt, jobber, triage, tracker, tasks og logg (§7.1). F3 og F4 flyttes etter backend-fase 2 (ARCHITECTURE §17 v0.11). |
 | v0.6 | 2026-10-10 | F2 (tracker) bygget. Kortet i API-et har `allowed_next` og `previous_status`, så UI-et viser bare lovlige overganger uten egen kopi av tabellen (ARCHITECTURE §9.1). Statusflytt har angre-toast. Avsluttet er sammenlagt som standard. Panelet åpnes med `?app=<id>`. Oppfølginger på Oversikt lenker til Tracker. Status `ny` vises som "Ikke vurdert" og har eget merke i lister og detalj, som alle andre statuser. Merket for ny siden sist heter "Ny" og har samme form som de andre merkene. |
 | v0.5 | 2026-10-10 | F1 bygget. Etter brukertilbakemelding: triage i jobbdetaljen går rett til neste jobb, og angre-toasten dekker ikke handlingsraden. Jobber viser `Ny` som standard statusfilter. Triage er bare mellom `ny`/`interessant`/`ikke_aktuell` (ellers 409). `role` i `GET /api/jobs` er en enum. Kildestatus og kostnad på mobil ligger under "Mer". Mock-kjøring tar 6 s. |
@@ -175,12 +176,23 @@ Bølge (§8) står i parentes. Alle skjermer har tilstandene laster (skjelett), 
 | Nye siden sist | Antall per jobbtype + topp 5 etter score, lenker til Jobber (status Ikke vurdert, sortert nyeste) | Kort | Høyre kolonne |
 | Oppfølginger | Søknader med `follow_up_at` eller `next_step_at` ≤ 7 d | Kort | Venstre kolonne |
 | Kildestatus | Siste kjøring per kilde (ok/warn/fail), tidspunkt, "Kjør nå" | Under "Mer" | Høyre kolonne, kompakt |
-| Kostnad | Denne måneden mot tak, varsel ved 80 % | Under "Mer" | Høyre kolonne, kompakt |
+| LLM-forbruk (F2b) | Se under | Under "Mer" | Høyre kolonne, kompakt; klikk åpner detaljen |
+
+**LLM-forbruk** (erstatter kortet Kostnad, data fra `GET /api/llm/usage`):
+
+| Del | Innhold |
+|---|---|
+| Kompakt | Månedens kostnad mot taket med stolpe (varsel ved 80 %), OpenRouter-saldo ("$7,40 igjen av $10"), antall reservekall denne måneden |
+| Per backend | Claude-abonnement og OpenRouter hver for seg: kall, tokens inn/ut, kostnad. Claude merkes "estimat, fra abonnementet", OpenRouter "betalt". |
+| Per dag | Stablede søyler for tokens siste 30 dager, farget per backend. Trykk på en søyle viser tall for dagen. |
+| Saldo | Kilde (`account` med management-nøkkel, `key_limit` med kredittgrense på nøkkelen), tidspunkt for siste henting. Under $1: advarsel. Ingen nøkkel: "Reserve ikke satt opp". Saldo ukjent (nøkkel uten grense, ingen management-nøkkel): bare forbruket vises, med en tekst om hvordan saldoen slås på. |
+
+På PC åpner kortet detaljen i et sidepanel, på mobil i et handlingsark.
 
 ### 5.2 Jobber `/jobber` (F1)
 
 - **Faner** per jobbtype: Alle, Fast, Trainee, Graduate, Sommerjobb.
-- **Filtre:** status (Ikke vurdert / Interessant / Ikke aktuell / Alle; standard Ikke vurdert, siden listen er for triage), min. score, kilde, frist før, rolle, fritekst. På mobil i et handlingsark; på PC som en rad over listen. Filtre lagres i URL-en (`?type=trainee&min_score=60`), så de kan bokmerkes.
+- **Filtre:** status (Ikke vurdert / Interessant / Ikke aktuell / Alle; standard Ikke vurdert, siden listen er for triage), min. score, kilde, frist før, rolle, fritekst. På mobil i et handlingsark; på PC (≥ 768 px) står søkefeltet over listen, og de andre filtrene foldes ut under det med en "Filtre"-knapp (viser antall aktive filtre; åpen/lukket huskes i nettleseren). Filtre lagres i URL-en (`?type=trainee&min_score=60`), så de kan bokmerkes.
 - **Sortering:** standard frist, deretter score. Alternativ: score, nyeste.
 - **Rad:** tittel, bedrift, sted, score-merke, frist (relativ + farge), merker (`NY`, `Lagt ut på nytt`, `Bare tittel kjent`).
 - **Triage mobil:** sveip med terskel 30 % bredde, farget bakgrunn og ikon under sveipet. Angre-toast i 5 s (én toast om gangen; den gjelder siste triage).
@@ -272,6 +284,7 @@ Alle ruter under `/api`. JSON. Datoer i ISO 8601. Feil som `{"detail": "...", "c
 | Metode og sti | Bruk | Bølge |
 |---|---|---|
 | `GET /api/overview` | Frister, nye, oppfølginger, kildestatus, kostnad | F1 |
+| `GET /api/llm/usage` | LLM-forbruk denne måneden: `cap_usd`, `spent_usd`, `by_backend[]` (`backend`, `calls`, `fallback_calls`, `input_tokens`, `output_tokens`, `cost_usd`, `estimated`), `daily[]` siste 30 dager (`date`, `backend`, tokens, `cost_usd`), `openrouter` (`configured`, `balance_usd`, `total_credits_usd`, `balance_source`: `account` \| `key_limit` \| `null`, `fetched_at`). Saldoen caches 10 min i backend (ARCHITECTURE §8.1). | F2b |
 | `GET /api/jobs` | Liste. Query: `type`, `status`, `min_score`, `source`, `deadline_before`, `role`, `q`, `sort`, `cursor`, `limit` | F1 |
 | `GET /api/jobs/{id}` | Detalj inkl. evaluering, kontakter, kilder, bedriftsnotat, søknad | F1 |
 | `PUT /api/jobs/{id}/status` | Triage: `{status: "interessant" \| "ikke_aktuell" \| "ny"}` (`ny` = angre). Oppretter søknadsrad ved behov, `ny` sletter den. Bare fra `ny`/`interessant`/`ikke_aktuell`; ellers 409 `invalid_transition`. | F1 |
@@ -324,11 +337,12 @@ Bølgene F0–F4 bygges før backend-fasene i ARCHITECTURE §17. Hver bølge er 
 | ~~F0. Skjelett~~ | `web/` med Vite, TS, Tailwind, shadcn, React Router, TanStack Query, MSW. `api/schemas.py` + `export_openapi.py` + typegenerering. App-skall (sidemeny/bunnfaner), tema, PWA-manifest, fixture-sett. | ✅ 2026-10-10 (PR #4) | Nei |
 | ~~F1. Daglig sløyfe~~ | Oversikt, Jobber (faner, filtre, sveip, tastatur), Jobbdetalj, bakgrunnsjobb-indikator, "Kjør nå" | ✅ bygget 2026-10-10; venter på brukertest (triage av en mock-dag < 2 min på mobil) | ✅ Koblet til ekte API i fase 2 |
 | ~~F2. Tracker~~ | Kanban (PC), gruppert liste (mobil), statusoverganger, neste steg, hendelseslogg | ✅ 2026-10-10 | ✅ Koblet til ekte API i fase 2 |
+| **F2b. LLM-forbruk** | Kortet LLM-forbruk med detaljpanel (§5.1), mock-fixtures for alle saldotilstander (konto, nøkkelgrense, ukjent, ikke satt opp, lav) | Kortet viser tokens, kostnad og saldo på 390 px og 1440 px | Ja: kobles i backend-bølge 2b, bygges samtidig |
 | **F3. Søknadseditor** | Editor, forhåndsvisning, autosave/versjoner, diff, revisjonschat, `claims_to_verify`, `.docx` | Brev kan itereres mot mock-agent | Nei. Kobles i fase 3. |
 | **F4. Profil, innstillinger, logg** | Profileditor med historikk, innstillingsskjema, loggfaner | Profilen kan redigeres uten filsystemtilgang | Nei. Kobles i fase 4 (destilleren finnes fra fase 2). |
 | **F5. Drift** | FastAPI serverer `web/dist`, multi-stage Dockerfile, PWA-ikon, test på mobil via Tailscale | `docker compose up` gir hele appen på én port | Ja: fase 1 (`serve`). `serve` serverer allerede `web/dist`; Dockerfile gjenstår. |
 
-Rekkefølgen er F0 → F1 → brukertest → F2 → backend-fase 1–2 → F3 → fase 3 → F4 → fase 4 (ARCHITECTURE §17). Ved brukertest kjører appen i mock-modus på PC og mobil (`npm run dev:mock -- --host`, §3.2). Funn rettes i dette dokumentet og i kontrakten før neste bølge. Fixture-settet må være realistisk nok til å teste flyten: ~40 jobber over alle jobbtyper, frister, reposts, forkastede jobber og søknader i alle statuser.
+Rekkefølgen er F0 → F1 → brukertest → F2 → backend-fase 1–2 → 2b/F2b → F3 → fase 3 → F4 → fase 4 (ARCHITECTURE §17). Ved brukertest kjører appen i mock-modus på PC og mobil (`npm run dev:mock -- --host`, §3.2). Funn rettes i dette dokumentet og i kontrakten før neste bølge. Fixture-settet må være realistisk nok til å teste flyten: ~40 jobber over alle jobbtyper, frister, reposts, forkastede jobber og søknader i alle statuser.
 
 ---
 

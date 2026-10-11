@@ -147,6 +147,94 @@ def test_missing_detail_is_retried(engine, session):
     assert job.description_clean == "Teksten kom." and f.detail_calls == ["1", "1"]
 
 
+class ReportingSource(FakeSource):
+    """Like a real source: marks attempts, and `gone` ids come back inactive (404)."""
+
+    def __init__(self, *a, gone=(), skip=False, **kw):
+        super().__init__(*a, **kw)
+        self.gone = set(gone)
+        self.skip = skip
+        self.detail_message = None
+
+    def collect(self, state):
+        if self.skip:
+            return CollectResult(skipped=True, message="hoppet over")
+        return super().collect(state)
+
+    def fetch_details(self, jobs):
+        for j in jobs:
+            j.detail_attempted = True
+            if j.source_id in self.gone:
+                j.active = False
+                j.needs_detail = False
+        return super().fetch_details(jobs)
+
+
+def _age_attempt(session, days):
+    """Move the stored next-retry time back, as if `days` had passed."""
+    session.rollback()
+    session.expire_all()
+    js = session.exec(select(JobSource)).one()
+    js.detail_next_at = js.detail_next_at - timedelta(days=days)
+    session.add(js)
+    session.commit()
+
+
+def test_detail_retries_are_spaced_then_stop(engine, session):
+    f = ReportingSource("finn_api", [finn("1", "Junior utvikler")])
+    run(f)
+    f.jobs = []
+    run(f)  # not due yet
+    assert f.detail_calls == ["1"]
+    session.rollback()
+    js = session.exec(select(JobSource)).one()
+    assert js.detail_attempts == 1
+    for days, n in ((1, 2), (3, 3), (7, 4)):
+        _age_attempt(session, days)
+        run(f)
+        assert len(f.detail_calls) == n
+    session.rollback()
+    session.expire_all()
+    js = session.exec(select(JobSource)).one()
+    assert js.detail_attempts == 4 and js.detail_next_at is None
+    run(f)
+    assert len(f.detail_calls) == 4  # gives up after the last delay
+
+
+def test_unattempted_details_are_not_counted(engine, session):
+    f = FakeSource("finn_api", [finn("1", "Junior utvikler")])  # never sets detail_attempted
+    run(f)
+    session.rollback()
+    assert session.exec(select(JobSource)).one().detail_attempts == 0
+
+
+def test_gone_ad_is_deactivated(engine, session):
+    f = ReportingSource("finn_api", [finn("1", "Junior utvikler")], gone={"1"})
+    s = run(f).sources[0]
+    job = session.exec(select(Job)).one()
+    assert job.active is False
+    assert not any("mangler fortsatt tekst" in e for e in s.errors)
+    f.jobs = []
+    run(f)
+    assert f.detail_calls == ["1"]  # inactive jobs are not retried
+
+
+def test_detail_message_becomes_warning(engine):
+    f = ReportingSource("finn_api", [finn("1", "Junior utvikler")], details={"1": "<p>Tekst.</p>"})
+    f.fetch_details = lambda jobs, _orig=f.fetch_details: (setattr(f, "detail_message", "stoppet etter 429"), _orig(jobs))[1]
+    s = run(f).sources[0]
+    assert s.health == "warn" and "stoppet etter 429" in s.errors
+
+
+def test_skipped_source_stores_nothing(engine, session):
+    f = ReportingSource("finn_api", [finn("1", "Junior utvikler")], skip=True)
+    s = run(f).sources[0]
+    assert s.message == "hoppet over" and s.health == "ok" and s.skipped
+    assert session.exec(select(Job)).all() == []
+    assert session.exec(select(ScrapeRun)).all() == []
+    assert session.exec(select(SourceState)).all() == []
+
+
 def test_cancel_between_sources(engine):
     a = FakeSource("nav", [nav("a", "Utvikler")])
     b = FakeSource("finn_api", [finn("1", "Utvikler")])

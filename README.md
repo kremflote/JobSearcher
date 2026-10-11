@@ -78,7 +78,7 @@ uv run jobsearcher serve
 cd web && npm run dev
 ```
 
-Åpne http://localhost:5173. `serve` starter API-et på port 8765 og kjører innhentingen hver dag kl. 07:00 (og tar igjen en tapt kjøring ved oppstart). "Kjør nå" i dashboardet starter en kjøring med en gang. Etter `npm run build` i `web/` serverer `serve` også dashboardet selv på http://127.0.0.1:8765.
+Åpne http://localhost:5173. `serve` starter API-et på port 8765 og kjører innhentingen hver dag mellom kl. 07:00 og 07:40 (tilfeldig starttid, og tar igjen en tapt kjøring ved oppstart). "Kjør nå" i dashboardet starter en kjøring med en gang. Etter `npm run build` i `web/` serverer `serve` også dashboardet selv på http://127.0.0.1:8765.
 
 Andre kommandoer:
 
@@ -86,7 +86,7 @@ Andre kommandoer:
 uv run jobsearcher run
 ```
 
-Én kjøring fra terminalen (`--no-score` hopper over AI-scoringen, `--source finn_api` begrenser til én kilde). `uv run jobsearcher distill` destillerer profilen på nytt. Data, logger og backuper ligger i `data/`.
+Én kjøring fra terminalen (`--no-score` hopper over AI-scoringen, `--source finn_api` begrenser til én kilde). Finn hoppes over hvis den ble hentet for under 3 timer siden, også fra "Kjør nå"; `--force` overstyrer pausen og kjører de ukentlige Finn-søkene med en gang. Bruk det sjelden. `uv run jobsearcher distill` destillerer profilen på nytt. Data, logger og backuper ligger i `data/`.
 
 **Prøv dashboardet med oppdiktede data** (ingen backend nødvendig):
 

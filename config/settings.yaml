@@ -106,6 +106,9 @@ thresholds:
 schedule:
   daily_at: "07:00"
   timezone: Europe/Oslo
+  # Kjøringen starter et tilfeldig antall minutter (0 til dette) etter daily_at, så kildene
+  # ikke ser samme starttidspunkt hver dag (§4.2, §11). 0 = nøyaktig daily_at.
+  jitter_minutes: 40
 
 llm:
   # claude_code (abonnement via `claude -p`) | anthropic_api | mock (§8.1)

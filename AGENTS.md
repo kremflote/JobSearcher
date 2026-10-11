@@ -10,7 +10,7 @@ JobSearcher: a local, AI-assisted job search tool for one user (a newly graduate
 - Drafts cover letters (.docx)
 - Tracks applications and deadlines
 
-Python 3.12, SQLite, Claude via `claude -p` (subscription) or the Anthropic API.
+Python 3.12, SQLite, Claude via `claude -p` (subscription). Fallback: DeepSeek V4.1 Flash via OpenRouter, replacing the Anthropic API backend in wave 2b (ARCHITECTURE §8, spike 05).
 
 ## Read order (keep context small)
 1. `docs/HANDOVER.md`: current status, next task, open questions. **Always.**

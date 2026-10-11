@@ -19,7 +19,7 @@ def test_settings_load():
     assert s.search.geography["permanent"] == "nittedal"
     assert s.search.unspecified_seniority_max_score == 65
     assert "oslo_omegn" in load_locations().modes
-    assert "it_oslo" in load_sources()["finn_api"]["searches"]
+    assert "it_norge" in load_sources()["finn_api"]["searches"]
 
 
 def test_datetimes_roundtrip_aware(session):

@@ -27,8 +27,10 @@ def _build(name: str, http: HttpClient, config: dict) -> JobSource | None:
     return None
 
 
-def build_sources(http: HttpClient, names: list[str] | None = None) -> list[JobSource]:
-    """Enabled sources, or exactly `names` when given (an explicit name runs even if disabled)."""
+def build_sources(http: HttpClient, names: list[str] | None = None, *, force: bool = False) -> list[JobSource]:
+    """Enabled sources, or exactly `names` when given (an explicit name runs even if disabled).
+
+    `force` is passed to each source's config: it skips cooldowns and weekly schedules (§4.2)."""
     config = load_sources()
     wanted = list(names) if names else [n for n in SOURCE_ORDER if (config.get(n) or {}).get("enabled")]
     unknown = [n for n in wanted if n not in SOURCE_ORDER]
@@ -39,7 +41,10 @@ def build_sources(http: HttpClient, names: list[str] | None = None) -> list[JobS
         if name not in wanted:
             continue
         try:
-            source = _build(name, http, config.get(name) or {})
+            source_config = dict(config.get(name) or {})
+            if force:
+                source_config["force"] = True
+            source = _build(name, http, source_config)
         except ImportError as e:
             log.warning("source not available", extra={"data": {"source": name, "error": str(e)}})
             continue

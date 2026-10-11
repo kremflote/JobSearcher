@@ -54,8 +54,11 @@ class RawJob(BaseModel):
     """True when the source filtered experience/education server side (Finn API)."""
     needs_detail: bool = False
     """True when the ad text must be fetched with `fetch_details` after the hard filter."""
+    detail_attempted: bool = False
+    """Set by `fetch_details` when it requested the ad page (success or not). Jobs it skipped
+    (per-run cap, source backed off) keep False and are not counted as a failed attempt."""
     active: bool = True
-    """False when the source says the ad is withdrawn/expired (NAV INACTIVE)."""
+    """False when the source says the ad is withdrawn/expired (NAV INACTIVE, Finn ad page 404/410)."""
     raw_path: str | None = None
     """Path of the raw response in DATA_DIR/cache, relative to DATA_DIR."""
     meta: dict[str, Any] = Field(default_factory=dict)
@@ -66,6 +69,8 @@ class RawJob(BaseModel):
 class CursorState:
     cursor: str | None = None
     etag: str | None = None
+    last_success_at: datetime | None = None
+    """When this key was last stored after a successful run (read-only for sources)."""
 
 
 class CollectResult(BaseModel):
@@ -77,6 +82,8 @@ class CollectResult(BaseModel):
     health: Health = "ok"
     message: str | None = None
     """Short status for the dashboard, e.g. "NAV-feeden svarte 401: token utløpt?"."""
+    skipped: bool = False
+    """The source chose not to run (e.g. Finn cooldown). Nothing is stored or fetched."""
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -93,6 +100,7 @@ class JobSource(Protocol):
 
         Called by the pipeline only for new jobs that passed the hard filter. Failures
         leave `description_html = None`; the job is stored with ad_text_status=missing and
-        retried next run.
+        retried later (§4.2). A source may set `detail_attempted`, `active = False` (ad gone)
+        and a `detail_message` attribute on itself (e.g. "backed off after 429").
         """
         ...

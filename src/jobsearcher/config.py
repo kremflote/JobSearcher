@@ -104,6 +104,7 @@ class Thresholds(BaseModel):
 class ScheduleSettings(BaseModel):
     daily_at: str
     timezone: str
+    jitter_minutes: float = 0
 
 
 class LlmSettings(BaseModel):
