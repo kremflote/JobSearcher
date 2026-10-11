@@ -197,8 +197,8 @@ function JobsPage({ selectedId, wide }: { selectedId: number | null; wide: boole
     >
       {wide ? (
         <div className="grid h-[calc(100dvh-3rem)] grid-cols-[minmax(22rem,26rem)_1fr]">
-          <div className="overflow-y-auto border-r">{listColumn}</div>
-          <div className="overflow-y-auto" data-testid="detail-pane">
+          <div className="overflow-y-auto border-r [scrollbar-gutter:stable]">{listColumn}</div>
+          <div className="overflow-y-auto [scrollbar-gutter:stable]" data-testid="detail-pane">
             {selectedId ? (
               <JobDetailView
                 key={selectedId}
