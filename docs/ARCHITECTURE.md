@@ -1,12 +1,13 @@
 # JobSearcher: design- og arkitekturdokument
 
-> Status: v0.15 (2026-10-11). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F2, backend-fase 1 og 2 og bølge 2b/F2b er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), dashboardets oversikt, jobbliste og tracker går mot ekte data, og `openrouter` tar over når `claude -p` feiler. Neste: F3.
+> Status: v0.16 (2026-10-11). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F2, backend-fase 1 og 2 og bølge 2b/F2b er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), dashboardets oversikt, jobbliste og tracker går mot ekte data, og alle LLM-kall går til DeepSeek via `openrouter`. Neste: F3.
 > Dokumentet er "source of truth" for designet. UI-designet står i [FRONTEND.md](FRONTEND.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato       | Endring                                                                                                                                                                                                                                                                           |
 | ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v0.16   | 2026-10-11 | Én modell for alle agenter: `openrouter` (DeepSeek V4.1 Flash) er standard-backend, og reserven er av som standard (§2, §8). Grunn: scorer og senere søknadsutkast skal være sammenlignbare, og DeepSeek scorer på en annen skala enn Claude (spike 05). `claude_code` finnes fortsatt og kan settes som standard eller reserve. Filter-prompten v0.3 har en strengere skala, så snittet treffer den gamle (terskler som 65 og 70 beholder betydningen). Ny CLI-kommando `jobsearcher rescore [--all]` (§5.5). |
 | v0.15   | 2026-10-11 | Kostnadstaket gjelder bare betalte kall (§2, §8.3): `claude_code`-estimatet teller ikke, siden abonnementet betaler. Taket er senket fra $25 til $10/mnd. Nås det, stopper reserven, men `claude_code` scorer videre. Saldoen fra OpenRouter har også totalt forbruk (`used_usd`), så forskjellen mot appens egne tall kan forklares. |
 | v0.14   | 2026-10-11 | Bølge 2b bygget. Presisert etter implementering (§8.1): hvilke feil som gir bytte til reserven, en bryter som sender alle kall til reserven i 30 min etter en backendfeil, egen `llm.openrouter.timeout_s`, og saldo uten `usage_monthly`. `anthropic_api` og `anthropic`-pakken er fjernet (§2, §15). Migrasjon `0003` (§9). |
 | v0.13   | 2026-10-11 | LLM-reserve: `anthropic_api` erstattes av en ny backend `openrouter` med DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash`). `claude_code` er fortsatt standard; feiler et kall på grunn av backenden (CLI mangler, innlogging, bruksgrense, tidsavbrudd), kjøres det på nytt med `openrouter` (§2, §8.1). Ny kolonne `agent_runs.fallback_from` (§9). Nytt API `GET /api/llm/usage` og et forbrukskort i dashboardet med tokens, kostnad og saldo hos OpenRouter. Bygges i bølge 2b før F3 (§17). Bakgrunn og priser: spike 05. |
@@ -68,7 +69,7 @@ Et frittstående Python-program som kjører på brukerens egen maskin (PC under 
 | Tilgang | Utvikling: `127.0.0.1`. Drift: bare via Tailscale på `jobb.mariuskristensen.no`. Ingen innlogging i appen. |
 | Database | SQLite via SQLModel, migrasjoner med Alembic |
 | E-post | Gmail SMTP for utsending av digest. Ingen IMAP. |
-| LLM | Standard: Claude via `claude_code` (abonnement via `claude -p`). Reserve: DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash`) via OpenRouter, backend `openrouter`, som tar over kall som feiler i `claude_code` (§8.1, spike 05). `anthropic_api` er fjernet (bølge 2b). |
+| LLM | Én modell for alle agenter: DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash`) via OpenRouter, backend `openrouter`, så scorer og utkast er sammenlignbare. Ingen reserve som standard; feiler et kall, prøves jobben igjen ved neste kjøring. `claude_code` (abonnement via `claude -p`) finnes og kan settes som standard eller reserve i config (§8.1, spike 05). `anthropic_api` er fjernet (bølge 2b). |
 | Finn | Mobil-API på `https://appsgw.finn.no/` med HMAC-SHA512-signering (egen implementasjon fra spike 04 §Signering, verifisert i fase 0b) for søk. Annonsetekst fra `JobPosting` JSON-LD på den offentlige annonsesiden, bare for nye jobber etter hardfilteret. Søk defineres i `config/sources.yaml`. Endepunkter er reverse-engineert fra Android-APK (v`261006-ec709768`). Se spike 04. |
 | NAV | pam-stilling-feed med privat token |
 | Trainee/graduate | NAV + Teamtailor-RSS + kuratert selskapsliste med sideovervåker |
@@ -78,7 +79,7 @@ Et frittstående Python-program som kjører på brukerens egen maskin (PC under 
 | Kildetillit | Finn-API-kall sendes med `experience`- og `education`-filtre (ingen erfaring/junior, ingen/bachelor) og regnes som forhåndsfiltrert. Andre kilder filtreres med strengmatching + LLM. |
 | Søknad | Ett vanlig søknadsbrev per stilling. Eksport til `.docx`. |
 | Tracking | Søknadsfrist er viktigst. Kontaktpersoner og nøkkelinfo lagres når de finnes. |
-| Kostnad | Tak $10/mnd for betalte kall (OpenRouter); Claude-abonnementet teller ikke. E-postvarsel ved score ≥ 70. |
+| Kostnad | Tak $10/mnd for betalte kall (OpenRouter); `claude_code` teller ikke, siden abonnementet betaler. E-postvarsel ved score ≥ 70. |
 | Reposts | Kobles til opprinnelig jobb via fingerprint og merkes "lagt ut på nytt" |
 | Profil i git | Nei. `context/profile/` er gitignored, bare malene versjoneres. I drift ligger profilen i datavolumet og redigeres i dashboardet (§6.1). |
 
@@ -249,7 +250,7 @@ Regler som bare trenger tittel, sted og kategori kjøres før detaljhenting, så
 
 Hardfilteret logger *hvorfor* noe ble forkastet (`hardfilter_log.rule`: `geography`, `job_type`, `role`, `occupation`, `title_not_it`, `seniority_title`, `experience_years`, og `llm_seniority` fra filter-agenten), slik at det kan justeres. Loggen vises i `GET /api/logs/discarded`.
 
-### 5.2 Steg 2: filter-agent (Haiku, batch)
+### 5.2 Steg 2: filter-agent (tier `fast`, batch)
 
 - **Batching:** opptil 10 annonser per kall. Felles kontekst (kort profil og preferanser) sendes én gang. Det gir lavere overhead og utnytter prompt caching.
 - **Output per annonse:** `FilterResult` (§7.2). Inneholder score, klassifisering, **sammendrag**, frist og kontakter. Sammendraget gjenbrukes senere som `job_ad_summary`, så annonsen ikke må leses på nytt.
@@ -257,7 +258,7 @@ Hardfilteret logger *hvorfor* noe ble forkastet (`hardfilter_log.rule`: `geograp
   - `experienced` skjules.
   - `unspecified` (ingen krav om erfaring, men heller ikke uttalt junior) **vises med lavere score**: maks 65, altså under e-postterskelen på 70. Disse havner i dashboardet, men utløser ikke varsel.
   - Taket på 65 settes av koden etter LLM-kallet (`search.unspecified_seniority_max_score`), slik at det gjelder uansett hva modellen svarer.
-- **Hva som scores** (`agents.filter.score_pending`): aktive jobber som ikke er forkastet og mangler en evaluering for gjeldende `content_hash`. Er den destillerte profilen utdatert, kjøres destilleren først. Når kostnadstaket (§8.3) er nådd, scores det bare med abonnementet (uten reserve); er standard-backenden selv betalt, stopper scoringen.
+- **Hva som scores** (`agents.filter.score_pending`): aktive jobber som ikke er forkastet og mangler en evaluering for gjeldende `content_hash`. Er den destillerte profilen utdatert, kjøres destilleren først. Når kostnadstaket (§8.3) er nådd, stopper scoringen med `openrouter`; jobbene scores når taket er hevet eller ny måned starter. Er `claude_code` standard, scores det videre med den (uten reserve).
 - **Koden fyller inn** fra resultatet: `job_type` hvis ukjent, `seniority`, `ad_language`, frist og søknads-URL hvis jobben mangler dem, og kontakter (`source = llm`) hvis kilden ikke hadde noen.
 - **Ugyldig output:** skjemafeil eller manglende `job_id` gir ett nytt forsøk. Deretter godtas delvise batcher, og manglende jobber telles som feilet og prøves neste kjøring. Pydantic klemmer score til 0–100, korter lister til maks antall og gjør ugyldige datoer til null.
 - Finn-jobber får full annonsetekst fra annonsesiden (§4.2), så `confidence: low` er ikke normalt for Finn-jobber. Faller API-et ut og en jobb havner inn via manuell innliming uten tekst, gjelder samme regel som før: `confidence: low` skjules ikke på grunn av lav score alene.
@@ -289,7 +290,7 @@ geography:
 ### 5.5 Ny scoring
 
 - **Automatisk:** når `content_hash` endres (annonsen er oppdatert, eller tekst er importert).
-- **Profil eller prompt endret:** dashboardet viser "N aktive jobber er scoret med gammel profil, estimert kostnad $X" og en knapp. Bare aktive jobber med status Ikke vurdert eller Interessant, publisert de siste 30 dagene, scores på nytt. Aldri automatisk, for å holde kostnaden nede. Logikken finnes i `agents.filter.rescore()`; knappen kommer med F4.
+- **Profil eller prompt endret:** dashboardet viser "N aktive jobber er scoret med gammel profil, estimert kostnad $X" og en knapp. Bare aktive jobber med status Ikke vurdert eller Interessant, publisert de siste 30 dagene, scores på nytt. Aldri automatisk, for å holde kostnaden nede. Logikken finnes i `agents.filter.rescore()`; knappen kommer med F4. Fra kommandolinjen: `jobsearcher rescore` (samme utvalg) eller `jobsearcher rescore --all` (alle aktive, scorede jobber uansett alder og status, f.eks. etter bytte av modell).
 
 ---
 
@@ -450,14 +451,14 @@ Systemprompter ligger i `context/prompts/*.md`. Hver har en `version` i frontmat
 
 ### 7.1 Oversikt
 
-| Agent | Modell | Når | Input | Output |
+| Agent | Tier (§8.2) | Når | Input | Output |
 |---|---|---|---|---|
-| Distiller | Sonnet | Profilhash endret | Hele lag 1 | `profile_short`, `profile_long`, `voice` |
-| Filter | Haiku | Hver kjøring, i batch | Kort profil + 10 annonser | `FilterResult` × 10 |
-| Researcher | Sonnet + web | Første søknad til en bedrift | Bedriftsmeta + sammendrag | `CompanyNote` |
-| Writer | Opus | "Lag søknad" | Se §6.2 | `DraftResult` |
-| Reviser | Sonnet | Hver chatmelding i editoren | Se §6.2 | `RevisionResult` |
-| Extractor | Haiku | Sideovervåker oppdaget endring | Rensket side | Liste over stillinger |
+| Distiller | `balanced` | Profilhash endret | Hele lag 1 | `profile_short`, `profile_long`, `voice` |
+| Filter | `fast` | Hver kjøring, i batch | Kort profil + 10 annonser | `FilterResult` × 10 |
+| Researcher | `balanced` + web | Første søknad til en bedrift | Bedriftsmeta + sammendrag | `CompanyNote` |
+| Writer | `best` | "Lag søknad" | Se §6.2 | `DraftResult` |
+| Reviser | `balanced` | Hver chatmelding i editoren | Se §6.2 | `RevisionResult` |
+| Extractor | `fast` | Sideovervåker oppdaget endring | Rensket side | Liste over stillinger |
 
 ### 7.2 Output-skjemaer (Pydantic, i `agents/schemas.py`)
 
@@ -542,7 +543,7 @@ class LLMBackend(Protocol):
     # AgentResponse: parsed | text, usage, cost_usd, model, duration_ms
 ```
 
-**`claude_code` (standard):** subprosess av `claude -p` (verifisert med CLI v2.1.296, spike 02 §Oppdatering):
+**`claude_code` (valgfri, standard til v0.16):** subprosess av `claude -p` (verifisert med CLI v2.1.296, spike 02 §Oppdatering):
 
 ```
 claude -p --output-format json --json-schema '<schema>' --model <haiku|sonnet|opus>
@@ -556,15 +557,15 @@ claude -p --output-format json --json-schema '<schema>' --model <haiku|sonnet|op
 - Kostnad fra `total_cost_usd`. Målt: filter-batch med 3 annonser (Haiku) ~$0.0025, destillering (Sonnet) ~$0.12.
 - **I container:** Claude Code CLI installeres i imaget (linux-arm64). Innlogging på abonnementet gjøres én gang med `claude setup-token`, og tokenet legges i `.env` som `CLAUDE_CODE_OAUTH_TOKEN`. Verifiseres når fase 4b starter.
 
-**`openrouter` (reserve, spike 05):** OpenRouters OpenAI-kompatible API (`https://openrouter.ai/api/v1/chat/completions`) med `httpx`, nøkkel i `OPENROUTER_API_KEY`. Modell `deepseek/deepseek-v4.1-flash` for alle tiers. Erstatter `anthropic_api` (fjernet i bølge 2b).
+**`openrouter` (standard, spike 05):** OpenRouters OpenAI-kompatible API (`https://openrouter.ai/api/v1/chat/completions`) med `httpx`, nøkkel i `OPENROUTER_API_KEY`. Modell `deepseek/deepseek-v4.1-flash` for alle tiers. Erstatter `anthropic_api` (fjernet i bølge 2b).
 - Strukturert output med `response_format: {type: json_schema, json_schema: {strict: true, schema}}`. Svaret valideres mot Pydantic-skjemaet, og ugyldig JSON gir ett nytt forsøk.
 - `provider: {require_parameters: true, data_collection: "deny"}`: bare leverandører som støtter skjemaet og ikke lagrer eller trener på data.
 - `effort` sendes som `reasoning.effort` (`xhigh`/`max` blir `high`). `max_budget_usd` har ingen motpart hos OpenRouter. Tidsavbrudd: `llm.openrouter.timeout_s` (300 s). Research-agenten bruker OpenRouters websøk (`plugins: [{id: web}]`), de andre ingen verktøy.
 - Kostnad fra `usage.cost` i svaret (ekte penger, i motsetning til `claude_code`-estimatet). Systemprompt og profilkontekst først i meldingen, så leverandørenes automatiske prompt-cache treffer.
 
-**Reserve-regel (`llm.fallback`, standard `openrouter`):** `get_backend()` i `llm/base.py` pakker standard-backenden i `FallbackBackend` når `llm.fallback` er satt til en annen backend, standarden ikke er `mock` og `OPENROUTER_API_KEY` finnes. Ellers er reserven av. `llm.fallback` leses fra `settings.yaml`, ikke fra dashboardets overstyringer.
+**Reserve-regel (`llm.fallback`, standard `none`):** av som standard, fordi en annen modell gir scorer på en annen skala (spike 05). Uten reserve blir et kall som feiler stående som feil, og jobbene scores ved neste kjøring. `get_backend()` i `llm/base.py` pakker standard-backenden i `FallbackBackend` når `llm.fallback` er satt til en annen backend og standarden ikke er `mock`; en `openrouter`-reserve krever i tillegg `OPENROUTER_API_KEY`. Reglene under gjelder når reserven er slått på. `llm.fallback` leses fra `settings.yaml`, ikke fra dashboardets overstyringer.
 
-| Feil i `claude_code` | Bytter til reserven? |
+| Feil i `claude_code` (som standard) | Bytter til reserven? |
 |---|---|
 | CLI ikke funnet, prosessen starter ikke, tidsavbrudd, output som ikke er JSON, `is_error` med annen subtype enn under (innlogging utløpt, bruksgrense, API-feil, `error_during_execution`) | Ja (`LLMBackendError`) |
 | `error_max_budget_usd`, `error_max_structured_output_retries`, `error_max_turns`, ingen strukturert output | Nei |
@@ -572,9 +573,8 @@ claude -p --output-format json --json-schema '<schema>' --model <haiku|sonnet|op
 | Kostnadstaket | Nei: sjekkes før kallet |
 
 - **Bryter:** etter en backendfeil går alle kall rett til reserven i 30 minutter (i prosessen), så en batch med filter-kall ikke venter ut tidsavbruddet ett kall om gangen. Etterpå prøves standarden igjen.
-- **Logging:** det feilede forsøket blir en `error`-rad i `agent_runs` med `backend = claude_code` (0 tokens). Svaret fra reserven får `backend = openrouter` og `fallback_from = claude_code`. Mens bryteren er åpen skrives bare reserveraden. Feiler reserven også, blir det to feilrader.
+- **Logging:** det feilede forsøket blir en `error`-rad i `agent_runs` med standard-backenden (0 tokens). Svaret fra reserven får reservens `backend` og `fallback_from` satt til standarden. Mens bryteren er åpen skrives bare reserveraden. Feiler reserven også, blir det to feilrader.
 - HTTP-feil fra OpenRouter (401, 402 for lite kreditt, 429, 5xx), tidsavbrudd og manglende nøkkel er backendfeil. Ugyldig JSON to ganger er en modellfeil.
-- På Pi-en kan `llm.backend: openrouter` settes direkte hvis `claude -p` ikke virker i containeren (§19 #8).
 
 **Saldo:** `llm/openrouter.py` leser saldoen til forbrukskortet (FRONTEND §5.1). Med `OPENROUTER_MANAGEMENT_KEY` (valgfri) brukes `GET /api/v1/credits` (`total_credits` − `total_usage` = kontosaldo). Uten den brukes `GET /api/v1/key` med vanlig nøkkel: `limit_remaining` gir det som er igjen hvis nøkkelen har en kredittgrense; uten grense er saldoen ukjent. Totalt forbruk (`used_usd`) kommer fra `total_usage` (konto) eller `usage` (nøkkel) og tar med kall utenfor appen. Svaret caches i 10 minutter, også når hentingen feiler (da er saldoen ukjent). Tidsavbrudd 5 s.
 
@@ -582,21 +582,21 @@ claude -p --output-format json --json-schema '<schema>' --model <haiku|sonnet|op
 
 ### 8.2 Modeller (`model_tier`)
 
-| Tier | `claude_code` (standard) | `openrouter` (reserve) |
+| Tier | `openrouter` (standard) | `claude_code` (valgfri) |
 |---|---|---|
-| `fast` | `haiku` | `deepseek/deepseek-v4.1-flash` |
-| `balanced` | `sonnet` | `deepseek/deepseek-v4.1-flash` |
-| `best` | `opus` | `deepseek/deepseek-v4.1-flash` |
+| `fast` | `deepseek/deepseek-v4.1-flash` | `haiku` |
+| `balanced` | `deepseek/deepseek-v4.1-flash` | `sonnet` |
+| `best` | `deepseek/deepseek-v4.1-flash` | `opus` |
 
 OpenRouter-modellen per tier settes i `config/settings.yaml` (`llm.openrouter.models`), så modellen kan byttes uten kodeendring.
 
 ### 8.3 Kostnad
 
-Med `claude_code` trekkes bruken fra abonnementet, men `total_cost_usd` logges likevel som estimat. `openrouter` koster ekte penger fra forhåndsbetalt kreditt: med DeepSeek V4.1 Flash ($0.15/$0.60 per million tokens hos DeepSeek, spike 05) under $1/mnd selv om alt skulle gå via reserven. Forbrukskortet viser de to hver for seg.
+`openrouter` koster ekte penger fra forhåndsbetalt kreditt: med DeepSeek V4.1 Flash ($0.15/$0.60 per million tokens hos DeepSeek) ca. $0.0009 per scoret jobb (spike 05), anslagsvis $1–2/mnd med søknadsutkast. Med `claude_code` trekkes bruken fra abonnementet, men `total_cost_usd` logges likevel som estimat. Forbrukskortet viser de to hver for seg.
 
 **Kostnadstak:** $10/mnd for **betalte kall** (`llm.monthly_cap_usd`; kalendermåned i Oslo-tid, sum av `agent_runs.cost_usd` for alle backender unntatt `claude_code`, `llm/costs.py`). Estimatet fra `claude_code` teller ikke, siden abonnementet betaler.
 - Ved 80 %: advarsel i dashboardet og digesten.
-- Ved 100 %: betalte kall stoppes. Filter-agenten scorer videre med `claude_code` uten reserve (`subscription_only`); er standard-backenden betalt (`llm.backend: openrouter`), stopper scoringen. Brukerinitierte kall (utkast, revisjon) krever bekreftelse i dashboardet.
+- Ved 100 %: betalte kall stoppes, og med `openrouter` som standard stopper scoringen (`subscription_only` gir ingen backend). Er `claude_code` standard, scorer filter-agenten videre med den uten reserve. Brukerinitierte kall (utkast, revisjon) krever bekreftelse i dashboardet.
 - OpenRouter-nøkkelens egen kredittgrense er en ekstra sperre utenfor appen.
 
 ---
@@ -739,7 +739,7 @@ Filnavn: `Soknad_<Bedrift>_<Stilling>.docx` i `data/exports/`.
 | Backup | Etter hver kjøring: SQLite backup-API → `data/backups/jobsearcher-YYYY-MM-DD.db`, beholder 14. På hjemmeserveren ligger datavolumet under `infra/config/jobsearcher/`, som Pi-ens daglige Restic-backup allerede dekker. Restic tar de konsistente kopiene i `backups/`, ikke den levende DB-filen. |
 | Nettverk | Utvikling: uvicorn på `127.0.0.1:8765`. Drift: uvicorn på `0.0.0.0:8765` inne i containeren, ingen publisert port på verten. Nginx Proxy Manager når `jobsearcher:8765` over `shared-network`. Cloudflare DNS `jobb.mariuskristensen.no` → Pi-ens Tailscale-IP (DNS only). |
 | Distribusjon | Multi-stage `Dockerfile` (Node bygger `web/dist`, Python-image kjører appen), bygget for `linux/arm64` og `linux/amd64`. Tjenesten `jobsearcher` legges i Pi-ens `infra`-stack, likt Matflote. Volum: `config/jobsearcher/` → `/data` (DB, profil, cache, eksporter, Claude-sandbox). `GET /api/health` brukes av Docker healthcheck og Uptime Kuma. |
-| Hemmeligheter | `.env`: `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD` (bare SMTP), `NAV_FEED_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` (drift, §8.1), `OPENROUTER_API_KEY` (reserve, §8.1), valgfri `OPENROUTER_MANAGEMENT_KEY` (bare saldo). På Pi-en ligger filen i `infra/config/jobsearcher/jobsearcher.env`. Finn-HMAC-nøkkelen (`d45ff03c-b783-44d9-b94a-bb28dbc016a6`) er bakt inn i `finn_sig.py` som konstant — den finnes åpent i APK-en og trenger ingen env-variabel, men må oppdateres hvis Finn roterer den. |
+| Hemmeligheter | `.env`: `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD` (bare SMTP), `NAV_FEED_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` (drift, §8.1), `OPENROUTER_API_KEY` (standard-backend, §8.1), valgfri `OPENROUTER_MANAGEMENT_KEY` (bare saldo). På Pi-en ligger filen i `infra/config/jobsearcher/jobsearcher.env`. Finn-HMAC-nøkkelen (`d45ff03c-b783-44d9-b94a-bb28dbc016a6`) er bakt inn i `finn_sig.py` som konstant — den finnes åpent i APK-en og trenger ingen env-variabel, men må oppdateres hvis Finn roterer den. |
 | Personvern | Kontaktpersoner fra annonser slettes 90 dager etter at jobben er inaktiv, med mindre det finnes en søknad. Rå cache slettes etter 30 dager. |
 
 ---
@@ -973,7 +973,7 @@ Finns lagrede søk og Gmail-etiketten `JobSearcher/Finn` trengs ikke lenger — 
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 1   | **Finn-API-et er en gråsone.** Finns ToS forbyr automatisert innhenting uten skriftlig samtykke. Mobil-API-et er uoffisielt for tredjepart. | Bevisst risiko. Privat, lokal, lavvolum (1 bruker, 1–4 søkekall og 10–30 annonsesider per døgn). Tiltakene i §4.2 punkt 8: realistiske app- og WebView-headere, tilfeldig avstand, tak per kjøring, stopp ved 403/429, pause mellom hentinger. `robots.txt` på `www.finn.no` tillater `/job/ad/` for vår agent, men stenger AI-crawlere (GPTBot, ClaudeBot) ute fra `/job/`; vi crawler ikke, men annonseteksten sendes til en LLM for scoring. Verktøyet publiseres ikke. Detaljer i spike 04.                                                                  |
 | 2   | **Finn-signaturen eller endepunktene brytes** (nøkkelrotasjon, format- eller endepunktsendring, deteksjon).                                 | Pin appversjon (`261006-ec709768`) fra APK-en i `User-Agent`. Oppdater `finn_sig.py` eller dekompiler ny APK ved behov. Kildehelse (§12) oppdager 401/403 raskt. Manuell innliming (`manual`-kilden) som siste fallback. |
-| 3   | Anthropic kan endre vilkår eller fakturering for `claude -p` | `openrouter` er reserve og tar over kall som feiler (§8.1). Den kan også settes som standard med én linje i config. |
+| 3   | Anthropic kan endre vilkår eller fakturering for `claude -p` | Ikke lenger aktuelt som standard: `openrouter` er standard fra v0.16 (§8.1). |
 | 4   | Strengt senioritetsfilter kan gå glipp av gode stillinger                                                                                   | Stillinger uten oppgitt senioritet vises med maks score 65. Hardfilteret følges opp via "Forkastet i dag".                                                                                                               |
 | 5   | NAV-token roterer eller utløper                                                                                                             | Privat token, og kildehelsevarsel ved 401                                                                                                                                                                                |
 | 6   | Karrieresider endrer struktur og gir støy i sideovervåkeren                                                                                 | Hash av hovedinnhold med CSS-selektor, og LLM-uttrekk bare ved endring                                                                                                                                                   |
@@ -982,5 +982,5 @@ Finns lagrede søk og Gmail-etiketten `JobSearcher/Finn` trengs ikke lenger — 
 | 9   | Profilen finnes bare i Pi-ens datavolum i drift. Restic-repoet ligger på samme disk som dataene (runbook §10).                              | `profile_revisions` gir historikk. Mulighet for eksport av profilen fra dashboardet. Følger Pi-ens plan for backup til ekstern disk.                                                                                     |
 | 11  | NAV-feeden er treg (13–60 s per side) og svarte 500/504 under første live-forsøk 2026-10-10 | 90 s tidsavbrudd, ingen raske nye forsøk, første vindu 7 dager. Cursoren står urørt ved feil, og neste daglige kjøring prøver igjen. Kildehelsen viser `fail`. |
 | 12  | Finn-identiteten er delvis gjettet: formatet på appens `User-Agent` (`HttpUserAgent.getUserAgent()`), WebView-Chrome-versjonen og enhetsbygget er ikke lest fra APK-en eller en ekte enhet, og appversjonen blir gammel over tid | Verdiene står i `sources.yaml` (`os_version`, `device_model`, `device_build`, `webview_chrome_version`, `app_version`). Neste gang en APK dekompileres (spike 04): les `HttpUserAgent` og oppdater appversjon og WebView-versjon samtidig, helst hvert par måneder. |
-| 13  | Reserven (DeepSeek via OpenRouter): annonsetekst og destillert profil går til tredjepartsleverandører, kvaliteten kan variere med leverandør og kvantisering, og promptene er skrevet for Claude | `data_collection: deny` og `require_parameters` i hvert kall (§8.1). Sammenlignet med Haiku 2026-10-11 (spike 05): samme rangering, men ~20 poeng høyere score, så absolutte terskler (`notify_min_score`) stemmer ikke for reservescorer. Reservekall er merket i `agent_runs` (`fallback_from`), så de kan scores på nytt med Claude (ikke automatisk ennå). |
+| 13  | DeepSeek via OpenRouter er eneste modell: annonsetekst og destillert profil går til tredjepartsleverandører, kvaliteten kan variere med leverandør og kvantisering, og den bruker forhåndsbetalt kreditt (tom kreditt = ingen scoring) | `data_collection: deny` og `require_parameters` i hvert kall (§8.1). Filter-prompt v0.3 er kalibrert mot Haiku-skalaen (spike 05: snitt −1,7, Spearman 0,70); terskelen 70 sjekkes mot brukerens triage. Forbrukskortet varsler under $1 saldo. `claude_code` kan settes som standard med én linje i config. |
 | 10  | Frontend og backend glir fra hverandre mens frontend bygges mot mock                                                                        | Kontrakten er Pydantic-modellene; TS-typer genereres og fixtures typesjekkes (FRONTEND §3.1)                                                                                                                             |

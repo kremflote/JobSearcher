@@ -255,3 +255,29 @@ def test_profile_change_does_not_rescore_automatically_but_rescore_does(distille
     assert summary.scored == 1
     evs = session.exec(select(Evaluation).where(Evaluation.job_id == job.id)).all()
     assert len(evs) == 2 and evs[0].profile_hash != evs[1].profile_hash
+
+
+def test_cli_rescore_all_ignores_age_and_status(distilled, session, monkeypatch):
+    from typer.testing import CliRunner
+
+    import jobsearcher.agents.filter as filter_mod
+    from jobsearcher.cli import app
+    from jobsearcher.db.models import Application
+
+    backend = MockBackend()
+    monkeypatch.setattr(filter_mod, "get_backend", lambda *a, **kw: backend)
+    old = add_job(session, 1, published_at=datetime(2020, 1, 1, tzinfo=UTC))
+    applied = add_job(session, 2)
+    fresh = add_job(session, 3)
+    score_pending(session, backend=backend)
+    session.add(Application(job_id=applied.id, status="sokt"))
+    session.commit()
+    session.delete(session.exec(select(Evaluation).where(Evaluation.job_id == fresh.id)).one())  # unscored: left to score_pending
+    session.commit()
+
+    result = CliRunner().invoke(app, ["rescore", "--all"])
+    assert result.exit_code == 0, result.output
+    session.expire_all()
+    counts = {j: len(session.exec(select(Evaluation).where(Evaluation.job_id == j)).all())
+              for j in (old.id, applied.id, fresh.id)}
+    assert counts == {old.id: 2, applied.id: 2, fresh.id: 0}

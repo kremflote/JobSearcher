@@ -127,7 +127,7 @@ function BalanceLine({ balance }: { balance: OpenRouterBalance }) {
     <div className="flex items-center justify-between gap-2" data-testid="llm-balance" data-state={state}>
       <span className="text-muted-foreground text-xs">OpenRouter-saldo</span>
       {state === 'unset' ? (
-        <span className="text-muted-foreground text-xs">Reserve ikke satt opp</span>
+        <span className="text-muted-foreground text-xs">OpenRouter ikke satt opp</span>
       ) : state === 'unknown' ? (
         <span className="text-muted-foreground text-xs">Ukjent</span>
       ) : (
@@ -297,10 +297,10 @@ function BalanceDetail({ balance }: { balance: OpenRouterBalance }) {
   if (state === 'unset')
     return (
       <div data-testid="llm-balance-detail" data-state={state}>
-        <p className="font-medium">Reserve ikke satt opp</p>
+        <p className="font-medium">OpenRouter ikke satt opp</p>
         <p className="text-muted-foreground mt-1 text-xs">
-          Uten <Code>OPENROUTER_API_KEY</Code> i <Code>.env</Code> går alle kall bare via Claude-abonnementet, og det er ingen
-          reserve når det feiler.
+          Uten <Code>OPENROUTER_API_KEY</Code> i <Code>.env</Code> scores ingen jobber, med mindre{' '}
+          <Code>llm.backend</Code> er satt til <Code>claude_code</Code>.
         </p>
       </div>
     )
@@ -326,7 +326,7 @@ function BalanceDetail({ balance }: { balance: OpenRouterBalance }) {
       {state === 'low' && (
         <p className="bg-bad-soft text-bad flex items-start gap-1.5 rounded-md px-2.5 py-2 text-xs" role="alert">
           <AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden />
-          Under {usd(LOW_BALANCE_USD, { whole: true })} igjen. Fyll på kreditt hos OpenRouter, ellers stopper reserven.
+          Under {usd(LOW_BALANCE_USD, { whole: true })} igjen. Fyll på kreditt hos OpenRouter, ellers stopper AI-scoringen.
         </p>
       )}
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">

@@ -1,7 +1,7 @@
 # Spike 05: OpenRouter + DeepSeek V4.1 Flash
 
 **Dato:** 2026-10-11
-**Konklusjon:** Brukeren har valgt `deepseek/deepseek-v4.1-flash` via OpenRouter som reserve når `claude -p` feiler, i stedet for Anthropic API. Modellen er billig nok til at kostnadstaket i praksis ikke betyr noe, og har strukturert output hos de fleste leverandørene. Bygget og testet live 2026-10-11 (se Oppdatering nederst): samme rangering som Haiku, men høyere scorer. Designet står i ARCHITECTURE §8.
+**Konklusjon (oppdatert 2026-10-11):** `deepseek/deepseek-v4.1-flash` via OpenRouter er **standardmodellen for alle agenter** (se siste Oppdatering). Først ble den valgt som reserve når `claude -p` feiler, i stedet for Anthropic API. Modellen er billig nok til at kostnadstaket i praksis ikke betyr noe, og har strukturert output hos de fleste leverandørene. Bygget og testet live 2026-10-11 (se Oppdatering nederst): samme rangering som Haiku, men høyere scorer. Designet står i ARCHITECTURE §8.
 
 ## Modellen
 
@@ -58,3 +58,23 @@ Funn:
 - **Kostnad:** ca. $0.0008 per jobb, høyere enn overslaget, men fortsatt under $1/mnd selv om alt går via reserven.
 
 Konsekvens: DeepSeek er brukbar som **reserve**, fordi rekkefølgen i listen blir riktig, men absolutte scorer fra reserven er ikke sammenlignbare med Claude. Mest synlig: grensen `notify_min_score: 70` for digesten ville sluppet gjennom 16 jobber feil. Reservescorer er merket i `agent_runs` (`fallback_from`). Neste tiltak (HANDOVER): score jobber som ble scoret av reserven på nytt med Claude når `claude -p` virker igjen, og eventuelt en strengere vurderingsskala i filter-prompten hvis reserven blir brukt mye.
+
+## Oppdatering 2026-10-11: DeepSeek som eneste modell, filter-prompt v0.3
+
+Brukeren vil ha én modell for scoring og søknadsutkast, så scorene er sammenlignbare. `openrouter` er nå standard og reserven er av (ARCHITECTURE v0.16 §8). For at terskler som 65 (uspesifisert senioritet) og 70 (digest) skal beholde betydningen, fikk filter-prompten en strengere skala (v0.3): de fleste annonser under 50, trekk per svakhet, laveste bånd ved tvil, og faste tak for studentkrav (maks 30), oppstart før endt utdanning eller deltid ved siden av studiene (maks 30, brukeren begynner å jobbe sommeren 2027) og analyse/BI-roller (maks 50). Finn-annonser med eksplisitt erfaringskrav trekkes 15–25 poeng.
+
+Samme 63 jobber, mot lagret Haiku-score (prompt v0.2):
+
+| | DeepSeek v0.2 | DeepSeek v0.3 (utkast) | DeepSeek v0.3 (endelig, live) |
+|---|---|---|---|
+| Gjennomsnittlig forskjell | +19,9 | +0,5 | **−1,7** |
+| Gjennomsnittlig absolutt forskjell | 20,3 | 10,9 | 11,4 |
+| Spearman | 0,84 | 0,77 | 0,70 |
+| Score ≥ 70 (Haiku: 5) | 21 | 10 | 8 |
+| Score ≥ 50 (Haiku: 21) | – | 18 | 14 |
+| Kostnad | $0.052 | $0.061 | $0.071 |
+
+Funn:
+- Snittet treffer Haiku-skalaen. Rangkorrelasjonen falt, men de største avvikene er der DeepSeek nå følger reglene Haiku slapp gjennom: sommerinternships for studenter i sommeren 2027, når brukeren er ferdig (70 → 30, 55 → 27), og stillinger med krav om to års erfaring (55 → 30). Den motsatte retningen finnes også (et bredt graduate-program 55 → 85).
+- Ingen fasit ennå: brukeren har triagert én jobb. Terskelen 70 bør sjekkes mot triage når det finnes nok data.
+- Den live kjøringen er gjort med `jobsearcher rescore --all`. Haiku-evalueringene ligger fortsatt i `evaluations` (ny rad per scoring). Backup før kjøringen: `data/backups/pre-deepseek-2026-10-11.db`.

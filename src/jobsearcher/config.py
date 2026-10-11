@@ -119,7 +119,7 @@ class OpenRouterSettings(BaseModel):
 
 class LlmSettings(BaseModel):
     backend: str
-    fallback: str | None = "openrouter"
+    fallback: str | None = None
     monthly_cap_usd: float
     warn_ratio: float
     max_budget_usd_per_call: float

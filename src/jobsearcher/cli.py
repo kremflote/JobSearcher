@@ -66,6 +66,41 @@ def distill(force: bool = typer.Option(False, help="Distill even if the profile 
     typer.echo("Profilen er destillert." if changed else "Profilen er uendret; ingenting å gjøre.")
 
 
+@app.command()
+def rescore(
+    all_jobs: bool = typer.Option(
+        False, "--all", help="Every active, scored job, regardless of age, status or what it was scored with."
+    ),
+) -> None:
+    """Rescore jobs scored with an older profile or prompt (§5.5), or all scored jobs with --all."""
+    from sqlmodel import select
+
+    from jobsearcher.agents.filter import rescore as do_rescore
+    from jobsearcher.db.models import Evaluation, Job
+    from jobsearcher.db.session import init_db, session_scope
+    from jobsearcher.logging import setup_logging
+    from jobsearcher.pipeline.lock import RunLock, RunLockedError
+
+    setup_logging()
+    init_db()
+    try:
+        with RunLock(), session_scope() as session:
+            job_ids = None
+            if all_jobs:
+                job_ids = list(session.exec(
+                    select(Job.id).where(
+                        Job.active == True,  # noqa: E712
+                        Job.filtered_out == False,  # noqa: E712
+                        Job.id.in_(select(Evaluation.job_id)),
+                    )
+                ).all())
+            summary = do_rescore(session, job_ids)
+    except RunLockedError:
+        typer.echo("En kjøring pågår allerede (data/run.lock).", err=True)
+        raise typer.Exit(1)
+    typer.echo(summary.model_dump_json(indent=2))
+
+
 def main() -> None:
     app()
 

@@ -41,7 +41,7 @@ Se [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detaljer.
 
 ## Teknologi
 
-Python · FastAPI · React (Vite + TypeScript) · SQLite · Claude (via Claude Code-abonnement eller Anthropic API) · Docker · Tailscale · Gmail SMTP
+Python · FastAPI · React (Vite + TypeScript) · SQLite · DeepSeek via OpenRouter (Claude Code-abonnementet som valg) · Docker · Tailscale · Gmail SMTP
 
 ## Prosjektstruktur
 
@@ -66,7 +66,7 @@ uv sync
 cd web && npm install
 ```
 
-**Fyll inn `.env`** (kopier `.env.example`). `NAV_FEED_TOKEN` trengs for NAV-kilden. Claude brukes via `claude`-CLI-en på abonnementet ditt (logg inn med `claude` først). Valgfri reserve: `OPENROUTER_API_KEY` (DeepSeek via OpenRouter) tar over kall når `claude -p` feiler; uten nøkkelen er reserven av. `OPENROUTER_MANAGEMENT_KEY` (valgfri) viser kontosaldoen i forbrukskortet. `llm.backend: openrouter` i `config/settings.yaml` gjør OpenRouter til standard.
+**Fyll inn `.env`** (kopier `.env.example`). `NAV_FEED_TOKEN` trengs for NAV-kilden. `OPENROUTER_API_KEY` trengs for AI-scoring og søknadsutkast (DeepSeek via OpenRouter, forhåndsbetalt kreditt). `OPENROUTER_MANAGEMENT_KEY` (valgfri) viser kontosaldoen i forbrukskortet. `llm.backend: claude_code` i `config/settings.yaml` bruker heller `claude`-CLI-en på Claude-abonnementet (logg inn med `claude` først).
 
 **Kjør med ekte data:**
 
@@ -86,7 +86,7 @@ Andre kommandoer:
 uv run jobsearcher run
 ```
 
-Én kjøring fra terminalen (`--no-score` hopper over AI-scoringen, `--source finn_api` begrenser til én kilde). Finn hoppes over hvis den ble hentet for under 3 timer siden, også fra "Kjør nå"; `--force` overstyrer pausen og kjører de ukentlige Finn-søkene med en gang. Bruk det sjelden. `uv run jobsearcher distill` destillerer profilen på nytt. Data, logger og backuper ligger i `data/`.
+Én kjøring fra terminalen (`--no-score` hopper over AI-scoringen, `--source finn_api` begrenser til én kilde). Finn hoppes over hvis den ble hentet for under 3 timer siden, også fra "Kjør nå"; `--force` overstyrer pausen og kjører de ukentlige Finn-søkene med en gang. Bruk det sjelden. `uv run jobsearcher distill` destillerer profilen på nytt. `uv run jobsearcher rescore` scorer jobber på nytt etter endret profil eller prompt; `--all` tar alle scorede jobber, f.eks. etter bytte av modell. Data, logger og backuper ligger i `data/`.
 
 **Prøv dashboardet med oppdiktede data** (ingen backend nødvendig):
 

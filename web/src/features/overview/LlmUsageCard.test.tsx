@@ -44,7 +44,7 @@ describe('LLM-forbruk card (FRONTEND §5.1, F2b)', () => {
   })
 
   it.each([
-    ['unset', 'Reserve ikke satt opp'],
+    ['unset', 'OpenRouter ikke satt opp'],
     ['unknown', 'Ukjent'],
     ['low', '$0,62 igjen av $10'],
   ] as const)('shows the %s balance', async (state, text) => {
@@ -93,7 +93,7 @@ describe('LLM-forbruk card (FRONTEND §5.1, F2b)', () => {
   })
 
   it.each([
-    ['unset', 'Reserve ikke satt opp', /OPENROUTER_API_KEY/],
+    ['unset', 'OpenRouter ikke satt opp', /OPENROUTER_API_KEY/],
     ['unknown', 'Saldo ukjent', /OPENROUTER_MANAGEMENT_KEY/],
     ['low', '$0,62 igjen av $10', /Under \$1 igjen/],
     ['key_limit', '$3,85 igjen av $5', /Kredittgrense på nøkkelen/],

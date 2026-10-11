@@ -3,7 +3,7 @@
 > Keep this file short. Update it at the end of every session: status, next task, open questions, and one line in the log.
 
 **Last updated:** 2026-10-11
-**Phase:** 0, 0b, F0–F2, backend phases 1 + 2, the Finn politeness pass and **wave 2b/F2b** done, all on `feat/backend-phase1-2` with a PR against `main`. Roadmap (ARCHITECTURE §17): … → 2b/F2b → **F3 next** → 3 → F4 → 4 (ARCHITECTURE v0.15, FRONTEND v0.10).
+**Phase:** 0, 0b, F0–F2, backend phases 1 + 2, the Finn politeness pass, wave 2b/F2b and the **switch to DeepSeek as the only model** done. Open PRs: #9 (cost-cap commit, `feat/backend-phase1-2`) and the DeepSeek switch (`feat/deepseek-primary`); the user merges. Roadmap (ARCHITECTURE §17): … → 2b/F2b → **F3 next** → 3 → F4 → 4 (ARCHITECTURE v0.16, FRONTEND v0.10).
 
 ## Status
 
@@ -62,12 +62,19 @@
   - DeepSeek vs Haiku on all 63 jobs: same ranking (Spearman 0.84 vs Haiku-with-itself 0.88) but **~20 points higher** scores; 16 jobs would cross the digest threshold 70. Usable as fallback, not as a scorer on the same scale. Cost $0.05 for 63 jobs.
   - User feedback: the cost cap now counts paid calls only ($10/mnd, was $25 including Claude's estimate); at the cap the fallback stops but `claude_code` keeps scoring. The card labels the cap and shows OpenRouter's own total (`used_usd`), which includes calls outside the app (e.g. the comparison above ran on DB copies, so it is in OpenRouter's total but not in the app's per-backend numbers).
   - Tests: pytest 232, Vitest 76, Playwright 23 (+7 skipped), typecheck and build OK.
+- **DeepSeek is the only model** (2026-10-11), see ARCHITECTURE v0.16 §2/§8, spike 05 last update:
+  - `llm.backend: openrouter`, `llm.fallback: none` (code default for `fallback` is now None). Reason: scores and later cover letters should come from one model. `claude_code` stays available via config.
+  - Filter prompt v0.3: stricter scale calibrated to the Haiku scale (mean −1.7 vs Haiku), caps for student-only jobs, start before graduation / part-time while studying (user starts working summer 2027) and analysis/BI roles.
+  - New CLI `jobsearcher rescore [--all]`. Ran `--all` live: 63/63 jobs rescored with DeepSeek ($0.07); none left on Haiku. Backup `data/backups/pre-deepseek-2026-10-11.db`.
+  - Usage card copy: "OpenRouter ikke satt opp", low balance stops AI scoring.
+  - Tests: pytest 235, Vitest 76, LLM e2e 6, typecheck OK.
 - Live Finn check 2026-10-11 after the politeness pass: only `it_norge` ran (weekly searches not due), one gateway call, 0 new ads since the cursor, so ad-page spacing is still unobserved live.
 
 ### Waiting on the user
-- [ ] NAV private token → `NAV_FEED_TOKEN` in `.env` (email in ARCHITECTURE §18). `.env` currently has NAV's **public** dev token, which rotates. NAV has not completed a live run yet: its gateway returned 500/504 on 2026-10-10 (spike 01 §Oppdatering). The daily run retries; check `GET /api/logs/runs` or Oversikt › Kildestatus.
+- [ ] (Postponed by the user 2026-10-11) NAV private token → `NAV_FEED_TOKEN` in `.env` (email in ARCHITECTURE §18). `.env` currently has NAV's **public** dev token, which rotates. NAV has not completed a live run yet: its gateway returned 500/504 on 2026-10-10 (spike 01 §Oppdatering). The daily run retries; check `GET /api/logs/runs` or Oversikt › Kildestatus.
 - [x] Wave 2b setup: OpenRouter account with $10 credit; `OPENROUTER_API_KEY` (limit $10) and `OPENROUTER_MANAGEMENT_KEY` in `.env`, both verified live 2026-10-11. Still to do at phase 4b: copy them to the Pi's `jobsearcher.env`.
-- [ ] Restart `serve` after pulling this branch: the running process (started 2026-10-11 ~09:10) runs pre-2b code. Startup applies migration `0003`. Then run `uv sync` once (removes the `anthropic` package; it failed earlier because `serve` locked `.venv`).
+- [ ] Merge PR #9 and the DeepSeek PR, then `git checkout main && git pull` and restart `serve` so it runs with `llm.backend: openrouter` (the 07:00 run otherwise uses the code the process started with). Run `uv sync` once if `anthropic` is still installed.
+- [ ] Keep OpenRouter credit topped up: it now pays for all scoring (~$0.001/job). The card warns under $1.
 - [ ] NAV now answers **401** (the public dev token expired, run 2026-10-11 07:00), so the private `NAV_FEED_TOKEN` is required.
 - [x] Geography per job type (ARCHITECTURE §5.3) confirmed: permanent = `oslo_omegn`, trainee/graduate/summer = `norge`.
 - [x] Company list in spike 03 approved as is.
@@ -77,10 +84,9 @@
 - (No longer needed: Finn saved searches, Gmail label `JobSearcher/Finn`, sample `.eml` fixture. The user can delete them.)
 
 ## Next task
-1. **First:** NAV token (above), then confirm NAV works (`uv run jobsearcher run --source nav --no-score`). First run asks 7 days back. Tune `search.title_require_any` from `GET /api/logs/discarded`.
-2. Let the user use the real dashboard for a few days and collect feedback on scores and the hard filter. The first Finn run with new ads should show ad pages ~5–10 s apart in the log.
-3. Small follow-up from 2b (do before or with F3): rescore jobs whose latest evaluation came from the fallback (`agent_runs.fallback_from` set) with Claude once `claude -p` works again, since DeepSeek scores ~20 points higher (spike 05). Optionally expose `fallback_from` in `AgentRunEntry` for the Logg screen (F4).
-4. Then F3 below, then backend phase 3.
+1. **F3 below**, then backend phase 3 (writer/reviser on DeepSeek too, tiers `balanced`/`best` all map to it).
+2. Collect the user's feedback on the new DeepSeek scores while they triage; check `notify_min_score: 70` against triage before the digest (phase 4). The first Finn run with new ads should show ad pages ~5–10 s apart in the log.
+3. NAV: postponed until the user has the private token. Then `uv run jobsearcher run --source nav --no-score` and tune `search.title_require_any` from `GET /api/logs/discarded`.
 
 Known small things: the API's `is_new` groups `scrape_runs` within 1 h as one run (no run id column; add one if it misbehaves). `agents.filter.rescore()` has no UI/CLI yet (F4). Phase-3 context slices are not written. `llm.fallback` is read from `settings.yaml` only (dashboard overrides don't apply). `by_backend.calls` for `claude_code` counts failed attempts too.
 
@@ -97,9 +103,9 @@ Research, writer and reviser agents, the phase-3 context slices + `context/proje
 2. The Finn signature or endpoints may break at any time (key rotation, format changes, detection). Pin app version (`261006-ec709768`) in User-Agent; fall back to `manual` paste if it dies. HMAC-nøkkelen må oppdateres fra en ny APK hvis Finn roterer den.
 7. Parts of the Finn identity are guesses (app User-Agent format, WebView Chrome version, device build) and the app version ages. Next APK decompile: read `HttpUserAgent` and bump `app_version`/`webview_chrome_version` together (ARCHITECTURE §19 #12).
 3. NAV's feed gateway is slow and was failing on 2026-10-10. Requests use a 90 s timeout and no quick retries; a failed run leaves the cursor and tries next day.
-4. Anthropic may change subscription billing for `claude -p`. The `openrouter` fallback (wave 2b) covers it.
+4. ~~Anthropic subscription billing for `claude -p`~~: no longer the default backend.
 5. `claude -p` inside a Docker container on the Pi (arm64, `CLAUDE_CODE_OAUTH_TOKEN`) is unverified. Check at phase 4b.
-8. The DeepSeek/OpenRouter fallback sends ad text and the distilled profile to third-party providers, and scores ~20 points higher than Haiku on the same prompt (spike 05; ARCHITECTURE §19 #13).
+8. DeepSeek/OpenRouter (now the only model) sends ad text and the distilled profile to third-party providers (`data_collection: deny`) and needs prepaid credit. Prompt v0.3 is calibrated to the old Haiku scale (spike 05; ARCHITECTURE §19 #13).
 6. In production the profile lives only in the Pi data volume, edited via the dashboard. Backup relies on the Pi's Restic (same disk as data).
 
 ## Session log
@@ -125,3 +131,4 @@ Research, writer and reviser agents, the phase-3 context slices + `context/proje
 - 2026-10-10: Jobber on PC: the filters under the search field now fold out with a "Filtre" toggle (active-filter count badge, open state in localStorage). Mobile sheet unchanged. FRONTEND §Jobber filters line.
 - 2026-10-11: Committed the Finn politeness pass; live Finn check OK (only `it_norge`, 0 new). Built wave 2b/F2b with two parallel subagents (backend, frontend) against a contract written first: OpenRouter backend, fallback with breaker, `fallback_from` (0003), `/api/llm/usage`, LLM-forbruk card; `anthropic_api` removed. Verified fallback live and compared DeepSeek with Haiku on 63 jobs (same order, +20 points). ARCHITECTURE v0.14, FRONTEND v0.9, spike 05 update, README. Opened PR to `main`.
 - 2026-10-11: User feedback on the usage card: cost cap now counts paid calls only and defaults to $10 (ARCHITECTURE v0.15 §8.3), card labels the cap and shows OpenRouter's total spend (`used_usd`, FRONTEND v0.10). Added a `web-mock` preview config.
+- 2026-10-11: Opened PR #9 for the unmerged cost-cap commit (auto-merge needs the user). Switched to DeepSeek via OpenRouter as the only model (no fallback), filter prompt v0.3 calibrated against Haiku over three runs (spike 05), added `jobsearcher rescore [--all]`, rescored all 63 live jobs. User postponed NAV. ARCHITECTURE v0.16, spike 05 update, README, AGENTS.

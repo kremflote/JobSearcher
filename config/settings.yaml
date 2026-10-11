@@ -111,15 +111,16 @@ schedule:
   jitter_minutes: 40
 
 llm:
-  # Standard-backend (§8.1): claude_code (abonnement via `claude -p`) | openrouter (betalt
-  # kreditt, DeepSeek) | mock (faste svar, for tester og utvikling)
-  backend: claude_code
-  # Reserve når standard-backenden feiler (CLI mangler, innlogging utløpt, bruksgrense,
-  # tidsavbrudd, prosessfeil). openrouter | none. Krever OPENROUTER_API_KEY i .env; uten nøkkel
-  # er reserven av. Etter en feil går kallene rett til reserven i 30 minutter.
-  fallback: openrouter
+  # Standard-backend (§8.1): openrouter (DeepSeek, betalt kreditt) | claude_code (abonnement via
+  # `claude -p`) | mock (faste svar, for tester og utvikling). Én modell for alle agenter, så
+  # scorer og utkast er sammenlignbare.
+  backend: openrouter
+  # Reserve når standard-backenden feiler: claude_code | openrouter | none. Av som standard, fordi
+  # en annen modell gir scorer på en annen skala (spike 05). Uten reserve blir jobbene uscoret
+  # og scores ved neste kjøring.
+  fallback: none
   # Kostnadstak per kalendermåned i USD for betalte kall (§8.3): alt unntatt claude_code, som
-  # abonnementet betaler. Nås taket, stopper reserven; claude_code scorer videre. Varsel ved warn_ratio.
+  # abonnementet betaler. Nås taket, stopper scoringen med openrouter. Varsel ved warn_ratio.
   monthly_cap_usd: 10
   warn_ratio: 0.8
   # Maks kostnad per enkeltkall (sendes som --max-budget-usd).

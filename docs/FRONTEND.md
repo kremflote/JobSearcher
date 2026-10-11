@@ -184,10 +184,10 @@ Bølge (§8) står i parentes. Alle skjermer har tilstandene laster (skjelett), 
 
 | Del | Innhold |
 |---|---|
-| Kompakt | Månedens betalte kostnad mot taket med stolpe (varsel ved 80 %), merket "Kostnadstak for betalte kall (Claude-abonnementet teller ikke)", OpenRouter-saldo ("$7,40 igjen av $10"), antall reservekall denne måneden |
+| Kompakt | Månedens betalte kostnad mot taket med stolpe (varsel ved 80 %), merket "Kostnadstak for betalte kall (Claude-abonnementet teller ikke)", OpenRouter-saldo ("$7,40 igjen av $10"), antall reservekall denne måneden (0 så lenge reserven er av, ARCHITECTURE §8.1) |
 | Per backend | Claude-abonnement og OpenRouter hver for seg: kall, tokens inn/ut, kostnad. Claude merkes "estimat, fra abonnementet", OpenRouter "betalt". |
 | Per dag | Stablede søyler for tokens siste 30 dager, farget per backend. Trykk på en søyle viser tall for dagen. |
-| Saldo | Kilde (`account` med management-nøkkel, `key_limit` med kredittgrense på nøkkelen), tidspunkt for siste henting, totalt brukt hos OpenRouter (også kall utenfor appen, så tallet kan være høyere enn per backend). Under $1: advarsel. Ingen nøkkel: "Reserve ikke satt opp". Saldo ukjent (nøkkel uten grense, ingen management-nøkkel): bare forbruket vises, med en tekst om hvordan saldoen slås på. |
+| Saldo | Kilde (`account` med management-nøkkel, `key_limit` med kredittgrense på nøkkelen), tidspunkt for siste henting, totalt brukt hos OpenRouter (også kall utenfor appen, så tallet kan være høyere enn per backend). Under $1: advarsel ("ellers stopper AI-scoringen"). Ingen nøkkel: "OpenRouter ikke satt opp" (da scores ingen jobber, med mindre `llm.backend` er `claude_code`). Saldo ukjent (nøkkel uten grense, ingen management-nøkkel): bare forbruket vises, med en tekst om hvordan saldoen slås på. |
 
 Kortet ligger under Kildestatus. Fra 1024 px åpner det detaljen i et sidepanel til høyre, under det i et handlingsark. Søylene er knapper; i dag er valgt fra start. Varselet ved `warn` sier "Nærmer seg kostnadstaket", siden terskelen (`llm.warn_ratio`) kan endres. `overview.cost` finnes fortsatt i API-et, men brukes ikke av UI-et.
 
@@ -355,7 +355,7 @@ Rekkefølgen er F0 → F1 → brukertest → F2 → backend-fase 1–2 → 2b/F2
 |---|---|---|
 | Enhet | Vitest + Testing Library | Hooks (`useTask`), formattering (frist, score), statusoverganger i UI |
 | Kontrakt | `tsc` mot genererte typer | At fixtures og komponenter matcher API-et |
-| Ende-til-ende | Playwright mot `dev:mock`, to viewporter (390×844, 1440×900) | Navigasjon, tema og manifest (F0); triage med sveip (mobil) og tastatur (PC), filtre, "Kjør nå" (F1); hele statusflyten fra mobil, dra og slipp med ulovlig kolonne og angre, statusmeny og sidepanel (F2); forbrukskortet → detalj, trykk på søyle, "Reserve ikke satt opp" (F2b); autosave (senere) |
+| Ende-til-ende | Playwright mot `dev:mock`, to viewporter (390×844, 1440×900) | Navigasjon, tema og manifest (F0); triage med sveip (mobil) og tastatur (PC), filtre, "Kjør nå" (F1); hele statusflyten fra mobil, dra og slipp med ulovlig kolonne og angre, statusmeny og sidepanel (F2); forbrukskortet → detalj, trykk på søyle, "OpenRouter ikke satt opp" (F2b); autosave (senere) |
 
 Kommandoer i `web/`: `npm test` (Vitest), `npm run typecheck`, `npm run e2e` (Playwright starter `dev:mock` selv på port 5174). Backend: `uv run pytest`.
 
