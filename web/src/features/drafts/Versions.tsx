@@ -6,8 +6,8 @@ import { useDraft } from '@/api/queries'
 import type { DraftSummary } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { cn } from '@/lib/utils'
 import { diffStats, diffWords } from './diff'
+import { DiffText } from './DiffText'
 import { Segmented } from './Segmented'
 
 export const fmtVersionTime = (iso: string) => {
@@ -141,24 +141,7 @@ export function VersionView({
         </p>
       )}
       {parts ? (
-        <div className="rounded-lg border p-3 text-sm leading-relaxed whitespace-pre-wrap" data-testid="diff">
-          {parts.map((p, i) =>
-            p.kind === 'same' ? (
-              <span key={i}>{p.text}</span>
-            ) : (
-              <span
-                key={i}
-                className={cn(
-                  'rounded-sm',
-                  p.kind === 'added' ? 'bg-good-soft text-good' : 'bg-bad-soft text-bad line-through',
-                )}
-                data-diff={p.kind}
-              >
-                {p.text}
-              </span>
-            ),
-          )}
-        </div>
+        <DiffText parts={parts} />
       ) : (
         <Skeleton className="h-64 w-full" />
       )}

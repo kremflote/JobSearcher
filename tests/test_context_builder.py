@@ -56,7 +56,7 @@ def test_profile_hash_changes_on_edit(profile_dir):
 def test_profile_hash_ignores_line_endings(profile_dir):
     before = loader.profile_hash()
     p = profile_dir / "cv.md"
-    p.write_bytes(p.read_bytes().replace(b"\n", b"\r\n"))
+    p.write_bytes(p.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
     assert loader.profile_hash() == before
 
 

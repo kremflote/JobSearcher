@@ -20,6 +20,7 @@ from jobsearcher.config import env
 PROFILE_SUFFIXES = {".md", ".yaml", ".yml", ".txt"}
 DERIVED_FILES = ("profile_short.md", "profile_long.md", "voice.md")
 MANIFEST = "manifest.json"
+PREVIOUS_DIR = "previous"
 DISTILLER_PROMPT = "distiller.md"
 
 
@@ -121,12 +122,23 @@ def read_derived(name: str) -> str | None:
     return path.read_text(encoding="utf-8") if path.is_file() else None
 
 
+def read_previous_derived(name: str) -> str | None:
+    """A derived file as it was before the last regeneration (for the diff in Profil)."""
+    path = env().derived_dir / PREVIOUS_DIR / name
+    return path.read_text(encoding="utf-8") if path.is_file() else None
+
+
 def write_derived(files: dict[str, str], manifest: dict[str, Any]) -> None:
-    """Write derived files, then the manifest last (so a crash leaves the set outdated)."""
+    """Write derived files, then the manifest last (so a crash leaves the set outdated).
+    The files being replaced are kept in `previous/`."""
     root = env().derived_dir
     root.mkdir(parents=True, exist_ok=True)
+    (root / PREVIOUS_DIR).mkdir(exist_ok=True)
     for name, text in files.items():
-        (root / name).write_text(text.rstrip() + "\n", encoding="utf-8")
+        path = root / name
+        if path.is_file():
+            (root / PREVIOUS_DIR / name).write_bytes(path.read_bytes())
+        path.write_text(text.rstrip() + "\n", encoding="utf-8")
     (root / MANIFEST).write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 

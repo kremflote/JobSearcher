@@ -200,16 +200,9 @@ def _record_primary_failure(agent: str, backend: str, error: str, duration_ms: i
 
 
 def _default_settings():
-    from jobsearcher.db.session import session_scope
-    from jobsearcher.llm.costs import effective_settings
+    from jobsearcher.db.repo import current_settings
 
-    try:
-        with session_scope() as s:
-            return effective_settings(s)
-    except Exception:  # DB not initialised yet: plain settings.yaml
-        from jobsearcher.config import load_settings
-
-        return load_settings()
+    return current_settings()
 
 
 def _record(run: AgentRun, session: Session | None) -> int | None:

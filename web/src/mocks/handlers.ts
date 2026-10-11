@@ -1,7 +1,7 @@
 /**
  * MSW handlers for the v0 contract (FRONTEND §7). Read endpoints are served from the
- * fixtures; mutations are added per wave (F1: triage, runs, tasks; F2: applications; F3: drafts). Anything else under /api
- * gets the contract's 501.
+ * fixtures; mutations are added per wave (F1: triage, runs, tasks; F2: applications; F3: drafts;
+ * F4: profile, settings, rescore in `system.ts`). Anything else under /api gets the contract's 501.
  */
 import { addDays, parseISO } from 'date-fns'
 import { http, HttpResponse } from 'msw'
@@ -13,6 +13,10 @@ import { markdownToDocx } from './docx'
 import { saveUserDraft, startDraft, startRevise } from './drafts'
 import type { MockCard } from './fixtures/applications'
 import { buildLlmUsage } from './fixtures/llm'
+import { checkPath, patchSettings, profileTree, readTemplate, rescoreEstimate, startMockTask, writeProfileFile } from './system'
+
+const profilePath = (request: Request) =>
+  decodeURIComponent(new URL(request.url).pathname.replace('/api/profile/files/', ''))
 
 type S = components['schemas']
 
@@ -90,6 +94,29 @@ export function buildOverview(db: MockDb): S['Overview'] {
     sources: db.sources,
     cost: { month_usd: db.costMonthUsd, cap_usd: db.costCapUsd, warn: db.costMonthUsd >= db.costCapUsd * 0.8 },
     last_run_at: db.lastRunAt,
+  }
+}
+
+/** Detail for a job the hard filter discarded ("Vis jobb" in Logg). The real API serves these too. */
+function discardedJob(db: MockDb, id: number): JobDetail | null {
+  const entry = db.discarded.find((d) => d.job_id === id)
+  const base = db.jobs[0]
+  if (!entry || !base) return null
+  return {
+    ...base,
+    id,
+    title: entry.title,
+    company: entry.company,
+    status: 'ny',
+    score: null,
+    evaluation: null,
+    application: null,
+    is_new: false,
+    reposted: false,
+    description: null,
+    ad_text_status: 'missing',
+    company_note: null,
+    contacts: [],
   }
 }
 
@@ -293,7 +320,8 @@ export function createHandlers(db: MockDb = createMockDb()) {
     }),
 
     http.get('/api/jobs/:id', ({ params }) => {
-      const job = db.jobs.find((j) => j.id === Number(params.id))
+      const id = Number(params.id)
+      const job = db.jobs.find((j) => j.id === id) ?? discardedJob(db, id)
       return job ? json<S['JobDetail']>(job) : error(404, 'not_found', 'Fant ikke jobben.')
     }),
 
@@ -415,28 +443,55 @@ export function createHandlers(db: MockDb = createMockDb()) {
       return json<S['Task']>(task)
     }),
 
-    http.get('/api/profile/files', () =>
-      json<S['ProfileTree']>({
-        files: db.profileFiles.map(({ path, content, updated_at }) => ({ path, size: content.length, updated_at })),
-        profile_hash: 'mockhash',
-        derived_outdated: true,
-      }),
-    ),
+    http.get('/api/profile/files', () => json<S['ProfileTree']>(profileTree(db))),
 
     http.get('/api/profile/files/*', ({ request }) => {
-      const path = decodeURIComponent(new URL(request.url).pathname.replace('/api/profile/files/', ''))
-      if (path.endsWith('/revisions')) return json<S['ProfileRevision'][]>([])
-      const file = db.profileFiles.find((f) => f.path === path)
+      const path = profilePath(request)
+      if (path.endsWith('/revisions')) {
+        const file = path.slice(0, -'/revisions'.length)
+        const bad = checkPath(file)
+        return bad ? error(bad.status, bad.code, bad.detail) : json<S['ProfileRevision'][]>(db.profileRevisions.get(file) ?? [])
+      }
+      const bad = checkPath(path, { template: true })
+      if (bad) return error(bad.status, bad.code, bad.detail)
+      const file = path.endsWith('/_template.md') ? readTemplate(db, path) : db.profileFiles.find((f) => f.path === path)
       return file ? json<S['ProfileFile']>(file) : error(404, 'not_found', 'Fant ikke filen.')
     }),
 
+    http.put('/api/profile/files/*', async ({ request }) => {
+      const result = writeProfileFile(db, profilePath(request), (await request.json()) as S['ProfileFileWrite'])
+      return 'code' in result ? error(result.status, result.code, result.detail) : json<S['ProfileFile']>(result)
+    }),
+
+    http.get('/api/profile/derived', () => json<S['DerivedProfile']>(db.derived)),
+
+    http.post('/api/profile/distill', () => {
+      if (db.tasks.some((t) => t.kind === 'distill' && isActive(tick(db, t))))
+        return error(409, 'distill_active', 'Profilen destilleres allerede.')
+      return json<S['TaskRef']>(startMockTask(db, 'distill'), { status: 202 })
+    }),
+
     http.get('/api/settings', () => json<S['Settings']>({ items: db.settings })),
+
+    http.patch('/api/settings', async ({ request }) => {
+      const { values } = (await request.json()) as S['SettingsPatch']
+      const result = patchSettings(db, values)
+      return 'code' in result ? error(result.status, result.code, result.detail) : json<S['Settings']>({ items: result })
+    }),
+
+    http.get('/api/rescore', () => json<S['RescoreEstimate']>(rescoreEstimate(db))),
+
+    http.post('/api/rescore', () => {
+      if (db.tasks.some((t) => (t.kind === 'rescore' || t.kind === 'run') && isActive(tick(db, t))))
+        return error(409, 'rescore_active', 'Det pågår allerede en scoring eller kjøring.')
+      return json<S['TaskRef']>(startMockTask(db, 'rescore'), { status: 202 })
+    }),
 
     http.get('/api/logs/runs', () => json<S['RunLog']>({ items: db.runs })),
     http.get('/api/logs/agent-runs', () => json<S['AgentRunLog']>({ items: db.agentRuns })),
     http.get('/api/logs/discarded', () => json<S['DiscardedLog']>({ items: db.discarded })),
 
-    // Contract routes not mocked yet (mutations come in F4).
+    // Anything else under /api is not part of the contract.
     http.all('/api/*', () => error(501, 'not_implemented', 'Ikke implementert i mock ennå.')),
   ]
 }

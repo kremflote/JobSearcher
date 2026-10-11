@@ -20,6 +20,10 @@ def _clear_caches() -> None:
     openrouter.clear_balance_cache()
 
 
+def _no_smtp(*_a, **_k):
+    raise AssertionError("Tests must not open SMTP connections; pass a fake smtp_factory.")
+
+
 @pytest.fixture(autouse=True)
 def data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     d = tmp_path / "data"
@@ -30,6 +34,11 @@ def data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # need a key set one explicitly and stub HTTP with a transport.
     monkeypatch.setenv("OPENROUTER_API_KEY", "")
     monkeypatch.setenv("OPENROUTER_MANAGEMENT_KEY", "")
+    # Same for Gmail: without these, the digest can never reach SMTP from a test.
+    monkeypatch.setenv("GMAIL_ADDRESS", "")
+    monkeypatch.setenv("GMAIL_APP_PASSWORD", "")
+    monkeypatch.setattr("smtplib.SMTP_SSL", _no_smtp)
+    monkeypatch.setattr("smtplib.SMTP", _no_smtp)
     _clear_caches()
     yield d
     from jobsearcher.db import session

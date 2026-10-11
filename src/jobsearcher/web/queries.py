@@ -24,7 +24,7 @@ RUN_GROUP_WINDOW = timedelta(hours=1)
 # --- Settings ------------------------------------------------------------------
 
 
-from jobsearcher.db.repo import effective_settings, settings_overrides  # noqa: E402,F401
+from jobsearcher.db.repo import effective_settings, effective_sources, settings_overrides  # noqa: E402,F401
 
 
 # --- Runs ----------------------------------------------------------------------

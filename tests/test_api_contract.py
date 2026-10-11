@@ -15,13 +15,10 @@ def test_health():
     assert r.json()["status"] == "ok"
 
 
-def test_unimplemented_routes_return_contract_error():
-    r = client.get("/api/profile/files")
-    assert r.status_code == 501
-    assert r.json() == {
-        "detail": "Endepunktet er ikke implementert ennå.",
-        "code": "not_implemented",
-    }
+def test_errors_use_contract_shape():
+    r = client.get("/api/profile/files/hemmelig.exe")
+    assert r.status_code == 400
+    assert r.json() == {"detail": "Ugyldig filsti: hemmelig.exe", "code": "invalid_path"}
 
 
 def test_exported_openapi_is_up_to_date():

@@ -391,8 +391,12 @@ class ProfileFileInfo(Model):
 
 class ProfileTree(Model):
     files: list[ProfileFileInfo]
+    folders: list[str]
+    """Folders where "Ny fil" can create a file (from the folder's `_template.md`)."""
     profile_hash: str
     derived_outdated: bool
+    derived_at: datetime | None
+    """When the derived profile was last made; null if never."""
 
 
 class ProfileFile(Model):
@@ -405,7 +409,8 @@ class ProfileFile(Model):
 class ProfileFileWrite(Model):
     content: str
     base_hash: str | None = None
-    """Hash the edit started from; a mismatch gives 409."""
+    """Hash the edit started from; a mismatch gives 409 `conflict`. Null creates a new file
+    (409 `file_exists` if it exists)."""
 
 
 class ProfileRevision(Model):
@@ -416,13 +421,36 @@ class ProfileRevision(Model):
     created_at: datetime
 
 
+class DerivedFile(Model):
+    name: str
+    content: str
+    previous_content: str | None
+    """The file before the last regeneration; null if there was none."""
+
+
+class DerivedProfile(Model):
+    files: list[DerivedFile]
+    made_at: datetime | None
+    model: str | None
+
+
 # --- Settings ----------------------------------------------------------------
+
+SettingKind = Literal["bool", "int", "number", "string", "time", "enum", "string_list"]
+SettingSection = Literal["search", "scoring", "notify", "llm", "cost", "schedule", "sources"]
 
 
 class SettingItem(Model):
     key: str
-    """Dotted key, e.g. `search.geo_mode`."""
-    section: str
+    """Dotted key, e.g. `search.geography.permanent`."""
+    section: SettingSection
+    label: str
+    help: str | None
+    kind: SettingKind
+    options: list[str] | None
+    """Allowed values for `enum`."""
+    min: float | None
+    max: float | None
     value: Any
     default: Any
     """Value from config/*.yaml."""
@@ -435,7 +463,17 @@ class Settings(Model):
 
 class SettingsPatch(Model):
     values: dict[str, Any]
-    """Key → new value. `null` removes the override."""
+    """Key → new value. `null` removes the override (back to the YAML value)."""
+
+
+# --- Rescore -----------------------------------------------------------------
+
+
+class RescoreEstimate(Model):
+    stale_jobs: int
+    """Active jobs scored with an older profile or prompt (ARCHITECTURE §5.5)."""
+    estimated_cost_usd: float
+    cost_per_job_usd: float
 
 
 # --- Logs --------------------------------------------------------------------

@@ -336,6 +336,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profile/derived": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Derived Profile */
+        get: operations["get_derived_profile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profile/distill": {
         parameters: {
             query?: never;
@@ -369,6 +386,24 @@ export interface paths {
         head?: never;
         /** Update Settings */
         patch: operations["update_settings"];
+        trace?: never;
+    };
+    "/api/rescore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Rescore Estimate */
+        get: operations["rescore_estimate"];
+        put?: never;
+        /** Start Rescore */
+        post: operations["start_rescore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/logs/runs": {
@@ -688,6 +723,27 @@ export interface components {
              * @description True at ≥ 80 % of the cap.
              */
             warn: boolean;
+        };
+        /** DerivedFile */
+        DerivedFile: {
+            /** Name */
+            name: string;
+            /** Content */
+            content: string;
+            /**
+             * Previous Content
+             * @description The file before the last regeneration; null if there was none.
+             */
+            previous_content: string | null;
+        };
+        /** DerivedProfile */
+        DerivedProfile: {
+            /** Files */
+            files: components["schemas"]["DerivedFile"][];
+            /** Made At */
+            made_at: string | null;
+            /** Model */
+            model: string | null;
         };
         /** DiscardedEntry */
         DiscardedEntry: {
@@ -1228,7 +1284,8 @@ export interface components {
             content: string;
             /**
              * Base Hash
-             * @description Hash the edit started from; a mismatch gives 409.
+             * @description Hash the edit started from; a mismatch gives 409 `conflict`. Null creates a new file
+             *     (409 `file_exists` if it exists).
              */
             base_hash?: string | null;
         };
@@ -1252,10 +1309,32 @@ export interface components {
         ProfileTree: {
             /** Files */
             files: components["schemas"]["ProfileFileInfo"][];
+            /**
+             * Folders
+             * @description Folders where "Ny fil" can create a file (from the folder's `_template.md`).
+             */
+            folders: string[];
             /** Profile Hash */
             profile_hash: string;
             /** Derived Outdated */
             derived_outdated: boolean;
+            /**
+             * Derived At
+             * @description When the derived profile was last made; null if never.
+             */
+            derived_at: string | null;
+        };
+        /** RescoreEstimate */
+        RescoreEstimate: {
+            /**
+             * Stale Jobs
+             * @description Active jobs scored with an older profile or prompt (ARCHITECTURE §5.5).
+             */
+            stale_jobs: number;
+            /** Estimated Cost Usd */
+            estimated_cost_usd: number;
+            /** Cost Per Job Usd */
+            cost_per_job_usd: number;
         };
         /**
          * ReviseRequest
@@ -1317,11 +1396,32 @@ export interface components {
         SettingItem: {
             /**
              * Key
-             * @description Dotted key, e.g. `search.geo_mode`.
+             * @description Dotted key, e.g. `search.geography.permanent`.
              */
             key: string;
-            /** Section */
-            section: string;
+            /**
+             * Section
+             * @enum {string}
+             */
+            section: "search" | "scoring" | "notify" | "llm" | "cost" | "schedule" | "sources";
+            /** Label */
+            label: string;
+            /** Help */
+            help: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "bool" | "int" | "number" | "string" | "time" | "enum" | "string_list";
+            /**
+             * Options
+             * @description Allowed values for `enum`.
+             */
+            options: string[] | null;
+            /** Min */
+            min: number | null;
+            /** Max */
+            max: number | null;
             /** Value */
             value: unknown;
             /**
@@ -1341,7 +1441,7 @@ export interface components {
         SettingsPatch: {
             /**
              * Values
-             * @description Key → new value. `null` removes the override.
+             * @description Key → new value. `null` removes the override (back to the YAML value).
              */
             values: {
                 [key: string]: unknown;
@@ -2630,6 +2730,53 @@ export interface operations {
             };
         };
     };
+    get_derived_profile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DerivedProfile"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     distill_profile: {
         parameters: {
             query?: never;
@@ -2771,6 +2918,100 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Not Implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rescore_estimate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescoreEstimate"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    start_rescore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskRef"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Not Implemented */

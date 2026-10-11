@@ -1,10 +1,11 @@
 /** In-memory mock database built from the invented fixtures. Rebuilt on every page load. */
-import type { JobDetail, JobListItem, Task } from '@/api/types'
+import type { JobDetail, JobListItem, ProfileRevision, Task } from '@/api/types'
 import type { TaskSpec } from './handlers'
 import { buildApplications } from './fixtures/applications'
 import { buildJobs } from './fixtures/jobs'
 import {
   buildAgentRuns,
+  buildDerived,
   buildDiscarded,
   buildProfileFiles,
   buildRuns,
@@ -28,6 +29,17 @@ export function createMockDb(now = new Date(), { llmState = 'account' }: { llmSt
     agentRuns: buildAgentRuns(c),
     discarded: buildDiscarded(c),
     profileFiles: buildProfileFiles(c),
+    /** Saved versions per path, newest first (the original is kept on first save, like the API). */
+    profileRevisions: new Map<string, ProfileRevision[]>(),
+    profileTemplates: new Map<string, string>([
+      ['projects', '---\ntech: []\nrole:\nlink:\n---\n# Prosjektnavn\n\nHva du gjorde og hva du lærte.\n'],
+      ['experience', '# Arbeidsgiver\n\nRolle, periode og oppgaver.\n'],
+    ]),
+    profileFolders: ['experience', 'projects', 'writing_samples'],
+    derived: buildDerived(c),
+    derivedOutdated: true,
+    /** Jobs scored with an older profile; a distill raises it, a rescore clears it. */
+    staleJobs: 12,
     settings: buildSettings(),
     tasks: [] as Task[],
     taskSpecs: new Map<string, TaskSpec>(),
@@ -35,6 +47,8 @@ export function createMockDb(now = new Date(), { llmState = 'account' }: { llmSt
     runMs: 6000,
     draftMs: 5000,
     reviseMs: 3000,
+    distillMs: 4000,
+    rescoreMs: 5000,
     lastRunAt: c.at(0, 7, 2),
     costMonthUsd: 4.37,
     costCapUsd: 25,

@@ -136,6 +136,15 @@ llm:
     # Tidsavbrudd per kall i sekunder.
     timeout_s: 300
 
+notify:
+  # E-postdigest etter den planlagte kjøringen (§11), bare når det er noe å melde.
+  # Sendes med Gmail SMTP (GMAIL_ADDRESS + GMAIL_APP_PASSWORD i .env) til GMAIL_ADDRESS.
+  digest: true
+  # Frister for Interessant/Utkast innenfor så mange dager kommer med i digesten.
+  deadline_days: 3
+  # Adressen lenkene i digesten peker til (appen via Tailscale, §12).
+  app_url: https://jobb.mariuskristensen.no
+
 retention:
   # Rå cache i DATA_DIR/cache slettes etter så mange dager (§12).
   raw_cache_days: 30

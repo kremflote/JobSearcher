@@ -104,9 +104,9 @@ def _set_key(monkeypatch, key: str) -> None:
 
 def _set_fallback(monkeypatch, value):
     from jobsearcher import config
+    from jobsearcher.db import repo
 
-    real = config.load_settings
-    monkeypatch.setattr(config, "load_settings", lambda overrides=None: real({"llm.fallback": value}))
+    monkeypatch.setattr(repo, "current_settings", lambda: config.load_settings({"llm.fallback": value}))
 
 
 def test_get_backend_wraps_only_with_key(monkeypatch):

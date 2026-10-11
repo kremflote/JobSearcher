@@ -101,6 +101,24 @@ def rescore(
     typer.echo(summary.model_dump_json(indent=2))
 
 
+@app.command()
+def digest(
+    send: bool = typer.Option(False, "--send", help="Send the digest now (otherwise only a preview file)."),
+) -> None:
+    """Preview (default) or send the e-mail digest (§11)."""
+    from jobsearcher.config import env
+    from jobsearcher.db.repo import effective_settings
+    from jobsearcher.db.session import init_db, session_scope
+    from jobsearcher.notify.digest import send_digest
+
+    init_db()
+    preview = env().data_dir / "exports" / "digest-preview.html"
+    preview.parent.mkdir(parents=True, exist_ok=True)
+    with session_scope() as session:
+        result = send_digest(session, effective_settings(session), dry_run_to=None if send else preview)
+    typer.echo(f"Digest: {result}")
+
+
 def main() -> None:
     app()
 

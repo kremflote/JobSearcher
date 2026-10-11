@@ -102,9 +102,9 @@ class OpenRouterBackend:
         self._transport = transport
 
     def build_body(self, req: AgentRequest) -> dict[str, Any]:
-        from jobsearcher.config import load_settings
+        from jobsearcher.db.repo import current_settings
 
-        models = load_settings().llm.openrouter.models
+        models = current_settings().llm.openrouter.models
         body: dict[str, Any] = {
             "model": models.get(req.model_tier, DEFAULT_MODEL),
             "messages": [

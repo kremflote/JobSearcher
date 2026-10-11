@@ -1703,6 +1703,57 @@
         }
       }
     },
+    "/api/profile/derived": {
+      "get": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Get Derived Profile",
+        "operationId": "get_derived_profile",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DerivedProfile"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/profile/distill": {
       "post": {
         "tags": [
@@ -1867,6 +1918,106 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rescore": {
+      "get": {
+        "tags": [
+          "rescore"
+        ],
+        "summary": "Rescore Estimate",
+        "operationId": "rescore_estimate",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescoreEstimate"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "rescore"
+        ],
+        "summary": "Start Rescore",
+        "operationId": "start_rescore",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskRef"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -2943,6 +3094,78 @@
           "warn"
         ],
         "title": "CostStatus"
+      },
+      "DerivedFile": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "previous_content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Content",
+            "description": "The file before the last regeneration; null if there was none."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "content",
+          "previous_content"
+        ],
+        "title": "DerivedFile"
+      },
+      "DerivedProfile": {
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/DerivedFile"
+            },
+            "type": "array",
+            "title": "Files"
+          },
+          "made_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Made At"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files",
+          "made_at",
+          "model"
+        ],
+        "title": "DerivedProfile"
       },
       "DiscardedEntry": {
         "properties": {
@@ -4458,7 +4681,7 @@
               }
             ],
             "title": "Base Hash",
-            "description": "Hash the edit started from; a mismatch gives 409."
+            "description": "Hash the edit started from; a mismatch gives 409 `conflict`. Null creates a new file\n(409 `file_exists` if it exists)."
           }
         },
         "type": "object",
@@ -4510,6 +4733,14 @@
             "type": "array",
             "title": "Files"
           },
+          "folders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Folders",
+            "description": "Folders where \"Ny fil\" can create a file (from the folder's `_template.md`)."
+          },
           "profile_hash": {
             "type": "string",
             "title": "Profile Hash"
@@ -4517,15 +4748,54 @@
           "derived_outdated": {
             "type": "boolean",
             "title": "Derived Outdated"
+          },
+          "derived_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived At",
+            "description": "When the derived profile was last made; null if never."
           }
         },
         "type": "object",
         "required": [
           "files",
+          "folders",
           "profile_hash",
-          "derived_outdated"
+          "derived_outdated",
+          "derived_at"
         ],
         "title": "ProfileTree"
+      },
+      "RescoreEstimate": {
+        "properties": {
+          "stale_jobs": {
+            "type": "integer",
+            "title": "Stale Jobs",
+            "description": "Active jobs scored with an older profile or prompt (ARCHITECTURE §5.5)."
+          },
+          "estimated_cost_usd": {
+            "type": "number",
+            "title": "Estimated Cost Usd"
+          },
+          "cost_per_job_usd": {
+            "type": "number",
+            "title": "Cost Per Job Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stale_jobs",
+          "estimated_cost_usd",
+          "cost_per_job_usd"
+        ],
+        "title": "RescoreEstimate"
       },
       "ReviseRequest": {
         "properties": {
@@ -4666,11 +4936,85 @@
           "key": {
             "type": "string",
             "title": "Key",
-            "description": "Dotted key, e.g. `search.geo_mode`."
+            "description": "Dotted key, e.g. `search.geography.permanent`."
           },
           "section": {
             "type": "string",
+            "enum": [
+              "search",
+              "scoring",
+              "notify",
+              "llm",
+              "cost",
+              "schedule",
+              "sources"
+            ],
             "title": "Section"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "help": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Help"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bool",
+              "int",
+              "number",
+              "string",
+              "time",
+              "enum",
+              "string_list"
+            ],
+            "title": "Kind"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options",
+            "description": "Allowed values for `enum`."
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
           },
           "value": {
             "title": "Value"
@@ -4688,6 +5032,12 @@
         "required": [
           "key",
           "section",
+          "label",
+          "help",
+          "kind",
+          "options",
+          "min",
+          "max",
           "value",
           "default",
           "overridden"
@@ -4716,7 +5066,7 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Values",
-            "description": "Key → new value. `null` removes the override."
+            "description": "Key → new value. `null` removes the override (back to the YAML value)."
           }
         },
         "type": "object",

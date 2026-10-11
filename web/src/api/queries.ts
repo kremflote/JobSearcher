@@ -9,7 +9,18 @@ import {
 import { useEffect } from 'react'
 import { api, ApiError, unwrap } from './client'
 import type { paths } from './schema'
-import type { ApplicationCard, ApplicationList, ApplicationPatch, Draft, DraftMessage, DraftSummary, JobDetail, JobList, Task } from './types'
+import type {
+  ApplicationCard,
+  ApplicationList,
+  ApplicationPatch,
+  Draft,
+  DraftMessage,
+  DraftSummary,
+  JobDetail,
+  JobList,
+  ProfileFile,
+  Task,
+} from './types'
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -269,6 +280,108 @@ export async function downloadDocx(draftId: number, fallbackName: string) {
   return name
 }
 
+// --- Profile (FRONTEND §5.6) -----------------------------------------------------
+
+export function useProfileTree() {
+  return useQuery({ queryKey: ['profile', 'tree'], queryFn: () => unwrap(api.GET('/api/profile/files')) })
+}
+
+export function useProfileFile(path: string | null) {
+  return useQuery({
+    queryKey: ['profile', 'file', path],
+    queryFn: () => unwrap(api.GET('/api/profile/files/{path}', { params: { path: { path: path! } } })),
+    enabled: path !== null,
+    refetchOnWindowFocus: false, // the editor holds the text; a refetch must not reset it
+  })
+}
+
+export function useProfileRevisions(path: string | null) {
+  return useQuery({
+    queryKey: ['profile', 'revisions', path],
+    queryFn: () => unwrap(api.GET('/api/profile/files/{path}/revisions', { params: { path: { path: path! } } })),
+    enabled: path !== null,
+  })
+}
+
+export function useDerivedProfile(enabled = true) {
+  return useQuery({ queryKey: ['profile', 'derived'], queryFn: () => unwrap(api.GET('/api/profile/derived')), enabled })
+}
+
+/** Reads a folder's `_template.md` for "Ny fil"; empty text when the folder has none. */
+export async function fetchTemplate(folder: string) {
+  try {
+    const f = await unwrap(api.GET('/api/profile/files/{path}', { params: { path: { path: `${folder}/_template.md` } } }))
+    return f.content
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return ''
+    throw e
+  }
+}
+
+/** PUT /api/profile/files/{path}. `baseHash` null creates the file. */
+export async function saveProfileFile(qc: QueryClient, path: string, content: string, baseHash: string | null) {
+  const file = await unwrap(
+    api.PUT('/api/profile/files/{path}', { params: { path: { path } }, body: { content, base_hash: baseHash } }),
+  )
+  qc.setQueryData<ProfileFile>(['profile', 'file', path], file)
+  qc.invalidateQueries({ queryKey: ['profile', 'tree'] })
+  qc.invalidateQueries({ queryKey: ['profile', 'revisions', path] })
+  qc.invalidateQueries({ queryKey: ['rescore'] })
+  return file
+}
+
+export function useStartDistill() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => unwrap(api.POST('/api/profile/distill')),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks', 'active'] }),
+  })
+}
+
+// --- Settings and rescore (FRONTEND §5.7) ---------------------------------------
+
+export function useSettings() {
+  return useQuery({ queryKey: ['settings'], queryFn: () => unwrap(api.GET('/api/settings')) })
+}
+
+export function useUpdateSettings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (values: Record<string, unknown>) => unwrap(api.PATCH('/api/settings', { body: { values } })),
+    onSuccess: (data) => {
+      qc.setQueryData(['settings'], data)
+      qc.invalidateQueries({ queryKey: ['overview'] })
+      qc.invalidateQueries({ queryKey: ['llm'] })
+    },
+  })
+}
+
+export function useRescoreEstimate() {
+  return useQuery({ queryKey: ['rescore'], queryFn: () => unwrap(api.GET('/api/rescore')) })
+}
+
+export function useStartRescore() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => unwrap(api.POST('/api/rescore')),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks', 'active'] }),
+  })
+}
+
+// --- Logs (FRONTEND §5.8) --------------------------------------------------------
+
+export function useRunLog() {
+  return useQuery({ queryKey: ['logs', 'runs'], queryFn: () => unwrap(api.GET('/api/logs/runs')) })
+}
+
+export function useAgentRunLog() {
+  return useQuery({ queryKey: ['logs', 'agent-runs'], queryFn: () => unwrap(api.GET('/api/logs/agent-runs')) })
+}
+
+export function useDiscardedLog() {
+  return useQuery({ queryKey: ['logs', 'discarded'], queryFn: () => unwrap(api.GET('/api/logs/discarded')) })
+}
+
 // --- Background tasks (FRONTEND §3.3) -------------------------------------------
 
 const TERMINAL: readonly Task['status'][] = ['done', 'failed', 'cancelled']
@@ -280,8 +393,8 @@ const AFFECTS: Record<Task['kind'], string[][]> = {
   draft: [['jobs'], ['applications'], ['drafts'], ['overview']],
   research: [['jobs']],
   revise: [['drafts'], ['applications']],
-  rescore: [['jobs'], ['overview']],
-  distill: [['profile']],
+  rescore: [['jobs'], ['overview'], ['rescore'], ['logs']],
+  distill: [['profile'], ['rescore'], ['logs']],
 }
 
 export function useActiveTasks() {
