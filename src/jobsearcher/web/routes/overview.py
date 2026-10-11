@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends
 from sqlmodel import Session, col, select
 
 from jobsearcher.api.schemas import CostStatus, NewSinceLast, Overview, SourceStatus
-from jobsearcher.config import load_sources
 from jobsearcher.db import models as m
 from jobsearcher.db.session import get_session
 from jobsearcher.tracking.status import CLOSED_STATUSES, local_today
@@ -83,7 +82,7 @@ def _sources(session: Session) -> list[SourceStatus]:
     try:
         configured = [
             k
-            for k, v in load_sources().items()
+            for k, v in queries.effective_sources(session).items()
             if isinstance(v, dict) and v.get("enabled")
         ]
     except OSError:

@@ -2,7 +2,7 @@
 
 Et AI-basert verktøy som automatiserer jobbsøkingen: det henter stillinger, rangerer dem mot profilen din, skriver utkast til søknadsbrev og holder oversikt over hva du har søkt på.
 
-> **Status:** Under utvikling. Innhenting fra Finn (NAV er bygget, men venter på at NAV-feeden svarer), filtrering, AI-scoring, dashboardets daglige visning og søknadstrackeren virker mot ekte data. Søknadsutkast (editor + skrive-agent), profilredigering i dashboardet og e-postdigest gjenstår. Arkitekturen står i [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), UI-et i [docs/FRONTEND.md](docs/FRONTEND.md).
+> **Status:** Under utvikling. Innhenting fra Finn (NAV er bygget, men venter på at NAV-feeden svarer), filtrering, AI-scoring, hele dashboardet (oversikt, jobber, tracker, søknadsutkast, profil, innstillinger og logg) og e-postdigesten virker mot ekte data. Drift på hjemmeserveren gjenstår. Arkitekturen står i [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), UI-et i [docs/FRONTEND.md](docs/FRONTEND.md).
 
 ## Hva det gjør
 
@@ -86,7 +86,7 @@ Andre kommandoer:
 uv run jobsearcher run
 ```
 
-Én kjøring fra terminalen (`--no-score` hopper over AI-scoringen, `--source finn_api` begrenser til én kilde). Finn hoppes over hvis den ble hentet for under 3 timer siden, også fra "Kjør nå"; `--force` overstyrer pausen og kjører de ukentlige Finn-søkene med en gang. Bruk det sjelden. `uv run jobsearcher distill` destillerer profilen på nytt. `uv run jobsearcher rescore` scorer jobber på nytt etter endret profil eller prompt; `--all` tar alle scorede jobber, f.eks. etter bytte av modell. Data, logger og backuper ligger i `data/`.
+Én kjøring fra terminalen (`--no-score` hopper over AI-scoringen, `--source finn_api` begrenser til én kilde). Finn hoppes over hvis den ble hentet for under 3 timer siden, også fra "Kjør nå"; `--force` overstyrer pausen og kjører de ukentlige Finn-søkene med en gang. Bruk det sjelden. `uv run jobsearcher distill` destillerer profilen på nytt. `uv run jobsearcher rescore` scorer jobber på nytt etter endret profil eller prompt; `--all` tar alle scorede jobber, f.eks. etter bytte av modell. `uv run jobsearcher digest` skriver en forhåndsvisning av e-postdigesten til `data/exports/digest-preview.html`; `--send` sender den til `GMAIL_ADDRESS` med en gang (ellers sendes den automatisk etter den planlagte kjøringen kl. 07). Data, logger og backuper ligger i `data/`.
 
 **Prøv dashboardet med oppdiktede data** (ingen backend nødvendig):
 

@@ -1,5 +1,5 @@
 """One collection run (ARCHITECTURE §11): sources → normalize → dedupe → hard filter →
-details → clean → lifecycle → filter agent → backup.
+details → clean → lifecycle → filter agent → digest (scheduled runs) → backup.
 
 Each source runs in its own transaction; one failing source does not stop the others.
 Cursors are persisted only after the source's jobs are stored and its health is not `fail`.
@@ -77,6 +77,8 @@ class RunSummary(BaseModel):
     score_failed: int = 0
     score_skipped_reason: str | None = None
     backup_path: str | None = None
+    digest: str | None = None
+    """What happened to the e-mail digest (scheduled runs only)."""
     cancelled: bool = False
 
 
@@ -573,6 +575,18 @@ def run_pipeline(
         if score and not cancelled():
             report(0.75, "Vurderer nye jobber")
             _score(summary, engine, should_cancel, report)
+
+        if trigger == "schedule" and settings.notify.digest and not cancelled():
+            report(0.95, "Sender e-postdigest")
+            try:
+                from jobsearcher.notify.digest import send_digest
+
+                with session_scope(engine) as session:
+                    summary.digest = send_digest(session, settings, summary=summary)
+                log.info("digest", extra={"data": {"result": summary.digest}})
+            except Exception as e:  # noqa: BLE001
+                summary.digest = f"feil: {e}"
+                log.exception("digest failed")
 
         if not cancelled():
             report(0.97, "Tar backup")

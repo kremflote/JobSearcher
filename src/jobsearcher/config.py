@@ -133,6 +133,12 @@ class LlmSettings(BaseModel):
         return None if fb in ("", "none", "null", "off") else fb
 
 
+class NotifySettings(BaseModel):
+    digest: bool = True
+    deadline_days: int = 3
+    app_url: str = "https://jobb.mariuskristensen.no"
+
+
 class RetentionSettings(BaseModel):
     raw_cache_days: int
     contacts_days_after_inactive: int
@@ -146,6 +152,7 @@ class Settings(BaseModel):
     thresholds: Thresholds
     schedule: ScheduleSettings
     llm: LlmSettings
+    notify: NotifySettings = Field(default_factory=NotifySettings)
     retention: RetentionSettings
 
 

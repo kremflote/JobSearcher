@@ -1,12 +1,13 @@
 # JobSearcher: frontend-design
 
-> Status: v0.14 (2026-10-11). F0–F3 og F2b er bygget og koblet til ekte API (backend-fase 1–3 og bølge 2b). Neste bølge: F4.
+> Status: v0.15 (2026-10-11). F0–F4 og F2b er bygget og koblet til ekte API (backend-fase 1–4 og bølge 2b). Neste bølge: F5 (drift, sammen med fase 4b).
 > Dokumentet eier UI-designet: skjermer, layout, komponenter, API-kontrakt og frontend-bølger. Resten av systemet står i [ARCHITECTURE.md](ARCHITECTURE.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato | Endring |
 |---|---|---|
+| v0.15 | 2026-10-11 | F4 bygget og koblet (§5.6–5.8). Kontrakt (§7): `SettingItem` har `label`, `help`, `kind`, `options`, `min`, `max`, så skjemaet lages fra API-et; ny seksjon `notify`. `ProfileTree` har `folders` og `derived_at`; `base_hash: null` lager en ny fil (409 `file_exists`), feil hash gir 409 `conflict`, ugyldig YAML 422 `invalid_yaml`, ugyldig sti 400 `invalid_path`. Nye ruter: `GET /api/profile/derived`, `GET/POST /api/rescore`. Logg-fanen heter «Forkastet» og viser alle nylige, gruppert per dag. Mocken følger de samme reglene (`mocks/system.ts`). |
 | v0.14 | 2026-10-11 | «Lagre som stilregel» i revisjonschatten (§5.5): når meldingen er en preferanse for alle brev, viser agentsvaret en foreslått regel med knapp som legger den til i `style_overrides.md`. Kontrakt (§7): `DraftMessage.style_rule`/`style_rule_saved`, nytt `POST /api/applications/{id}/messages/{message_id}/style-rule`. Mock-revisoren foreslår en regel for meldinger som starter med «aldri»/«alltid»/«unngå». |
 | v0.13 | 2026-10-11 | Backend-fase 3 kobler F3: alle utkast-ruter er ekte (§7.1). Avvik fra mocken står i §7.1. |
 | v0.12 | 2026-10-11 | Etter brukertest av F3: chatten skiller spørsmål fra endringer. Et spørsmål får et svar i chatten uten ny versjon. Historikken kommer fra nytt endepunkt `GET /api/applications/{id}/messages` i stedet for versjonslisten (§5.5, §7). Mock-revisoren svarer på spørsmål (§3.2). |
@@ -99,7 +100,7 @@
 | Test på mobil under utvikling | `npm run dev:mock -- --host` (eller `npm run dev -- --host`), åpne `http://<PC-ens Tailscale-IP>:5173` | Mock eller ekte API |
 | Drift | `jobsearcher serve` (container) | Ekte API, `web/dist` |
 
-Fixtures ligger i `web/src/mocks/fixtures/*.ts` og er **oppdiktede** (bedrifter, personer, domener `*.example`). Ekte data går aldri inn i `web/`. Datoene regnes relativt til dagen mock-appen åpnes, så frister og "nye siden sist" alltid er aktuelle. `web/src/mocks/db.ts` bygger en minnedatabase fra dem ved hver sidelasting (endringer som triage forsvinner ved omlasting); `handlers.ts` svarer på kontrakten, og ruter som ikke er mocket ennå gir `501`. UI-et viser et `MOCK`-merke i mock-modus. "Kjør nå" i mock tar 6 s og finner ingen nye jobber; den oppdaterer bare kildestatus. LLM-forbruket har seks mock-tilstander som velges med `?mock_llm=<tilstand>` i URL-en appen lastes med: `account` (standard), `key_limit`, `unknown`, `unset`, `low`, `warn`. I Vitest: `createMockDb(now, { llmState })`. Søknadsutkast i mock tar 5 s og revisjon 3 s (`mocks/drafts.ts`). Mock-revisjonen kutter siste setning i lengste avsnitt når instruksjonen inneholder "kort", "stram" eller "kutt", ellers legger den til en merket setning. Et spørsmål (slutter på "?" eller starter med et spørreord som "hvorfor", "hva", "er") får et fast mock-svar uten ny versjon. `.docx` fra mock er en ekte, enkel Word-fil (`mocks/docx.ts`).
+Fixtures ligger i `web/src/mocks/fixtures/*.ts` og er **oppdiktede** (bedrifter, personer, domener `*.example`). Ekte data går aldri inn i `web/`. Datoene regnes relativt til dagen mock-appen åpnes, så frister og "nye siden sist" alltid er aktuelle. `web/src/mocks/db.ts` bygger en minnedatabase fra dem ved hver sidelasting (endringer som triage forsvinner ved omlasting); `handlers.ts` svarer på kontrakten, og ruter som ikke er mocket ennå gir `501`. UI-et viser et `MOCK`-merke i mock-modus. "Kjør nå" i mock tar 6 s og finner ingen nye jobber; den oppdaterer bare kildestatus. LLM-forbruket har seks mock-tilstander som velges med `?mock_llm=<tilstand>` i URL-en appen lastes med: `account` (standard), `key_limit`, `unknown`, `unset`, `low`, `warn`. I Vitest: `createMockDb(now, { llmState })`. Søknadsutkast i mock tar 5 s og revisjon 3 s (`mocks/drafts.ts`). Destillering tar 4 s og "Score på nytt" 5 s; mocken starter med utdatert destillert profil og 12 jobber scoret med gammel profil. Profil, innstillinger og score på nytt følger API-ets regler (`mocks/system.ts`); YAML-sjekken i mocken er grov (ubalanserte klammer, tab-innrykk). Mock-revisjonen kutter siste setning i lengste avsnitt når instruksjonen inneholder "kort", "stram" eller "kutt", ellers legger den til en merket setning. Et spørsmål (slutter på "?" eller starter med et spørreord som "hvorfor", "hva", "er") får et fast mock-svar uten ny versjon. `.docx` fra mock er en ekte, enkel Word-fil (`mocks/docx.ts`).
 
 ### 3.3 Bakgrunnsjobber i UI-et
 
@@ -257,18 +258,22 @@ Mobil: segmentert kontroll "Utkast | Chat | Versjoner" (`?vis=`). Versjoner er e
 ### 5.6 Profil `/profil` (F4)
 
 Profilen redigeres i dashboardet når appen kjører på hjemmeserveren (ARCHITECTURE §6.1).
-- Venstre/øverst: filtre over profilfilene (`profile.yaml`, `cv.md`, `motivation.md`, `style_overrides.md`, `projects/`, `experience/`, `writing_samples/`). "Ny fil" lager fil fra `_template.md`.
-- Editor: samme Markdown-editor som søknader. YAML valideres før lagring.
-- Lagring skriver filen og en rad i `profile_revisions` (historikk med diff og gjenoppretting).
-- Statuslinje: "Destillert profil er utdatert" når `profile_hash` har endret seg, med "Regenerer" (bakgrunnsjobb) og diff av `derived/`-filene.
+- **Statuslinje** øverst: "Destillert profil er utdatert" (gul) når `profile_hash` har endret seg, med "Regenerer" (bakgrunnsjobb); ellers når den ble laget. "Vis destillert" åpner `/profil?vis=destillert`. Er profilen oppdatert og jobber scoret med gammel profil, vises kortet "Score på nytt" (§5.7) under.
+- **Filliste:** filene i rotmappen (med en kort forklaring for standardfilene), så én gruppe per mappe (`projects/`, `experience/`, `writing_samples/`) med "+" (Ny fil): navnet blir et filnavn (`Min app` → `projects/min-app.md`), og filen lages fra mappens `_template.md`. Nederst "Destillert profil".
+- **Editor** (`/profil/<sti>`): tekstfelt med "Rediger | Forhåndsvis" og ordtelling for Markdown; YAML vises i monospace uten forhåndsvisning. Lagres med "Lagre" eller Ctrl+S (ikke autosave: profilen styrer alle agentene). Status "Lagret"/"Ikke lagret". Ugyldig YAML eller en fil endret et annet sted gir en feilboks og teksten beholdes; ved konflikt kan filen lastes inn på nytt. Ulagret tekst gir spørsmål før man går fra filen, i appen og i nettleseren.
+- **Historikk** (`?historikk=1`): lagrede versjoner, nyeste først (den eldste er originalen fra før første lagring). Valgt versjon vises som ord-diff mot teksten nå, med "Gjenopprett", som lagrer den som ny versjon.
+- **Destillert profil:** de tre filene, hver med "Tekst | Endringer" (diff mot versjonen før siste regenerering) og antall ord lagt til og fjernet.
+- PC (≥ 1024 px): fillisten til venstre (256 px), filen til høyre. Under det er lista og filen egne skjermer med tilbakeknapp.
 
 ### 5.7 Innstillinger `/innstillinger` (F4)
 
-Skjema gruppert i seksjoner: Søk (geo-modus, jobbtyper, ekskluderinger, senioritet), Scoring (terskel, ny scoring med kostnadsestimat), LLM (backend, modeller), Kostnad (tak), Planlegging (klokkeslett), Kilder (helse, aktiv/av), Kontekst (lenke til Profil), Utseende (lys/mørk/system). Lagres i `settings_overrides`. Verdier som kommer fra YAML og ikke er overstyrt vises som standard, med "Tilbakestill".
+Ett skjema med seksjoner: Søk (jobbtyper, geografi per jobbtype, fjernarbeid, ekskluderinger, senioritet, erfaringskrav), Scoring (frister på Oversikt, "Score på nytt"), E-postdigest (av/på, score, frister), LLM (backend, reserve, modeller), Kostnad (tak, varselgrense), Planlegging (klokkeslett, tilfeldig utsettelse), Kilder (Finn og NAV av/på), Kontekst (lenke til Profil), Utseende (lys/mørk/system). Feltene kommer fra `GET /api/settings` og vises etter `kind`: bryter (`bool`), meny (`enum`), tall (`int`/`number`, desimalkomma), klokkeslett (`time`), tekst (`string`) og ordliste (`string_list`, brikker med × og et felt som legger til ved Enter eller komma). Hvert felt lagres for seg: brytere og menyer med en gang, tekst og tall ved Enter eller når feltet forlates (Escape angrer). Ugyldige verdier gir en toast og feltet går tilbake. Overstyrte felt viser "Standard: …" og "Tilbakestill".
+
+**Score på nytt** (ARCHITECTURE §5.5): "N aktive jobber er scoret med gammel profil eller prompt. Estimert kostnad $X" og knappen, som starter en bakgrunnsjobb. Uten slike jobber står det at alle er scoret med gjeldende profil.
 
 ### 5.8 Logg `/logg` (F4)
 
-Faner: Kjøringer (per kilde, med feil), Agentkall (modell, tokens, kostnad, varighet), Forkastet i dag (hardfilter-regel + detalj, med "Vis jobb").
+Faner (`?fane=`): Kjøringer (per kilde: tid, helse, manuell, funnet/nye/oppdatert/forkastet, feilmeldinger i rødt), Agentkall (agent, modell, prompt-versjon, tokens inn/ut, kostnad, varighet, feil), Forkastet (tittel, bedrift, regel og detalj; raden åpner jobben). Alle gruppert per dag, nyeste først, de siste 200 radene.
 
 ---
 
@@ -309,12 +314,15 @@ Alle ruter under `/api`. JSON. Datoer i ISO 8601. Feil som `{"detail": "...", "c
 | `GET /api/applications/{id}/messages` | Chathistorikk: `role` (`user` \| `agent`), `text`, `draft_id` (versjonen svaret laget), `style_rule` (foreslått stilregel, agentmeldinger), `style_rule_saved`, `created_at`, eldste først | F3 |
 | `POST /api/applications/{id}/messages/{message_id}/style-rule` | Legger meldingens `style_rule` til i `style_overrides.md` → oppdatert melding. To ganger er en no-op. 404 ukjent melding, 409 `no_style_rule` uten forslag. | F3 |
 | `GET /api/drafts/{id}/docx` | Last ned `.docx`. Filnavnet kommer i `Content-Disposition`. | F3 |
-| `GET /api/profile/files` | Filtre + status (`profile_hash`, destillert utdatert?) | F4 |
-| `GET /api/profile/files/{path}` / `PUT` | Les / skriv én profilfil. Sti valideres mot `PROFILE_DIR`. | F4 |
-| `GET /api/profile/files/{path}/revisions` | Historikk | F4 |
-| `POST /api/profile/distill` | → `{task_id}` | F4 |
-| `GET /api/settings` / `PATCH` | Effektive innstillinger (YAML + overstyringer) | F4 |
-| `GET /api/logs/runs`, `/agent-runs`, `/discarded` | Logg | F4 |
+| `GET /api/profile/files` | Filer (`path`, `size`, `updated_at`), `folders` (mapper for "Ny fil"), `profile_hash`, `derived_outdated`, `derived_at` | F4 |
+| `GET /api/profile/files/{path}` / `PUT` | Les / skriv én profilfil (`content`, `content_hash`). `PUT {content, base_hash}`: `base_hash` er hashen redigeringen startet fra (feil → 409 `conflict`); `null` lager en ny fil (409 `file_exists` hvis den finnes). Ugyldig YAML → 422 `invalid_yaml`. Sti utenfor `PROFILE_DIR`, skjult, med ukjent filtype eller `_` i navnet → 400 `invalid_path`; `<mappe>/_template.md` kan leses. | F4 |
+| `GET /api/profile/files/{path}/revisions` | Historikk, nyeste først. Første lagring tar med originalen. | F4 |
+| `GET /api/profile/derived` | Destillerte filer: `name`, `content`, `previous_content` (før siste regenerering, null uten), `made_at`, `model` | F4 |
+| `POST /api/profile/distill` | → `{task_id}`. Destillerer alltid. 409 `distill_active` hvis en pågår. | F4 |
+| `GET /api/settings` / `PATCH` | Redigerbare innstillinger: `key`, `section` (`search`, `scoring`, `notify`, `llm`, `cost`, `schedule`, `sources`), `label`, `help`, `kind` (`bool`, `int`, `number`, `string`, `time`, `enum`, `string_list`), `options`, `min`, `max`, `value`, `default` (YAML), `overridden`. `PATCH {values: {key: verdi}}`, `null` = tilbakestill; verdi lik standard fjerner overstyringen. 422 `unknown_setting` / `invalid_setting`. Returnerer hele listen. | F4 |
+| `GET /api/rescore` | `stale_jobs`, `estimated_cost_usd`, `cost_per_job_usd` (ARCHITECTURE §5.5) | F4 |
+| `POST /api/rescore` | "Score på nytt" → `{task_id}`. 409 `rescore_active` under en annen scoring eller kjøring. | F4 |
+| `GET /api/logs/runs`, `/agent-runs`, `/discarded` | Logg, siste 200 rader hver | F4 |
 | `POST /api/runs` | "Kjør nå" → `{task_id}`. 409 `run_active` hvis en kjøring pågår. | F1 |
 | `GET /api/tasks/{id}`, `POST /api/tasks/{id}/cancel` | Bakgrunnsjobber | F1 |
 | `GET /api/tasks?active=true` | Aktive jobber til indikatoren | F1 |
@@ -324,7 +332,7 @@ Statusverdier i API-et er snake_case uten norske tegn (`ny`, `interessant`, `utk
 
 ### 7.1 Ekte API (backend-fase 1–2)
 
-Implementert: alle ruter merket F1, F2, F2b og F3, `GET /api/logs/*` og `GET /api/health`. Resten (profil, innstillinger) svarer `501 not_implemented` til fase 4. Der det ekte API-et oppfører seg annerledes enn MSW-mocken, gjelder dette:
+Implementert: alle ruter i §7. Mocken svarer `501 not_implemented` på ruter utenfor kontrakten. Der det ekte API-et oppfører seg annerledes enn MSW-mocken, gjelder dette:
 
 | Tema | Ekte API |
 |---|---|
@@ -356,7 +364,7 @@ Bølgene F0–F4 bygges før backend-fasene i ARCHITECTURE §17. Hver bølge er 
 | ~~F2. Tracker~~ | Kanban (PC), gruppert liste (mobil), statusoverganger, neste steg, hendelseslogg | ✅ 2026-10-10 | ✅ Koblet til ekte API i fase 2 |
 | ~~F2b. LLM-forbruk~~ | Kortet LLM-forbruk med detaljpanel (§5.1), mock-fixtures for alle saldotilstander (konto, nøkkelgrense, ukjent, ikke satt opp, lav) | ✅ 2026-10-11 | ✅ Koblet i backend-bølge 2b |
 | ~~F3. Søknadseditor~~ | Editor, forhåndsvisning, autosave/versjoner, diff, revisjonschat, `claims_to_verify`, `.docx`, `/soknader` | ✅ 2026-10-11 | ✅ Koblet til ekte API i fase 3 |
-| **F4. Profil, innstillinger, logg** | Profileditor med historikk, innstillingsskjema, loggfaner | Profilen kan redigeres uten filsystemtilgang | Nei. Kobles i fase 4 (destilleren finnes fra fase 2). |
+| ~~F4. Profil, innstillinger, logg~~ | Profileditor med historikk, innstillingsskjema, loggfaner, "Score på nytt" | ✅ 2026-10-11 | ✅ Koblet i fase 4 |
 | **F5. Drift** | FastAPI serverer `web/dist`, multi-stage Dockerfile, PWA-ikon, test på mobil via Tailscale | `docker compose up` gir hele appen på én port | Ja: fase 1 (`serve`). `serve` serverer allerede `web/dist`; Dockerfile gjenstår. |
 
 Rekkefølgen er F0 → F1 → brukertest → F2 → backend-fase 1–2 → 2b/F2b → F3 → fase 3 → F4 → fase 4 (ARCHITECTURE §17). Ved brukertest kjører appen i mock-modus på PC og mobil (`npm run dev:mock -- --host`, §3.2). Funn rettes i dette dokumentet og i kontrakten før neste bølge. Fixture-settet må være realistisk nok til å teste flyten: ~40 jobber over alle jobbtyper, frister, reposts, forkastede jobber og søknader i alle statuser.
@@ -369,7 +377,7 @@ Rekkefølgen er F0 → F1 → brukertest → F2 → backend-fase 1–2 → 2b/F2
 |---|---|---|
 | Enhet | Vitest + Testing Library | Hooks (`useTask`), formattering (frist, score), statusoverganger i UI, ord-diff, mock-agentene og `.docx`-zip |
 | Kontrakt | `tsc` mot genererte typer | At fixtures og komponenter matcher API-et |
-| Ende-til-ende | Playwright mot `dev:mock`, to viewporter (390×844, 1440×900) | Navigasjon, tema og manifest (F0); triage med sveip (mobil) og tastatur (PC), filtre, "Kjør nå" (F1); hele statusflyten fra mobil, dra og slipp med ulovlig kolonne og angre, statusmeny og sidepanel (F2); forbrukskortet → detalj, trykk på søyle, "OpenRouter ikke satt opp" (F2b); autosave, revisjon via chat, diff og gjenoppretting, påstander, kopier og `.docx`, "Lag søknadsutkast" → toast → editor (F3) |
+| Ende-til-ende | Playwright mot `dev:mock`, to viewporter (390×844, 1440×900) | Navigasjon, tema og manifest (F0); triage med sveip (mobil) og tastatur (PC), filtre, "Kjør nå" (F1); hele statusflyten fra mobil, dra og slipp med ulovlig kolonne og angre, statusmeny og sidepanel (F2); forbrukskortet → detalj, trykk på søyle, "OpenRouter ikke satt opp" (F2b); autosave, revisjon via chat, diff og gjenoppretting, påstander, kopier og `.docx`, "Lag søknadsutkast" → toast → editor (F3); profil: lagre, historikk og gjenoppretting, ugyldig YAML, ny fil fra mal, regenerer og diff; innstillinger: overstyr, validering, tilbakestill, bryter, ordliste, score på nytt; logg: faner og "Vis jobb" (F4) |
 
 Kommandoer i `web/`: `npm test` (Vitest), `npm run typecheck`, `npm run e2e` (Playwright starter `dev:mock` selv på port 5174). Backend: `uv run pytest`.
 

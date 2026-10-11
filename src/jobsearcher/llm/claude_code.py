@@ -145,9 +145,10 @@ class ClaudeCodeBackend:
         self._sandbox_dir = sandbox_dir
 
     def run(self, req: AgentRequest) -> AgentResponse:
-        from jobsearcher.config import env, load_settings
+        from jobsearcher.config import env
+        from jobsearcher.db.repo import current_settings
 
-        llm = load_settings().llm
+        llm = current_settings().llm
         cli = self._cli or find_cli()
         sandbox = self._sandbox_dir or env().llm_sandbox_dir
         sandbox.mkdir(parents=True, exist_ok=True)

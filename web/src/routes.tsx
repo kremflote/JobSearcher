@@ -6,12 +6,10 @@ import { OverviewPage } from '@/features/overview/OverviewPage'
 import { TrackerPage } from '@/features/tracker/TrackerPage'
 import { ApplicationsPage } from '@/features/drafts/ApplicationsPage'
 import { EditorPage } from '@/features/drafts/EditorPage'
-import {
-  LogsPage,
-  NotFoundPage,
-  ProfilePage,
-  SettingsPage,
-} from '@/features/placeholders'
+import { LogsPage } from '@/features/logs/LogsPage'
+import { NotFoundPage } from '@/features/NotFoundPage'
+import { ProfilePage } from '@/features/profile/ProfilePage'
+import { SettingsPage } from '@/features/settings/SettingsPage'
 
 /** Routes (FRONTEND §4.2). Same routes on mobile and PC. */
 export const routes: RouteObject[] = [

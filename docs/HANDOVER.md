@@ -3,7 +3,7 @@
 > Keep this file short. Update it at the end of every session: status, next task, open questions, and one line in the log.
 
 **Last updated:** 2026-10-11
-**Phase:** 0, 0b, F0–F3, backend phases 1–3, the Finn politeness pass, wave 2b/F2b and the switch to DeepSeek as the only model done. Open PRs: #9 (cost-cap commit, `feat/backend-phase1-2`) and the DeepSeek switch (`feat/deepseek-primary`); F3 is committed on `feat/frontend-f3`; phase 3 is committed on `feat/backend-phase3` (branched from `feat/frontend-f3`); "lagre som stilregel" and the writer/reviser prompt fixes are uncommitted on it. The user merges. Roadmap (ARCHITECTURE §17): … → phase 3 → **F4 next** → 4 (ARCHITECTURE v0.20, FRONTEND v0.14).
+**Phase:** 0, 0b, F0–F4, backend phases 1–4, wave 2b/F2b and DeepSeek as the only model done. Phase 3 is merged to `main` (PRs #11–#15). F4 + phase 4 are uncommitted on `feat/frontend-f4` (branched from `main`). The user commits and merges. Roadmap (ARCHITECTURE §17): … → F4 → 4 → **4b/F5 next** (ARCHITECTURE v0.21, FRONTEND v0.15).
 
 ## Status
 
@@ -81,12 +81,23 @@
   - Verified end to end in the real UI against a DB copy with `llm.backend: mock`: draft → question answered without a version → edit makes v2 → `.docx` download.
   - **Not tried live with DeepSeek yet** except one accidental researcher call (see session log).
   - Tests: pytest 248 (new `tests/test_drafts.py`), web typecheck OK, `schema.d.ts` regenerated.
+- **F4 + backend phase 4 done** (2026-10-11), see FRONTEND v0.15 §5.6–5.8/§7, ARCHITECTURE v0.21 §5.5/§6.1/§11/§14:
+  - Profil (`features/profile/`): file list with "Ny fil" from `_template.md`, editor with explicit save (Ctrl+S), history with diff and restore, derived status with "Regenerer" and a derived view with "Endringer" since the last regeneration. API in `context/profile_store.py` + `web/routes/profile.py` (base-hash conflicts, YAML check, path checks, original kept as first revision; `style_rules.py` now uses it). `write_derived` keeps `derived/previous/`.
+  - Innstillinger (`features/settings/`): form built from `GET /api/settings` (metadata per key from `FIELDS` in `web/routes/settings.py`), overrides with "Tilbakestill", source toggles via `sources.*` keys (`db/repo.py: effective_sources`). LLM backends now read `current_settings()`, so backend/fallback/models can be overridden (fixes the old "fallback from YAML only" gap). Changing `schedule.*` reschedules the running scheduler.
+  - "Score på nytt" (`web/routes/rescore.py`, `RescoreCard`): count + estimate (avg filter cost per job, 30 d) and a rescore task; in Innstillinger › Scoring and in Profil after regeneration.
+  - Logg (`features/logs/`): Kjøringer, Agentkall, Forkastet, grouped by day; "Vis jobb" opens discarded jobs.
+  - E-mail digest (`notify/digest.py`, `notify/email.py`): after scheduled runs only, deadlines ≤ 3 d, new jobs ≥ 70 since the last digest (`data/digest_state.json`), due follow-ups, source/cost warnings. `jobsearcher digest` previews to `data/exports/digest-preview.html`; `--send` sends. Previewed on live data (1 deadline, 7 new jobs); **not sent from a scheduled run yet**.
+  - Live: rescored all 63 active jobs with DeepSeek on the user's request ($0.038; 7 ≥ 70, 9 at 50–69, 47 < 50). Read-only smoke test of the new endpoints on live data OK.
+  - Incident: while writing `tests/test_digest.py`, one test sent a real digest e-mail (invented job "Utvikler 1") to the user's own Gmail, because conftest didn't blank `GMAIL_*`. Fixed: conftest blanks the Gmail keys and makes `smtplib.SMTP`/`SMTP_SSL` raise; `send_email` looks the SMTP class up per call.
+  - Tests: pytest 277, Vitest 96, Playwright 48 (+8 skipped), typecheck OK.
 - Live Finn check 2026-10-11 after the politeness pass: only `it_norge` ran (weekly searches not due), one gateway call, 0 new ads since the cursor, so ad-page spacing is still unobserved live.
 
 ### Waiting on the user
 - [ ] (Postponed by the user 2026-10-11) NAV private token → `NAV_FEED_TOKEN` in `.env` (email in ARCHITECTURE §18). `.env` currently has NAV's **public** dev token, which rotates. NAV has not completed a live run yet: its gateway returned 500/504 on 2026-10-10 (spike 01 §Oppdatering). The daily run retries; check `GET /api/logs/runs` or Oversikt › Kildestatus.
 - [x] Wave 2b setup: OpenRouter account with $10 credit; `OPENROUTER_API_KEY` (limit $10) and `OPENROUTER_MANAGEMENT_KEY` in `.env`, both verified live 2026-10-11. Still to do at phase 4b: copy them to the Pi's `jobsearcher.env`.
-- [ ] Merge PR #9 and the DeepSeek PR, then `git checkout main && git pull` and restart `serve` so it runs with `llm.backend: openrouter` (the 07:00 run otherwise uses the code the process started with). Run `uv sync` once if `anthropic` is still installed.
+- [ ] Commit/merge `feat/frontend-f4`, then restart `serve` so the 07:00 run sends the digest and the new endpoints exist (the running process keeps the code it started with).
+- [ ] F4 user test (FRONTEND §8 planned one after F4): edit a profile file, regenerate, try Innstillinger. Report anything that feels off.
+- [ ] Check the first real digest e-mail (after the next scheduled run) and say if the threshold (70) or the 3-day deadline window should change. You can also delete the test e-mail "Jobbsøk …: 1 nye jobber" (invented job "Utvikler 1") sent by mistake on 2026-10-11.
 - [ ] **Run `uv sync` once after stopping `serve`.** On 2026-10-11 `uv add python-docx` failed halfway because the running `serve` held `.venv/Scripts/jobsearcher.exe`. It uninstalled most packages; they were reinstalled with `uv pip install` from the lockfile and the project's editable install was restored, so things work, but `uv sync` puts the venv back in a clean state.
 - [ ] Keep OpenRouter credit topped up: it now pays for all scoring (~$0.001/job). The card warns under $1.
 - [ ] NAV now answers **401** (the public dev token expired, run 2026-10-11 07:00), so the private `NAV_FEED_TOKEN` is required.
@@ -98,16 +109,11 @@
 - (No longer needed: Finn saved searches, Gmail label `JobSearcher/Finn`, sample `.eml` fixture. The user can delete them.)
 
 ## Next task
-1. **Second live letter with DeepSeek** (a few cents; user's go-ahead): restart `serve` (migrates to `0005`), delete or ignore the first test application, make a new draft. Check: ≤ 250 words (`style_overrides.md` now says 200–250), no invented tech-to-project links (first letter tied Azure from the ad to the homeserver), and that a general chat request ("aldri …") shows "Lagre som stilregel". If length still overshoots, add a code check in `agents/writer.py` (word count > limit → one retry). If the ad has an early or unclear start, check the letter has one sentence on availability (writer v0.4). Check the `.docx` sender block matches `profile.yaml` (ARCHITECTURE §10.2). Then **F4** (profil, innstillinger, logg) against mock.
-2. Collect the user's feedback on the new DeepSeek scores while they triage; check `notify_min_score: 70` against triage before the digest (phase 4). The first Finn run with new ads should show ad pages ~5–10 s apart in the log.
-3. NAV: postponed until the user has the private token. Then `uv run jobsearcher run --source nav --no-score` and tune `search.title_require_any` from `GET /api/logs/discarded`.
+1. **Phase 4b + F5 (homeserver):** multi-stage Dockerfile (arm64), `docker-compose.yml`, service in the Pi's `infra` stack, move profile and DB to the volume, healthcheck in Uptime Kuma, copy the OpenRouter keys and Gmail app password to `jobsearcher.env`, check `claude -p` in the container (§19 #5). Code-split the > 500 kB JS chunk (F5).
+2. After the first scheduled digest: check content and links with the user; tune `notify_min_score` against their triage.
+3. NAV: postponed until the user has the private token. Then `uv run jobsearcher run --source nav --no-score` and tune `search.title_require_any` from Logg › Forkastet.
 
-Known small things: the API's `is_new` groups `scrape_runs` within 1 h as one run (no run id column; add one if it misbehaves). `agents.filter.rescore()` has no UI/CLI yet (F4). `llm.fallback` is read from `settings.yaml` only (dashboard overrides don't apply). `by_backend.calls` for `claude_code` counts failed attempts too.
-
-The F1 user test (triage a mock day in < 2 min on mobile) has not been reported; the user gave F1 feedback and asked to start F2. Known small things: the main JS chunk is > 500 kB (code-split in F5); the PC filter row on Jobber wraps to three lines.
-
-### Next: F4 (profil, innstillinger, logg)
-FRONTEND §5.6–5.8 against mock, then phase 4 connects it. Known phase-3 gaps: at the cost cap, drafts and revisions fail with a message instead of asking for confirmation (ARCHITECTURE §8.3); a failed revision leaves the user's chat message without an answer; the editor only locks the text during a revision it started itself; the main JS chunk is still > 500 kB.
+Known small things: the API's `is_new` groups `scrape_runs` within 1 h as one run (no run id column; add one if it misbehaves). `by_backend.calls` for `claude_code` counts failed attempts too. Phase-3 gaps: at the cost cap, drafts and revisions fail with a message instead of asking for confirmation (ARCHITECTURE §8.3); a failed revision leaves the user's chat message without an answer; the editor only locks the text during a revision it started itself. Profile files can't be deleted or renamed from the dashboard (not in the spec). The digest is not sent if the scheduled run is cancelled. The F1 user test (triage a mock day in < 2 min on mobile) was never reported; the PC filter row on Jobber wraps to three lines.
 
 ## Open questions and risks (details in ARCHITECTURE §19)
 1. **Finn mobile API is a ToS grey area.** Deliberate, informed decision; low-volume, private use. See spike 04.
@@ -149,3 +155,4 @@ FRONTEND §5.6–5.8 against mock, then phase 4 connects it. Known phase-3 gaps:
 - 2026-10-11: Writer prompt v0.2 and reviser v0.4: projects get one sentence each instead of detailed explanations, shorter letters overall, and no dashes (– —). `clean_letter` in `agents/writer.py` strips any dashes the model still writes before a version is saved (ARCHITECTURE §7.4). Not yet tried live.
 - 2026-10-11: First live DeepSeek letter: 325 words and an invented Azure-on-homeserver line (flagged in `claims_to_verify` but kept in the letter). Writer v0.3/reviser v0.5: stricter fact rule (no invented links; uncovered claims stay out), length as an upper bound with word count; `style_overrides.md` length set to 200–250. Built "lagre som stilregel": `RevisionResult.style_rule`, `draft_messages.style_rule(_saved_at)` (migration 0005), `POST …/messages/{id}/style-rule` → `context/style_rules.py` appends under `## Fra revisjonschatten` + `profile_revisions` row, button in `RevisionChat`, mock. ARCHITECTURE v0.20, FRONTEND v0.14, openapi re-exported. pytest 251, vitest 90.
 - 2026-10-11: User is a student until mid-June 2027 (not newly graduated); can work part-time now, full-time from June. Fixed `profile.yaml` (`available_from` 2027-06, new `availability`), the filter's `search_prefs` slice, filter v0.4 (unclear start → concern, no penalty), distiller v0.3 (availability in both profiles), writer v0.4 (one availability sentence when start is early or unclear). ARCHITECTURE §1/§7.4, AGENTS. Next draft re-distills (profile hash changed); existing scores are stale but only rescored on demand.
+- 2026-10-11: The user tested a second live letter (fine). Built F4 (Profil, Innstillinger, Logg) and backend phase 4 (profile/settings/rescore API, e-mail digest) on `feat/frontend-f4`; LLM backends now honour dashboard overrides. Rescored all 63 live jobs with DeepSeek on request ($0.038). A digest test sent one real e-mail to the user by mistake; conftest now blocks SMTP. ARCHITECTURE v0.21, FRONTEND v0.15.

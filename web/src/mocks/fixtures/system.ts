@@ -1,6 +1,7 @@
 /** Invented source status, logs, profile files and settings. */
 import type {
   AgentRunEntry,
+  DerivedProfile,
   DiscardedEntry,
   ProfileFile,
   RunLogEntry,
@@ -76,13 +77,13 @@ export function buildAgentRuns(c: Clock): AgentRunEntry[] {
 
 export function buildDiscarded(c: Clock): DiscardedEntry[] {
   const rows: [string, string, string, string | null][] = [
-    ['Senior backend-utvikler', 'Fjordkode AS', 'seniority', 'Tittel inneholder "senior"'],
-    ['Lead Engineer', 'Nordlys Data AS', 'seniority', 'Tittel inneholder "lead"'],
+    ['Senior backend-utvikler', 'Fjordkode AS', 'seniority_title', 'tittel inneholder «senior»'],
+    ['Lead Engineer', 'Nordlys Data AS', 'seniority_title', 'tittel inneholder «lead»'],
     ['Lagermedarbeider', 'Havbris Logistikk AS', 'role', 'Ingen utviklerrolle i tittel eller tekst'],
     ['Utvikler', 'Polarstrøm Kraft AS', 'geography', 'Bergen er utenfor oslo_omegn for fast stilling'],
     ['Systemutvikler', 'Nordkapp Analytics AS', 'geography', 'Tromsø er utenfor oslo_omegn for fast stilling'],
-    ['Utvikler, 5+ års erfaring', 'Stålgrid Systemer AS', 'experience', 'Krever minst 5 års erfaring'],
-    ['Junior utvikler', 'Fjordkode AS', 'duplicate', 'Samme annonse som jobb 1001 (NAV)'],
+    ['Utvikler, 5+ års erfaring', 'Stålgrid Systemer AS', 'experience_years', 'krever 5 års erfaring'],
+    ['Butikksjef', 'Fjordkode AS', 'title_not_it', 'tittelen ligner ikke en IT- eller nyutdannet-stilling'],
     ['Butikkmedarbeider', 'Grønnli Handel AS', 'role', 'Ingen utviklerrolle i tittel eller tekst'],
   ]
   return rows.map(([title, company, rule, detail], i) => ({
@@ -121,24 +122,157 @@ export function buildProfileFiles(c: Clock): ProfileFile[] {
   }))
 }
 
+type SettingDef = Pick<SettingItem, 'key' | 'section' | 'label' | 'kind' | 'default'> &
+  Partial<Pick<SettingItem, 'help' | 'options' | 'min' | 'max'>> & { override?: unknown }
+
+const GEO_MODES = ['nittedal', 'norge', 'oslo', 'oslo_omegn']
+const JOB_TYPES: [string, string][] = [
+  ['permanent', 'fast stilling'],
+  ['trainee', 'trainee'],
+  ['graduate', 'graduate'],
+  ['summer', 'sommerjobb'],
+]
+
+/** Mirrors the editable keys in `web/routes/settings.py`. One override, so "Tilbakestill" shows. */
 export function buildSettings(): SettingItem[] {
-  const items: [string, string, unknown, unknown?][] = [
-    ['search', 'search.geo_mode', { permanent: 'oslo_omegn', trainee: 'norge', graduate: 'norge', summer: 'norge' }],
-    ['search', 'search.job_types', ['permanent', 'trainee', 'graduate', 'summer']],
-    ['search', 'search.exclude_terms', ['senior', 'lead', 'principal', 'arkitekt']],
-    ['search', 'search.unspecified_seniority_max_score', 65],
-    ['scoring', 'scoring.notify_threshold', 70, 75],
-    ['llm', 'llm.backend', 'claude_code'],
-    ['llm', 'llm.models.filter', 'claude-haiku-5-5'],
-    ['llm', 'llm.models.writer', 'claude-sonnet-5-5'],
-    ['cost', 'cost.monthly_cap_usd', 25],
-    ['schedule', 'schedule.daily_at', '07:00'],
+  const defs: SettingDef[] = [
+    ...JOB_TYPES.map(
+      ([t, name]): SettingDef => ({ key: `search.job_types.${t}`, section: 'search', label: `Samle inn ${name}`, kind: 'bool', default: true }),
+    ),
+    ...JOB_TYPES.map(
+      ([t, name]): SettingDef => ({
+        key: `search.geography.${t}`,
+        section: 'search',
+        label: `Geografi for ${name}`,
+        kind: 'enum',
+        options: GEO_MODES,
+        default: t === 'permanent' ? 'oslo_omegn' : 'norge',
+      }),
+    ),
+    { key: 'search.allow_remote_norway', section: 'search', label: 'Ta med fjernarbeid hos norsk arbeidsgiver', kind: 'bool', default: true },
+    {
+      key: 'search.role_exclude',
+      section: 'search',
+      label: 'Ekskluderte roller',
+      kind: 'string_list',
+      help: 'Tittel eller kategori med et av ordene forkastes.',
+      default: ['sikkerhet', 'security', 'pentest'],
+    },
+    {
+      key: 'search.seniority_title_exclude',
+      section: 'search',
+      label: 'Senioritetsord i tittel',
+      kind: 'string_list',
+      help: 'Gjelder kilder uten senioritetsfilter (NAV).',
+      default: ['senior', 'lead', 'principal', 'arkitekt'],
+    },
+    {
+      key: 'search.title_require_any',
+      section: 'search',
+      label: 'Tittelen må inneholde ett av',
+      kind: 'string_list',
+      help: 'Gjelder NAV før annonsen hentes. Tom liste slår regelen av.',
+      default: ['utvikler', 'developer', 'it', 'data'],
+    },
+    {
+      key: 'search.max_required_experience_years',
+      section: 'search',
+      label: 'Maks krav til erfaring (år)',
+      kind: 'int',
+      help: '0 betyr at krav på 1 år eller mer forkastes.',
+      min: 0,
+      max: 10,
+      default: 0,
+    },
+    { key: 'search.unspecified_seniority_max_score', section: 'search', label: 'Maks score uten oppgitt senioritet', kind: 'int', min: 0, max: 100, default: 65 },
+    { key: 'thresholds.overview_deadline_days', section: 'scoring', label: 'Frister på Oversikt (dager)', kind: 'int', min: 1, max: 60, default: 14 },
+    { key: 'notify.digest', section: 'notify', label: 'Send e-postdigest', kind: 'bool', help: 'Etter den daglige kjøringen, bare når det er noe å melde.', default: true },
+    {
+      key: 'thresholds.notify_min_score',
+      section: 'notify',
+      label: 'Score for nye jobber i digesten',
+      kind: 'int',
+      help: 'Nye jobber med minst denne scoren kommer med.',
+      min: 0,
+      max: 100,
+      default: 70,
+      override: 75,
+    },
+    { key: 'notify.deadline_days', section: 'notify', label: 'Frister i digesten (dager)', kind: 'int', min: 1, max: 14, default: 3 },
+    {
+      key: 'llm.backend',
+      section: 'llm',
+      label: 'Modell-backend',
+      kind: 'enum',
+      options: ['openrouter', 'claude_code'],
+      help: 'openrouter er DeepSeek med betalt kreditt; claude_code bruker Claude-abonnementet.',
+      default: 'openrouter',
+    },
+    {
+      key: 'llm.fallback',
+      section: 'llm',
+      label: 'Reserve',
+      kind: 'enum',
+      options: ['none', 'claude_code', 'openrouter'],
+      help: 'Brukes når backenden feiler. En annen modell gir scorer på en annen skala.',
+      default: 'none',
+    },
+    { key: 'llm.openrouter.models.fast', section: 'llm', label: 'OpenRouter-modell (fast)', kind: 'string', help: 'Brukes til scoring.', default: 'deepseek/deepseek-v4.1-flash' },
+    { key: 'llm.openrouter.models.balanced', section: 'llm', label: 'OpenRouter-modell (balanced)', kind: 'string', default: 'deepseek/deepseek-v4.1-flash' },
+    { key: 'llm.openrouter.models.best', section: 'llm', label: 'OpenRouter-modell (best)', kind: 'string', help: 'Brukes til søknadsbrev.', default: 'deepseek/deepseek-v4.1-flash' },
+    {
+      key: 'llm.monthly_cap_usd',
+      section: 'cost',
+      label: 'Kostnadstak per måned (USD)',
+      kind: 'number',
+      help: 'Gjelder betalte kall. Nås taket, stopper scoringen.',
+      min: 0,
+      max: 1000,
+      default: 10,
+    },
+    { key: 'llm.warn_ratio', section: 'cost', label: 'Varsle ved andel av taket', kind: 'number', help: '0,8 = varsel ved 80 %.', min: 0.1, max: 1, default: 0.8 },
+    { key: 'schedule.daily_at', section: 'schedule', label: 'Daglig kjøring', kind: 'time', help: 'Tidssone Europe/Oslo.', default: '07:00' },
+    {
+      key: 'schedule.jitter_minutes',
+      section: 'schedule',
+      label: 'Tilfeldig utsettelse (minutter)',
+      kind: 'int',
+      help: 'Kjøringen starter 0 til så mange minutter etter klokkeslettet.',
+      min: 0,
+      max: 180,
+      default: 40,
+    },
+    { key: 'sources.finn_api.enabled', section: 'sources', label: 'Finn', kind: 'bool', default: true },
+    { key: 'sources.nav.enabled', section: 'sources', label: 'NAV', kind: 'bool', help: 'Krever NAV_FEED_TOKEN i .env.', default: true },
   ]
-  return items.map(([section, key, def, override]) => ({
-    key,
-    section,
-    default: def,
-    value: override ?? def,
+  return defs.map(({ override, ...d }) => ({
+    help: null,
+    options: null,
+    min: null,
+    max: null,
+    ...d,
+    value: override ?? d.default,
     overridden: override !== undefined,
   }))
+}
+
+/** Invented derived profile (layer 2), with the versions before the last regeneration. */
+export function buildDerived(c: Clock): DerivedProfile {
+  return {
+    made_at: c.at(-3, 21),
+    model: 'deepseek/deepseek-v4.1-flash',
+    files: [
+      {
+        name: 'profile_short.md',
+        content: 'Nyutdannet utvikler (bachelor 2026) med Python, TypeScript og React. Vil jobbe med backend i Oslo-området.\n',
+        previous_content: 'Nyutdannet utvikler med Python og React. Vil jobbe med backend.\n',
+      },
+      {
+        name: 'profile_long.md',
+        content: '# Ola Nordmann\n\nBachelor i informatikk (2026). Deltidsutvikler hos Eksempel AS. Bookingsystem med FastAPI og React.\n',
+        previous_content: null,
+      },
+      { name: 'voice.md', content: 'Kort, konkret, uten floskler.\n', previous_content: 'Kort og konkret.\n' },
+    ],
+  }
 }

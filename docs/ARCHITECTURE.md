@@ -1,12 +1,13 @@
 # JobSearcher: design- og arkitekturdokument
 
-> Status: v0.20 (2026-10-11). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F3, backend-fase 1–3 og bølge 2b/F2b er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), dashboardets oversikt, jobbliste, tracker og søknadseditor går mot ekte data, og alle LLM-kall går til DeepSeek via `openrouter`. Søknadsutkast er ikke prøvd live med DeepSeek ennå. Neste: F4.
+> Status: v0.21 (2026-10-11). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F4, backend-fase 1–4 og bølge 2b/F2b er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), hele dashboardet går mot ekte data, profil og innstillinger redigeres i dashboardet, og en e-postdigest sendes etter den planlagte kjøringen. Alle LLM-kall går til DeepSeek via `openrouter`. Neste: 4b/F5 (hjemmeserver).
 > Dokumentet er "source of truth" for designet. UI-designet står i [FRONTEND.md](FRONTEND.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato       | Endring                                                                                                                                                                                                                                                                           |
 | ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v0.21   | 2026-10-11 | F4 og fase 4: profil-, innstillings- og «score på nytt»-API (§5.5, §6.1, §14), e-postdigest (§11). Innstillinger som kan endres i dashboardet er en fast liste i `web/routes/settings.py`, og `sources.*`-nøklene slår kilder av og på (§14). LLM-backendene leser nå effektive innstillinger, så modell, backend og reserve kan overstyres i dashboardet (§8.1). Digesten sendes bare etter den planlagte kjøringen og melder en ny jobb én gang (`data/digest_state.json`). Første lagring av en profilfil tar vare på originalen i `profile_revisions`; destilleren beholder forrige versjon i `derived/previous/` for diffen i Profil. |
 | v0.20   | 2026-10-11 | «Lagre som stilregel»: revisoren foreslår en stilregel (`RevisionResult.style_rule`, §7.2) når chatmeldingen er en generell preferanse, og brukeren lagrer den med én knapp i `style_overrides.md` (§6.1, §7.4). Forslaget lagres på chatmeldingen (migrasjon `0005`, §9). Faktaregelen strammet inn (§7.4): påstander uten dekning i profilen skal ikke stå i brevet, heller ikke oppdiktede koblinger mellom teknologi og prosjekt; `claims_to_verify` er for dekkede, men kanskje for sterke formuleringer. Grunn: første live brev med DeepSeek koblet Azure fra annonsen til hjemmeserveren, og var 325 ord. Prompt `writer` v0.3, `reviser` v0.5. |
 | v0.19   | 2026-10-11 | Fase 3 bygget: research-, skrive- og revisjonsagentene, bitene for fase 3 (§6.2), prosjektvalg (§6.4), utkast-API og `.docx`-eksport. Presisert etter implementering: research bruker OpenRouters web-plugin, bare `full`-notater caches og et mislykket søk gir et `limited`-notat fra annonsen (§7.3); skriveren oppretter søknaden først når utkastet finnes (§7.4); utkast og revisjon avvises ved kostnadstaket i stedet for å be om bekreftelse (§8.3); eksporten bruker ingen mal og lagrer ikke fil (§10.2). Prompt `reviser` v0.3, `researcher` v0.2. |
 | v0.18   | 2026-10-11 | Revisjonschatten skiller spørsmål fra endringer: revisoren svarer i chatten uten ny versjon når meldingen er et spørsmål (`RevisionResult.kind`, §7.2; prompt `reviser` v0.2). Chatten lagres i ny tabell `draft_messages` (migrasjon `0004`, §9). Grunn: i brukertesten av F3 ble et spørsmål om en påstand limt inn i brevet. |
@@ -73,7 +74,7 @@ Et frittstående Python-program som kjører på brukerens egen maskin (PC under 
 | Tilgang | Utvikling: `127.0.0.1`. Drift: bare via Tailscale på `jobb.mariuskristensen.no`. Ingen innlogging i appen. |
 | Database | SQLite via SQLModel, migrasjoner med Alembic |
 | E-post | Gmail SMTP for utsending av digest. Ingen IMAP. |
-| LLM | Én modell for alle agenter: DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash`) via OpenRouter, backend `openrouter`, så scorer og utkast er sammenlignbare. Ingen reserve som standard; feiler et kall, prøves jobben igjen ved neste kjøring. `claude_code` (abonnement via `claude -p`) finnes og kan settes som standard eller reserve i config (§8.1, spike 05). `anthropic_api` er fjernet (bølge 2b). |
+| LLM | Én modell for alle agenter: DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash`) via OpenRouter, backend `openrouter`, så scorer og utkast er sammenlignbare. Ingen reserve som standard; feiler et kall, prøves jobben igjen ved neste kjøring. `claude_code` (abonnement via `claude -p`) finnes og kan settes som standard eller reserve i config eller Innstillinger (§8.1, §14, spike 05). `anthropic_api` er fjernet (bølge 2b). |
 | Finn | Mobil-API på `https://appsgw.finn.no/` med HMAC-SHA512-signering (egen implementasjon fra spike 04 §Signering, verifisert i fase 0b) for søk. Annonsetekst fra `JobPosting` JSON-LD på den offentlige annonsesiden, bare for nye jobber etter hardfilteret. Søk defineres i `config/sources.yaml`. Endepunkter er reverse-engineert fra Android-APK (v`261006-ec709768`). Se spike 04. |
 | NAV | pam-stilling-feed med privat token |
 | Trainee/graduate | NAV + Teamtailor-RSS + kuratert selskapsliste med sideovervåker |
@@ -294,7 +295,7 @@ geography:
 ### 5.5 Ny scoring
 
 - **Automatisk:** når `content_hash` endres (annonsen er oppdatert, eller tekst er importert).
-- **Profil eller prompt endret:** dashboardet viser "N aktive jobber er scoret med gammel profil, estimert kostnad $X" og en knapp. Bare aktive jobber med status Ikke vurdert eller Interessant, publisert de siste 30 dagene, scores på nytt. Aldri automatisk, for å holde kostnaden nede. Logikken finnes i `agents.filter.rescore()`; knappen kommer med F4. Fra kommandolinjen: `jobsearcher rescore` (samme utvalg) eller `jobsearcher rescore --all` (alle aktive, scorede jobber uansett alder og status, f.eks. etter bytte av modell).
+- **Profil eller prompt endret:** dashboardet viser "N aktive jobber er scoret med gammel profil eller prompt. Estimert kostnad $X" og knappen "Score på nytt" (Innstillinger › Scoring, og i Profil etter regenerering). Bare aktive jobber med status Ikke vurdert eller Interessant, publisert de siste 30 dagene, scores på nytt. Aldri automatisk, for å holde kostnaden nede. Estimatet er snittkostnaden per scoret jobb for filter-agenten de siste 30 dagene (ellers $0,001). `GET /api/rescore` gir antall og estimat, `POST /api/rescore` starter `agents.filter.rescore()` som bakgrunnsjobb. Fra kommandolinjen: `jobsearcher rescore` (samme utvalg) eller `jobsearcher rescore --all` (alle aktive, scorede jobber uansett alder og status, f.eks. etter bytte av modell).
 
 ---
 
@@ -323,7 +324,7 @@ context/
 
 Filer som starter med `_` ignoreres.
 
-**Plassering:** Lag 1 leses fra `PROFILE_DIR` (standard `context/profile/`). I drift er det `/data/profile/` i containerens datavolum, og profilen redigeres i dashboardet (FRONTEND §5.6). Hver lagring skriver filen og en rad i `profile_revisions`. Appen er uavhengig av Obsidian; enhver editor fungerer under utvikling.
+**Plassering:** Lag 1 leses fra `PROFILE_DIR` (standard `context/profile/`). I drift er det `/data/profile/` i containerens datavolum, og profilen redigeres i dashboardet (FRONTEND §5.6). Hver lagring skriver filen og en rad i `profile_revisions` (`context/profile_store.py`); den første lagringen av en fil lagrer også innholdet den erstatter, så originalen kan gjenopprettes. YAML valideres før lagring. Stier valideres mot `PROFILE_DIR`; `_template.md` i en mappe kan leses (for "Ny fil"), men ikke skrives. Appen er uavhengig av Obsidian; enhver editor fungerer under utvikling.
 
 **Lag 2: destillert** (laget av destiller-agenten når hash av lag 1 endres)
 
@@ -334,7 +335,7 @@ Filer som starter med `_` ignoreres.
 | `voice.md` | ~800 tokens | Skriver, reviser |
 | `manifest.json` | Hash per kildefil, `profile_hash`, versjon av destiller-prompten, modell, tidspunkt | Kontekstbygger |
 
-`profile_hash` = 16 hex-tegn av sha256 over sorterte `sti:sha256(innhold)` (CRLF → LF). Bare `.md`, `.yaml`, `.yml` og `.txt` leses; filer og mapper som starter med `_` eller `.` ignoreres. Lag 2 er utdatert når `profile_hash` eller destiller-promptens versjon endres, eller en fil mangler. `evaluations.profile_hash` er hashen lag 2 ble laget fra.
+`profile_hash` = 16 hex-tegn av sha256 over sorterte `sti:sha256(innhold)` (CRLF → LF). Bare `.md`, `.yaml`, `.yml` og `.txt` leses; filer og mapper som starter med `_` eller `.` ignoreres. Lag 2 er utdatert når `profile_hash` eller destiller-promptens versjon endres, eller en fil mangler. `evaluations.profile_hash` er hashen lag 2 ble laget fra. Ved regenerering flyttes filene som erstattes til `derived/previous/`, så Profil kan vise hva siste regenerering endret (`GET /api/profile/derived`). "Regenerer" i dashboardet (`POST /api/profile/distill`) destillerer alltid, også når hashen er uendret.
 
 **Bedriftskontekst:** `data/companies/<slug>.md`, laget av research-agenten. Cache i 90 dager.
 
@@ -736,13 +737,15 @@ Filnavn i `Content-Disposition`: `Søknad <Bedrift> v<versjon>.docx` (UTF-8, med
   - Ved oppstart: har dagens klokkeslett passert uten at noen kjøring (planlagt eller manuell) har startet etter det, startes en med en gang.
   - I drift holder Docker (`restart: unless-stopped`) prosessen i live. Under utvikling går planleggeren når `serve` kjører.
   - Ingen avhengighet til Windows Task Scheduler eller cron.
-- **Rekkefølge i kjøringen:** kilder → normalisering → hardfilter → filter-batcher → utløp/oppfølging → digest → backup.
-- **E-postdigest** (bare hvis det er noe å melde), sendt via Gmail SMTP til brukeren selv:
-  1. **Frister de neste 3 dagene** for jobber merket Interessant/Utkast
-  2. Nye jobber med score ≥ 70, per jobbtype
-  3. Oppfølginger som forfaller
-  4. Kildehelse (f.eks. "NAV-feeden svarte 401: token utløpt?") og kostnadsvarsel
-- **Gmail SMTP** sender digest til brukeren selv. Ingen IMAP — Finn-flyten går via mobil-API-et (§4.2).
+  - Endres `schedule.*` i dashboardet, flyttes jobben i den kjørende planleggeren (`scheduler.reschedule()`), uten omstart.
+- **Rekkefølge i kjøringen:** kilder → normalisering → hardfilter → utløp/oppfølging → filter-batcher → digest (bare planlagte kjøringer) → backup.
+- **E-postdigest** (`notify/digest.py`), bare etter den planlagte kjøringen, så "Kjør nå" aldri gir en ekstra e-post. Sendes bare hvis det er noe å melde, og kan slås av (`notify.digest`). Seksjoner, hver utelatt når den er tom:
+  1. **Frister de neste `notify.deadline_days` dagene** (standard 3) for jobber merket Interessant/Utkast
+  2. Nye jobber med score ≥ `thresholds.notify_min_score` (standard 70), per jobbtype, som ikke er vurdert ennå. "Ny" betyr først sett etter forrige digest (`data/digest_state.json`; første gang siste døgn), så en jobb meldes én gang.
+  3. Oppfølginger og neste steg som forfaller i dag eller har forfalt, for åpne søknader
+  4. Kilder med `fail`/`warn` i kjøringen og kostnadsvarsel (`llm.warn_ratio`)
+  Lenkene går til appen (`notify.app_url`). E-posten har HTML og en ren tekst-del. `jobsearcher digest` skriver en forhåndsvisning til `data/exports/digest-preview.html`; `--send` sender med en gang.
+- **Gmail SMTP** (`notify/email.py`, `smtp.gmail.com:465`) sender digest fra og til `GMAIL_ADDRESS`. Mangler nøklene, hoppes utsendingen over og tilstanden endres ikke. Ingen IMAP — Finn-flyten går via mobil-API-et (§4.2).
 
 ---
 
@@ -784,7 +787,7 @@ Filnavn i `Content-Disposition`: `Søknad <Bedrift> v<versjon>.docx` (UTF-8, med
 | `config/tech_aliases.yaml` | Teknologisynonymer | Ja |
 | `.env` | Hemmeligheter | **Nei** |
 
-Innstillinger endret i dashboardet lagres i `settings_overrides` og overstyrer YAML (`db/repo.py: effective_settings`).
+Innstillinger endret i dashboardet lagres i `settings_overrides` og overstyrer YAML (`db/repo.py: effective_settings`; `current_settings()` for kode uten DB-sesjon, som LLM-backendene). Bare nøklene i listen `FIELDS` i `web/routes/settings.py` kan endres derfra (søk, scoring, digest, LLM, kostnad, planlegging, kilder); listen har etikett, type, lovlige verdier og grenser per nøkkel, og skjemaet i dashboardet lages fra den. Nøkler som starter med `sources.` (f.eks. `sources.nav.enabled`) overstyrer `sources.yaml` (`effective_sources`). En verdi lik YAML-verdien fjerner overstyringen.
 
 Stier styres av miljøvariabler, så samme kode kjører på PC og i container:
 
@@ -841,7 +844,7 @@ JobSearcher/
 │       └── extractor.md
 │
 ├── src/jobsearcher/
-│   ├── cli.py                         typer: serve | run | distill | init-db (senere: rescore | eval | backup)
+│   ├── cli.py                         typer: serve | run | distill | rescore | digest | init-db (senere: eval | backup)
 │   ├── config.py                      Env (stier, hemmeligheter), settings.yaml-modeller, YAML-lasting, today()
 │   ├── scheduler.py                   APScheduler i serve, innhenting av tapt kjøring
 │   ├── api/           schemas.py      API-kontrakten (Pydantic), kilde for OpenAPI og TS-typer
@@ -858,21 +861,23 @@ JobSearcher/
 │   │   ├── page_watch.py
 │   │   └── manual.py                  import av limt inn annonsetekst
 │   ├── pipeline/      run.py, normalize.py, clean.py, dedupe.py, hardfilter.py, lifecycle.py, lock.py
-│   ├── context/       loader.py, slices.py, builder.py, budget.py, projects.py (prosjektvalg §6.4), style_rules.py (§7.4)
+│   ├── context/       loader.py, slices.py, builder.py, budget.py, projects.py (prosjektvalg §6.4), style_rules.py (§7.4),
+│   │                  profile_store.py (lese/skrive profilfiler fra dashboardet, historikk §6.1)
 │   ├── agents/        base.py, schemas.py, filter.py, distiller.py, researcher.py, writer.py, reviser.py
 │   │                  (fase 5: extractor.py)
 │   │   (ingen enricher — Finn-annonsesiden gir full annonsetekst)
 │   ├── llm/           base.py (protokoll, FallbackBackend, bryter), claude_code.py, openrouter.py (+ saldo), mock.py, costs.py
 │   ├── tracking/      status.py       Overgangstabell §9.1, triage, angre
 │   │                  drafts.py       Versjoner (autosave-regelen), chatmeldinger
-│   ├── notify/        email.py, templates/digest.html
+│   ├── notify/        digest.py (bygger og sender digesten §11), email.py (Gmail SMTP)
 │   ├── export/        docx.py         Brev → .docx (§10.2)
 │   └── web/
 │       ├── app.py, tasks.py           FastAPI-app med lifespan (DB, task-runner, planlegger), serverer web/dist
 │       ├── queries.py                 DB → API-skjema, cursor-paging
 │       ├── errors.py                  Feilformat `{detail, code}`, 501 for ruter uten backend
 │       └── routes/    overview.py, jobs.py, applications.py, drafts.py, profile.py,
-│                      settings.py, logs.py, tasks.py, llm.py (/api/llm/usage)
+│                      settings.py (redigerbare nøkler §14), rescore.py (§5.5), logs.py, tasks.py,
+│                      llm.py (/api/llm/usage)
 │
 ├── web/                               Frontend (FRONTEND.md)
 │   ├── package.json, vite.config.ts, tsconfig*.json, components.json, playwright.config.ts
@@ -883,9 +888,9 @@ JobSearcher/
 │   │   ├── api/                       schema.d.ts (generert), types.ts, client.ts, queries.ts
 │   │   ├── components/ui/             shadcn-komponenter
 │   │   ├── components/                AppShell, badges (score/frist/status), tasks (indikator, Kjør nå), Toaster, Sheet, Markdown
-│   │   ├── features/                  overview/, jobs/, tracker/, drafts/ (søknadsliste og editor), profile/, settings/, logs/, more/
-│   │   │                              (placeholders.tsx holder skjermene som ikke er bygget ennå)
-│   │   ├── mocks/                     MSW: handlers.ts, db.ts, browser.ts, drafts.ts (mock-skriver/-reviser), docx.ts, fixtures/*.ts (oppdiktet)
+│   │   ├── features/                  overview/, jobs/, tracker/, drafts/ (søknadsliste og editor), profile/, settings/, logs/, more/,
+│   │   │                              NotFoundPage.tsx
+│   │   ├── mocks/                     MSW: handlers.ts, db.ts, browser.ts, drafts.ts (mock-skriver/-reviser), system.ts (profil, innstillinger, score på nytt), docx.ts, fixtures/*.ts (oppdiktet)
 │   │   ├── test/                      Vitest-oppsett
 │   │   ├── routes.tsx, main.tsx
 │   │   └── lib/                       format (dato, frist), status, tema, useMediaQuery
@@ -903,12 +908,14 @@ JobSearcher/
 └── tests/
     ├── conftest.py                    Egen DATA_DIR per test, migrert temp-DB, planlegger av
     ├── fixtures/                      finn/ (søk, annonseside, filtre), nav/, profile/ (oppdiktet); private/ er gitignored
-    ├── test_api_*.py                  Kontrakt (501, openapi.json oppdatert), jobber, oversikt, tracker, tasks
+    ├── test_api_*.py                  Kontrakt (feilformat, openapi.json oppdatert), jobber, oversikt, tracker, tasks
     ├── test_finn_api.py, test_finn_sig.py, test_nav_feed.py, test_http.py
     ├── test_normalize.py, test_clean.py, test_dedupe.py, test_hardfilter.py, test_pipeline_run.py
     ├── test_llm_backends.py, test_context_builder.py, test_filter_agent.py, test_distiller.py
     ├── test_status_transitions.py, test_scheduler.py, test_db.py
     ├── test_drafts.py                 Fase 3: prosjektvalg, research, skriver, revisjon, utkast-API, .docx
+    ├── test_api_profile_settings.py   Fase 4: profilfiler, destillert profil, innstillinger, score på nytt
+    ├── test_digest.py                 Fase 4: e-postdigest (falsk SMTP; conftest blokkerer ekte SMTP)
     └── evals/
 ```
 
@@ -952,9 +959,9 @@ Rekkefølge: fase 1 → fase 2 → 2b/F2b → F3 → fase 3 → F4 → fase 4 �
 | ~~2. Scoring + API v1~~ | LLM-backends, destiller, filter i batch, `/api` for oversikt, jobber, jobbdetalj, triage og tasks. Kobler F1. Trukket frem fra fase 4: tracker-API-et (kobler F2), logg-API-et og planleggeren i `serve`. | ✅ 2026-10-10 |
 | ~~2b. OpenRouter-reserve~~ | `llm/openrouter.py`, reserve-regel med bryter (§8.1), `anthropic_api` fjernet, migrasjon `0003`, `GET /api/llm/usage`, forbrukskortet (F2b). Sjekk mot Haiku: spike 05 §Oppdatering. | ✅ 2026-10-11 |
 | ~~F3. Søknadseditor~~ | FRONTEND §5.5 mot mock | ✅ 2026-10-11 |
-| ~~3. Søknader~~ | Research, writer, revisjon, versjoner, `.docx`-eksport, `/api` for utkast. Kobler F3. | ✅ 2026-10-11 (mock-LLM ende til ende; ikke prøvd live med DeepSeek) |
-| **F4. Profil, innstillinger, logg** | FRONTEND §5.6–5.8 mot mock | Profilen kan redigeres uten filsystemtilgang |
-| **4. Tracking + varsling** | E-postdigest, profil-API, innstillings-API, "score på nytt"-knapp. Kobler F4. (Statusflyt, oppfølging, planlegger og backup kom i fase 1–2.) | Hele flyten går uten manuelt arbeid |
+| ~~3. Søknader~~ | Research, writer, revisjon, versjoner, `.docx`-eksport, `/api` for utkast. Kobler F3. | ✅ 2026-10-11 (prøvd live med DeepSeek) |
+| ~~F4. Profil, innstillinger, logg~~ | FRONTEND §5.6–5.8 mot mock | ✅ 2026-10-11 |
+| ~~4. Tracking + varsling~~ | E-postdigest, profil-API, innstillings-API, "score på nytt"-knapp. Kobler F4. (Statusflyt, oppfølging, planlegger og backup kom i fase 1–2.) | ✅ 2026-10-11 (digesten ikke sendt live fra en planlagt kjøring ennå) |
 | **4b. Hjemmeserver** | Dockerfile (arm64), tjeneste i Pi-ens `infra`-stack, NPM-proxy, DNS, `claude setup-token`, flytte profil og DB til volumet, healthcheck i Uptime Kuma | Appen kjører på Pi-en og brukes fra mobil via Tailscale |
 | **5. Flere kilder** | Teamtailor, sideovervåker + extractor, kuratert selskapsliste | Trainee-programmer fanges opp |
 | **6. Polering** | Filter-eval, kostnadsside | Recall ≥ 90 % |

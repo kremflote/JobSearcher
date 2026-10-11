@@ -9,8 +9,7 @@ from __future__ import annotations
 from sqlmodel import Session
 
 from jobsearcher.config import env
-from jobsearcher.context.loader import file_hash
-from jobsearcher.db.models import ProfileRevision
+from jobsearcher.context import profile_store
 
 STYLE_FILE = "style_overrides.md"
 HEADING = "## Fra revisjonschatten"
@@ -36,10 +35,8 @@ def with_rule(text: str, rule: str) -> str:
 
 def add_style_rule(session: Session, rule: str) -> None:
     path = env().profile_dir / STYLE_FILE
-    old = path.read_text(encoding="utf-8") if path.exists() else ""
-    new = with_rule(old, rule)
+    old = path.read_text(encoding="utf-8").replace("\r\n", "\n") if path.exists() else None
+    new = with_rule(old or "", rule)
     if new == old:
         return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(new, encoding="utf-8", newline="\n")
-    session.add(ProfileRevision(path=STYLE_FILE, content=new, content_hash=file_hash(path)))
+    profile_store.write(session, STYLE_FILE, new, profile_store.content_hash(old) if old is not None else None)

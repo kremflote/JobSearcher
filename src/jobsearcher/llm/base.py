@@ -242,9 +242,10 @@ def get_backend(name: str | None = None, *, fallback: bool = True) -> LLMBackend
     in `FallbackBackend`. An `openrouter` fallback needs `OPENROUTER_API_KEY`; without it the
     fallback is off.
     """
-    from jobsearcher.config import env, load_settings
+    from jobsearcher.config import env
+    from jobsearcher.db.repo import current_settings
 
-    llm = load_settings().llm
+    llm = current_settings().llm
     name = name or llm.backend
     primary = _make_backend(name)
     fb = llm.fallback_backend

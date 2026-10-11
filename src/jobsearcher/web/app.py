@@ -25,6 +25,7 @@ from jobsearcher.web.routes import (
     logs,
     overview,
     profile,
+    rescore,
     settings,
     tasks,
 )
@@ -77,6 +78,7 @@ def create_app(dist: Path | None = DIST) -> FastAPI:
         drafts,
         profile,
         settings,
+        rescore,
         logs,
         tasks,
     ):

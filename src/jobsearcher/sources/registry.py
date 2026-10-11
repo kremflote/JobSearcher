@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from jobsearcher.config import env, load_sources
+from jobsearcher.config import env
 from jobsearcher.sources.base import JobSource
 from jobsearcher.sources.http import HttpClient
 
@@ -27,11 +27,16 @@ def _build(name: str, http: HttpClient, config: dict) -> JobSource | None:
     return None
 
 
-def build_sources(http: HttpClient, names: list[str] | None = None, *, force: bool = False) -> list[JobSource]:
+def build_sources(
+    http: HttpClient, names: list[str] | None = None, *, force: bool = False, config: dict | None = None
+) -> list[JobSource]:
     """Enabled sources, or exactly `names` when given (an explicit name runs even if disabled).
 
     `force` is passed to each source's config: it skips cooldowns and weekly schedules (§4.2)."""
-    config = load_sources()
+    if config is None:
+        from jobsearcher.db.repo import current_sources
+
+        config = current_sources()  # sources.yaml + dashboard toggles
     wanted = list(names) if names else [n for n in SOURCE_ORDER if (config.get(n) or {}).get("enabled")]
     unknown = [n for n in wanted if n not in SOURCE_ORDER]
     if unknown:

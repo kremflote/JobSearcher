@@ -347,8 +347,10 @@ def test_api_style_rule_saved_to_profile(client, session, profile):
         assert r.status_code == 200 and r.json()["style_rule_saved"] is True
     text = (profile / "style_overrides.md").read_text(encoding="utf-8")
     assert text.count("- Aldri start med «Jeg»") == 1
-    [rev] = session.exec(select(ProfileRevision)).all()
-    assert rev.path == "style_overrides.md" and rev.content == text
+    # The original file is kept as the first revision, then the file with the rule.
+    original, rev = session.exec(select(ProfileRevision).order_by(ProfileRevision.id)).all()
+    assert rev.path == original.path == "style_overrides.md" and rev.content == text
+    assert "Aldri start med" not in original.content
 
 
 def test_api_errors(client, session):

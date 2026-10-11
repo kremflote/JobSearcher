@@ -23,15 +23,3 @@ export function Page({
     </div>
   )
 }
-
-/** Placeholder body for screens that arrive in a later wave (FRONTEND §8). */
-export function ComingSoon({ wave, children }: { wave: string; children?: ReactNode }) {
-  return (
-    <div className="text-muted-foreground rounded-lg border border-dashed p-6 text-sm">
-      <p>
-        Kommer i bølge <span className="text-foreground font-medium">{wave}</span>.
-      </p>
-      {children}
-    </div>
-  )
-}

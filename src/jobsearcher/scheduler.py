@@ -100,6 +100,24 @@ def start_scheduler() -> None:
         _fire()
 
 
+def reschedule() -> None:
+    """Apply a changed `schedule.daily_at` / `jitter_minutes` from the dashboard to the running
+    scheduler. No-op when the scheduler isn't running."""
+    global _jitter_minutes
+    if _scheduler is None:
+        return
+    from jobsearcher.db.repo import current_settings
+
+    settings = current_settings()
+    hour, minute = settings.schedule.daily_at.split(":")
+    _jitter_minutes = float(settings.schedule.jitter_minutes)
+    _scheduler.reschedule_job(
+        "daily_run",
+        trigger=CronTrigger(hour=int(hour), minute=int(minute), timezone=settings.schedule.timezone),
+    )
+    log.info("schedule changed", extra={"data": {"daily_at": settings.schedule.daily_at}})
+
+
 def stop_scheduler() -> None:
     global _scheduler
     if _scheduler is not None:
