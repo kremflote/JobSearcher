@@ -1,12 +1,13 @@
 # JobSearcher: design- og arkitekturdokument
 
-> Status: v0.22 (2026-10-11). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F4, backend-fase 1–4 og bølge 2b/F2b er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), hele dashboardet går mot ekte data, profil og innstillinger redigeres i dashboardet, og en e-postdigest sendes etter den planlagte kjøringen. Alle LLM-kall går til DeepSeek via `openrouter`. Neste: 4b/F5 (hjemmeserver).
+> Status: v0.23 (2026-10-11). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F5, backend-fase 1–4, 4b og bølge 2b/F2b er ferdige, og appen kjører på Pi-en (https://jobb.mariuskristensen.no): Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), hele dashboardet går mot ekte data, profil og innstillinger redigeres i dashboardet, og en e-postdigest sendes etter den planlagte kjøringen. Alle LLM-kall går til DeepSeek via `openrouter`. Neste: fase 5 (flere kilder).
 > Dokumentet er "source of truth" for designet. UI-designet står i [FRONTEND.md](FRONTEND.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato       | Endring                                                                                                                                                                                                                                                                           |
 | ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v0.23   | 2026-10-11 | Fase 4b/F5 bygget (§12, §15): `Dockerfile` (Node bygger `web/dist`, Python 3.12 + uv kjører appen fra `/app`, `claude`-CLI-en installert, bruker-uid 1000), `.dockerignore` som holder persondata ute, `deploy/compose.service.yml` og `scripts/deploy_pi.sh` (sender arbeidskopien over SSH og bygger på Pi-en; repoet er privat, så Pi-en trenger ingen GitHub-tilgang). Volumet er `config/jobsearcher/data/` (ikke hele `config/jobsearcher/`), så `jobsearcher.env` ligger utenfor `/data`. |
 | v0.22   | 2026-10-11 | `serve` bygger frontenden på nytt ved oppstart når kildene er nyere enn `web/dist` (§10, §15), så endringer vises uten manuell `npm run build`. |
 | v0.21   | 2026-10-11 | F4 og fase 4: profil-, innstillings- og «score på nytt»-API (§5.5, §6.1, §14), e-postdigest (§11). Innstillinger som kan endres i dashboardet er en fast liste i `web/routes/settings.py`, og `sources.*`-nøklene slår kilder av og på (§14). LLM-backendene leser nå effektive innstillinger, så modell, backend og reserve kan overstyres i dashboardet (§8.1). Digesten sendes bare etter den planlagte kjøringen og melder en ny jobb én gang (`data/digest_state.json`). Første lagring av en profilfil tar vare på originalen i `profile_revisions`; destilleren beholder forrige versjon i `derived/previous/` for diffen i Profil. |
 | v0.20   | 2026-10-11 | «Lagre som stilregel»: revisoren foreslår en stilregel (`RevisionResult.style_rule`, §7.2) når chatmeldingen er en generell preferanse, og brukeren lagrer den med én knapp i `style_overrides.md` (§6.1, §7.4). Forslaget lagres på chatmeldingen (migrasjon `0005`, §9). Faktaregelen strammet inn (§7.4): påstander uten dekning i profilen skal ikke stå i brevet, heller ikke oppdiktede koblinger mellom teknologi og prosjekt; `claims_to_verify` er for dekkede, men kanskje for sterke formuleringer. Grunn: første live brev med DeepSeek koblet Azure fra annonsen til hjemmeserveren, og var 325 ord. Prompt `writer` v0.3, `reviser` v0.5. |
@@ -569,7 +570,7 @@ claude -p --output-format json --json-schema '<schema>' --model <haiku|sonnet|op
 - Isolasjonen gir ~1,5k tokens overhead per kall (mot ~39k uten). `--bare` brukes ikke, siden det slår av abonnementsinnloggingen.
 - `ANTHROPIC_API_KEY` fjernes fra subprosessens miljø, så abonnementet brukes. `CLAUDE_CODE_OAUTH_TOKEN` sendes videre hvis den finnes.
 - Kostnad fra `total_cost_usd`. Målt: filter-batch med 3 annonser (Haiku) ~$0.0025, destillering (Sonnet) ~$0.12.
-- **I container:** Claude Code CLI installeres i imaget (linux-arm64). Innlogging på abonnementet gjøres én gang med `claude setup-token`, og tokenet legges i `.env` som `CLAUDE_CODE_OAUTH_TOKEN`. Verifiseres når fase 4b starter.
+- **I container:** Claude Code CLI installeres i imaget (linux-arm64). Innlogging på abonnementet gjøres én gang med `claude setup-token`, og tokenet legges i `.env` som `CLAUDE_CODE_OAUTH_TOKEN`. Verifisert på Pi-en 2026-10-11 (`claude -p` med isolasjonsflaggene, modell `haiku`).
 
 **`openrouter` (standard, spike 05):** OpenRouters OpenAI-kompatible API (`https://openrouter.ai/api/v1/chat/completions`) med `httpx`, nøkkel i `OPENROUTER_API_KEY`. Modell `deepseek/deepseek-v4.1-flash` for alle tiers. Erstatter `anthropic_api` (fjernet i bølge 2b).
 - Strukturert output med `response_format: {type: json_schema, json_schema: {strict: true, schema}}`. Svaret valideres mot Pydantic-skjemaet, og ugyldig JSON gir ett nytt forsøk.
@@ -761,7 +762,7 @@ Filnavn i `Content-Disposition`: `Søknad <Bedrift> v<versjon>.docx` (UTF-8, med
 | Migrasjoner | Alembic fra start |
 | Backup | Etter hver kjøring: SQLite backup-API → `data/backups/jobsearcher-YYYY-MM-DD.db`, beholder 14. På hjemmeserveren ligger datavolumet under `infra/config/jobsearcher/`, som Pi-ens daglige Restic-backup allerede dekker. Restic tar de konsistente kopiene i `backups/`, ikke den levende DB-filen. |
 | Nettverk | Utvikling: uvicorn på `127.0.0.1:8765`. Drift: uvicorn på `0.0.0.0:8765` inne i containeren, ingen publisert port på verten. Nginx Proxy Manager når `jobsearcher:8765` over `shared-network`. Cloudflare DNS `jobb.mariuskristensen.no` → Pi-ens Tailscale-IP (DNS only). |
-| Distribusjon | Multi-stage `Dockerfile` (Node bygger `web/dist`, Python-image kjører appen), bygget for `linux/arm64` og `linux/amd64`. Tjenesten `jobsearcher` legges i Pi-ens `infra`-stack, likt Matflote. Volum: `config/jobsearcher/` → `/data` (DB, profil, cache, eksporter, Claude-sandbox). `GET /api/health` brukes av Docker healthcheck og Uptime Kuma. |
+| Distribusjon | Multi-stage `Dockerfile` (Node bygger `web/dist`, Python 3.12-image med uv kjører appen fra `/app`, så `config/`, prompts og migrasjoner ligger i imaget), bygget for `linux/arm64` og `linux/amd64`. Kjører som uid 1000 (samme som `kremflote`) med `TZ=Europe/Oslo` og `serve --no-build`. Tjenesten `jobsearcher` ligger i Pi-ens `infra`-stack (referansekopi: `deploy/compose.service.yml`). Volum: `config/jobsearcher/data/` → `/data` (DB, `profile/`, `derived/`, cache, eksporter, Claude-sandbox). `GET /api/health` brukes av Docker healthcheck og Uptime Kuma. Deploy: `bash scripts/deploy_pi.sh` fra PC-en sender arbeidskopien (uten gitignorerte filer) til `~/infra/jobsearcher` over `ssh pi`, bygger imaget der og starter bare `jobsearcher` på nytt. Dashboard-innstillinger (`settings_overrides`) ligger i DB-en og følger med volumet. |
 | Hemmeligheter | `.env`: `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD` (bare SMTP), `NAV_FEED_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` (drift, §8.1), `OPENROUTER_API_KEY` (standard-backend, §8.1), valgfri `OPENROUTER_MANAGEMENT_KEY` (bare saldo). På Pi-en ligger filen i `infra/config/jobsearcher/jobsearcher.env`. Finn-HMAC-nøkkelen (`d45ff03c-b783-44d9-b94a-bb28dbc016a6`) er bakt inn i `finn_sig.py` som konstant — den finnes åpent i APK-en og trenger ingen env-variabel, men må oppdateres hvis Finn roterer den. |
 | Personvern | Kontaktpersoner fra annonser slettes 90 dager etter at jobben er inaktiv, med mindre det finnes en søknad. Rå cache slettes etter 30 dager. |
 
@@ -818,7 +819,8 @@ JobSearcher/
 ├── .gitignore
 ├── alembic.ini                        Peker på src/jobsearcher/db/migrations; URL fra DATA_DIR
 ├── Dockerfile                         Multi-stage: Node bygger web/dist, Python kjører appen
-├── docker-compose.yml                 Lokal kjøring i container; Pi-en bruker sin infra-stack
+├── .dockerignore                      Holder .env, data/ og profilen ute av imaget
+├── deploy/compose.service.yml         Referansekopi av tjenesten i Pi-ens infra-stack
 │
 ├── docs/
 │   ├── ARCHITECTURE.md
@@ -906,7 +908,9 @@ JobSearcher/
 │   └── run.lock
 │
 ├── scripts/
-│   └── export_openapi.py              Skriver web/openapi.json fra FastAPI-appen
+│   ├── export_openapi.py              Skriver web/openapi.json fra FastAPI-appen
+│   ├── deploy_pi.sh                   Sender koden til Pi-en, bygger og starter containeren
+│   └── migrate_to_pi.sh               Engangsflytting av DB, profil og hemmeligheter fra PC-en til Pi-en
 │
 └── tests/
     ├── conftest.py                    Egen DATA_DIR per test, migrert temp-DB, planlegger av
@@ -965,7 +969,7 @@ Rekkefølge: fase 1 → fase 2 → 2b/F2b → F3 → fase 3 → F4 → fase 4 �
 | ~~3. Søknader~~ | Research, writer, revisjon, versjoner, `.docx`-eksport, `/api` for utkast. Kobler F3. | ✅ 2026-10-11 (prøvd live med DeepSeek) |
 | ~~F4. Profil, innstillinger, logg~~ | FRONTEND §5.6–5.8 mot mock | ✅ 2026-10-11 |
 | ~~4. Tracking + varsling~~ | E-postdigest, profil-API, innstillings-API, "score på nytt"-knapp. Kobler F4. (Statusflyt, oppfølging, planlegger og backup kom i fase 1–2.) | ✅ 2026-10-11 (digesten ikke sendt live fra en planlagt kjøring ennå) |
-| **4b. Hjemmeserver** | Dockerfile (arm64), tjeneste i Pi-ens `infra`-stack, NPM-proxy, DNS, `claude setup-token`, flytte profil og DB til volumet, healthcheck i Uptime Kuma | Appen kjører på Pi-en og brukes fra mobil via Tailscale |
+| ~~4b. Hjemmeserver~~ | Dockerfile (arm64), tjeneste i Pi-ens `infra`-stack, NPM-proxy, DNS, `claude setup-token`, flytte profil og DB til volumet, healthcheck i Uptime Kuma | ✅ 2026-10-11 (sammen med F5) |
 | **5. Flere kilder** | Teamtailor, sideovervåker + extractor, kuratert selskapsliste | Trainee-programmer fanges opp |
 | **6. Polering** | Filter-eval, kostnadsside | Recall ≥ 90 % |
 
@@ -985,7 +989,7 @@ F5 (drift i container) gjøres sammen med fase 4b.
 - [x] Lage konto på openrouter.ai og fylle på kreditt ($10, 2026-10-11)
 - [x] Lage API-nøkkel → `OPENROUTER_API_KEY` i `.env`, med kredittgrense $10 (verifisert mot `/api/v1/key`)
 - [x] Lage management-nøkkel → `OPENROUTER_MANAGEMENT_KEY` i `.env` (verifisert mot `/api/v1/credits`)
-- [ ] Legge begge nøklene i Pi-ens `jobsearcher.env` (fase 4b)
+- [x] Legge begge nøklene i Pi-ens `jobsearcher.env` (fase 4b, `scripts/migrate_to_pi.sh`)
 
 Finns lagrede søk og Gmail-etiketten `JobSearcher/Finn` trengs ikke lenger — de kan slettes.
 
@@ -993,7 +997,7 @@ Finns lagrede søk og Gmail-etiketten `JobSearcher/Finn` trengs ikke lenger — 
 - [x] Cloudflare: A-post `jobb.mariuskristensen.no` → `100.107.14.101`, DNS only
 - [x] Nginx Proxy Manager: proxy host `jobb.mariuskristensen.no` → `http://jobsearcher:8765`, med sertifikat
 - [x] Kjøre `claude setup-token` og legge tokenet i Pi-ens `jobsearcher.env`
-- [ ] Oppdatere runbooken for hjemmeserveren med den nye tjenesten
+- [x] Oppdatere runbooken for hjemmeserveren med den nye tjenesten
 
 ---
 
@@ -1008,7 +1012,7 @@ Finns lagrede søk og Gmail-etiketten `JobSearcher/Finn` trengs ikke lenger — 
 | 5   | NAV-token roterer eller utløper                                                                                                             | Privat token, og kildehelsevarsel ved 401                                                                                                                                                                                |
 | 6   | Karrieresider endrer struktur og gir støy i sideovervåkeren                                                                                 | Hash av hovedinnhold med CSS-selektor, og LLM-uttrekk bare ved endring                                                                                                                                                   |
 | 7   | Skrive-agenten finner på fakta                                                                                                              | Faktaregel og `claims_to_verify` i editoren                                                                                                                                                                              |
-| 8   | `claude -p` i container på arm64: innlogging med `CLAUDE_CODE_OAUTH_TOKEN`, isolasjonsflaggene og tokenets levetid er ikke verifisert | Verifiseres først i fase 4b. Faller det, settes `llm.backend: openrouter` på Pi-en (bare HTTPS, ingen CLI). |
+| 8   | Levetiden til `CLAUDE_CODE_OAUTH_TOKEN` i containeren er ukjent (`claude -p` med isolasjonsflaggene er verifisert på arm64 2026-10-11) | Bare aktuelt hvis `llm.backend: claude_code` velges; standard er `openrouter`. Utløper tokenet, kjør `claude setup-token` på nytt og bytt verdien i Pi-ens `jobsearcher.env`. |
 | 9   | Profilen finnes bare i Pi-ens datavolum i drift. Restic-repoet ligger på samme disk som dataene (runbook §10).                              | `profile_revisions` gir historikk. Mulighet for eksport av profilen fra dashboardet. Følger Pi-ens plan for backup til ekstern disk.                                                                                     |
 | 11  | NAV-feeden er treg (13–60 s per side) og svarte 500/504 under første live-forsøk 2026-10-10 | 90 s tidsavbrudd, ingen raske nye forsøk, første vindu 7 dager. Cursoren står urørt ved feil, og neste daglige kjøring prøver igjen. Kildehelsen viser `fail`. |
 | 12  | Finn-identiteten er delvis gjettet: formatet på appens `User-Agent` (`HttpUserAgent.getUserAgent()`), WebView-Chrome-versjonen og enhetsbygget er ikke lest fra APK-en eller en ekte enhet, og appversjonen blir gammel over tid | Verdiene står i `sources.yaml` (`os_version`, `device_model`, `device_build`, `webview_chrome_version`, `app_version`). Neste gang en APK dekompileres (spike 04): les `HttpUserAgent` og oppdater appversjon og WebView-versjon samtidig, helst hvert par måneder. |

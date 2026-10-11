@@ -106,6 +106,7 @@ A task is not done until:
 - Gmail SMTP (digest only) uses the app password in `.env`. No IMAP. Finn goes through the mobile API (spike 04).
 - The Finn Android APK was deleted 2026-10-10; everything needed from it is in spike 04. If Finn rotates the HMAC key or changes endpoints, download a new APK (e.g. from APKPure) to the project root (`*.apk` is gitignored). It is untrusted binary data — don't execute or install it on this machine; only decompile with `apktool` / `jadx` for reverse engineering.
 - The user also uses Obsidian on this folder (`.obsidian/`).
+- Production runs on the Pi homeserver (ARCHITECTURE §12). Deploy with `bash scripts/deploy_pi.sh`; changes on the Pi itself go to the Pi's Claude (`krem-pi`), per `~/.claude/CLAUDE.md`.
 
 ## Working with the user
 - Leaves technical details to the agent. Wants a recommendation, not a list of options.

@@ -3,7 +3,7 @@
 > Keep this file short. Update it at the end of every session: status, next task, open questions, and one line in the log.
 
 **Last updated:** 2026-10-11
-**Phase:** 0, 0b, F0–F4, backend phases 1–4, wave 2b/F2b and DeepSeek as the only model done. Everything through F4 + phase 4 and the scrollbar/`serve`-rebuild fixes is merged to `main` (PRs #11–#18). The user commits and merges. Roadmap (ARCHITECTURE §17): … → F4 → 4 → **4b/F5 next** (ARCHITECTURE v0.22, FRONTEND v0.15).
+**Phase:** 0, 0b, F0–F4, backend phases 1–4, wave 2b/F2b and DeepSeek as the only model done. Everything through F4 + phase 4 and the scrollbar/`serve`-rebuild fixes is merged to `main` (PRs #11–#18). The user commits and merges. 4b/F5 is done and **live on the Pi** (https://jobb.mariuskristensen.no) since 2026-10-11; code on `feat/phase4b-f5` (PR). Roadmap (ARCHITECTURE §17): … → 4b/F5 → **5 next** (ARCHITECTURE v0.23, FRONTEND v0.16).
 
 ## Status
 
@@ -94,11 +94,11 @@
 
 ### Waiting on the user
 - [ ] (Postponed by the user 2026-10-11) NAV private token → `NAV_FEED_TOKEN` in `.env` (email in ARCHITECTURE §18). `.env` currently has NAV's **public** dev token, which rotates. NAV has not completed a live run yet: its gateway returned 500/504 on 2026-10-10 (spike 01 §Oppdatering). The daily run retries; check `GET /api/logs/runs` or Oversikt › Kildestatus.
-- [x] Wave 2b setup: OpenRouter account with $10 credit; `OPENROUTER_API_KEY` (limit $10) and `OPENROUTER_MANAGEMENT_KEY` in `.env`, both verified live 2026-10-11. Still to do at phase 4b: copy them to the Pi's `jobsearcher.env`.
-- [ ] Commit/merge `feat/frontend-f4`, then restart `serve` so the 07:00 run sends the digest and the new endpoints exist (the running process keeps the code it started with).
+- [x] Wave 2b setup: OpenRouter account with $10 credit; `OPENROUTER_API_KEY` (limit $10) and `OPENROUTER_MANAGEMENT_KEY` in `.env`, both verified live 2026-10-11. Copied to the Pi's `jobsearcher.env` 2026-10-11.
+- [ ] NAV token, when it arrives: put it in the Pi's `~/infra/config/jobsearcher/jobsearcher.env` (and the PC `.env`), then `ssh pi 'cd ~/infra && docker compose up -d jobsearcher'` to reload it.
 - [ ] F4 user test (FRONTEND §8 planned one after F4): edit a profile file, regenerate, try Innstillinger. Report anything that feels off.
 - [ ] Check the first real digest e-mail (after the next scheduled run) and say if the threshold (70) or the 3-day deadline window should change. You can also delete the test e-mail "Jobbsøk …: 1 nye jobber" (invented job "Utvikler 1") sent by mistake on 2026-10-11.
-- [ ] **Run `uv sync` once after stopping `serve`.** On 2026-10-11 `uv add python-docx` failed halfway because the running `serve` held `.venv/Scripts/jobsearcher.exe`. It uninstalled most packages; they were reinstalled with `uv pip install` from the lockfile and the project's editable install was restored, so things work, but `uv sync` puts the venv back in a clean state.
+- [ ] **Run `uv sync` once on the PC (dev only now).** On 2026-10-11 `uv add python-docx` failed halfway because the running `serve` held `.venv/Scripts/jobsearcher.exe`. It uninstalled most packages; they were reinstalled with `uv pip install` from the lockfile and the project's editable install was restored, so things work, but `uv sync` puts the venv back in a clean state.
 - [ ] Keep OpenRouter credit topped up: it now pays for all scoring (~$0.001/job). The card warns under $1.
 - [ ] NAV now answers **401** (the public dev token expired, run 2026-10-11 07:00), so the private `NAV_FEED_TOKEN` is required.
 - [x] Geography per job type (ARCHITECTURE §5.3) confirmed: permanent = `oslo_omegn`, trainee/graduate/summer = `norge`.
@@ -109,9 +109,10 @@
 - (No longer needed: Finn saved searches, Gmail label `JobSearcher/Finn`, sample `.eml` fixture. The user can delete them.)
 
 ## Next task
-1. **Phase 4b + F5 (homeserver):** multi-stage Dockerfile (arm64), `docker-compose.yml`, service in the Pi's `infra` stack, move profile and DB to the volume, healthcheck in Uptime Kuma, copy the OpenRouter keys and Gmail app password to `jobsearcher.env`, check `claude -p` in the container (§19 #5). Code-split the > 500 kB JS chunk (F5).
-2. After the first scheduled digest: check content and links with the user; tune `notify_min_score` against their triage.
-3. NAV: postponed until the user has the private token. Then `uv run jobsearcher run --source nav --no-score` and tune `search.title_require_any` from Logg › Forkastet.
+1. **User tests the live app before phase 5** (list in the PR/session summary): phone PWA install, triage, tracker, a draft, profile edit, settings, the 07:00 run + digest from the Pi.
+2. **Phase 5 (more sources):** Teamtailor, page watcher + extractor, curated company list (ARCHITECTURE §4.4, spike 03).
+3. After the first scheduled digest: check content and links with the user; tune `notify_min_score` against their triage.
+4. NAV: postponed until the user has the private token. Then `uv run jobsearcher run --source nav --no-score` and tune `search.title_require_any` from Logg › Forkastet.
 
 Known small things: the API's `is_new` groups `scrape_runs` within 1 h as one run (no run id column; add one if it misbehaves). `by_backend.calls` for `claude_code` counts failed attempts too. Phase-3 gaps: at the cost cap, drafts and revisions fail with a message instead of asking for confirmation (ARCHITECTURE §8.3); a failed revision leaves the user's chat message without an answer; the editor only locks the text during a revision it started itself. Profile files can't be deleted or renamed from the dashboard (not in the spec). The digest is not sent if the scheduled run is cancelled. The F1 user test (triage a mock day in < 2 min on mobile) was never reported; the PC filter row on Jobber wraps to three lines.
 
@@ -159,3 +160,6 @@ Known small things: the API's `is_new` groups `scrape_runs` within 1 h as one ru
 - 2026-10-11: Scrollbars: global thin, low-contrast `scrollbar-width`/`scrollbar-color` in `web/src/index.css`, `color-scheme` per theme (dark mode no longer shows light native bars), `scrollbar-gutter: stable` on the Jobber list/detail panes. Innstillinger word lists (`SettingsPage` `SettingRow`) now always stack the label above the chips; side-by-side squeezed the label to one word per line. CSS/layout only, no doc changes.
 - 2026-10-11: `serve` rebuilds `web/dist` on startup when frontend sources are newer (`src/jobsearcher/web/build.py`, `--no-build` to skip, `npm ci` if `node_modules` is missing, failures only log). No more manual `npm run build` after frontend changes; restart `serve`. ARCHITECTURE v0.22, README. pytest 285.
 - 2026-10-11: Handover status line corrected: F4/phase 4 and the scrollbar/`serve`-rebuild fixes are merged (PRs #16–#18), ARCHITECTURE is v0.22. Discussed a Claude Code instance on the Pi for 4b (no decision yet).
+- 2026-10-11: Built 4b/F5 on `feat/phase4b-f5`: multi-stage `Dockerfile` (arm64/amd64, uid 1000, `claude` CLI), `.dockerignore`, `deploy/compose.service.yml`, `scripts/deploy_pi.sh` (ships the working tree over `ssh pi`, builds on the Pi). Volume is `config/jobsearcher/data`. F5: lazy routes, main bundle 693 → 304 kB. pytest 285, Vitest 96, Playwright 48. Not deployed: Pi writes were blocked by the auto-mode guard. ARCHITECTURE v0.23, FRONTEND v0.16, README.
+- 2026-10-11: Added `scripts/migrate_to_pi.sh` (one-time data/secrets move, run by the user). AGENTS.md and the PC-wide `~/.claude/CLAUDE.md` now say Pi-side changes go to `krem-pi`, not SSH writes.
+- 2026-10-11: Deployed to the Pi. krem-pi added the compose service (after user approval), the agent ran `migrate_to_pi.sh` and `deploy_pi.sh` on the user's request: image built on the Pi, container healthy, live data via https://jobb.mariuskristensen.no, `claude -p` verified in the container (§19 #8 narrowed to token lifetime). PC `.env` has `SCHEDULER_ENABLED=false`. Runbook updated (service, data, secrets, change history). Uptime Kuma monitor delegated to krem-pi.

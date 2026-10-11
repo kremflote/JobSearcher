@@ -1,12 +1,13 @@
 # JobSearcher: frontend-design
 
-> Status: v0.15 (2026-10-11). F0–F4 og F2b er bygget og koblet til ekte API (backend-fase 1–4 og bølge 2b). Neste bølge: F5 (drift, sammen med fase 4b).
+> Status: v0.16 (2026-10-11). F0–F5 og F2b er bygget og koblet til ekte API (backend-fase 1–4, 2b og 4b). Alle planlagte bølger er bygget.
 > Dokumentet eier UI-designet: skjermer, layout, komponenter, API-kontrakt og frontend-bølger. Resten av systemet står i [ARCHITECTURE.md](ARCHITECTURE.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato | Endring |
 |---|---|---|
+| v0.16 | 2026-10-11 | F5 bygget (§8): skjermene utenom Oversikt og Jobber lastes ved første besøk, så hovedbunten er under Vites grense på 500 kB. Dockerfile og deploy står i ARCHITECTURE §12. |
 | v0.15 | 2026-10-11 | F4 bygget og koblet (§5.6–5.8). Kontrakt (§7): `SettingItem` har `label`, `help`, `kind`, `options`, `min`, `max`, så skjemaet lages fra API-et; ny seksjon `notify`. `ProfileTree` har `folders` og `derived_at`; `base_hash: null` lager en ny fil (409 `file_exists`), feil hash gir 409 `conflict`, ugyldig YAML 422 `invalid_yaml`, ugyldig sti 400 `invalid_path`. Nye ruter: `GET /api/profile/derived`, `GET/POST /api/rescore`. Logg-fanen heter «Forkastet» og viser alle nylige, gruppert per dag. Mocken følger de samme reglene (`mocks/system.ts`). |
 | v0.14 | 2026-10-11 | «Lagre som stilregel» i revisjonschatten (§5.5): når meldingen er en preferanse for alle brev, viser agentsvaret en foreslått regel med knapp som legger den til i `style_overrides.md`. Kontrakt (§7): `DraftMessage.style_rule`/`style_rule_saved`, nytt `POST /api/applications/{id}/messages/{message_id}/style-rule`. Mock-revisoren foreslår en regel for meldinger som starter med «aldri»/«alltid»/«unngå». |
 | v0.13 | 2026-10-11 | Backend-fase 3 kobler F3: alle utkast-ruter er ekte (§7.1). Avvik fra mocken står i §7.1. |
@@ -365,7 +366,7 @@ Bølgene F0–F4 bygges før backend-fasene i ARCHITECTURE §17. Hver bølge er 
 | ~~F2b. LLM-forbruk~~ | Kortet LLM-forbruk med detaljpanel (§5.1), mock-fixtures for alle saldotilstander (konto, nøkkelgrense, ukjent, ikke satt opp, lav) | ✅ 2026-10-11 | ✅ Koblet i backend-bølge 2b |
 | ~~F3. Søknadseditor~~ | Editor, forhåndsvisning, autosave/versjoner, diff, revisjonschat, `claims_to_verify`, `.docx`, `/soknader` | ✅ 2026-10-11 | ✅ Koblet til ekte API i fase 3 |
 | ~~F4. Profil, innstillinger, logg~~ | Profileditor med historikk, innstillingsskjema, loggfaner, "Score på nytt" | ✅ 2026-10-11 | ✅ Koblet i fase 4 |
-| **F5. Drift** | FastAPI serverer `web/dist`, multi-stage Dockerfile, PWA-ikon, test på mobil via Tailscale | `docker compose up` gir hele appen på én port | Ja: fase 1 (`serve`). `serve` serverer allerede `web/dist`; Dockerfile gjenstår. |
+| **F5. Drift** | FastAPI serverer `web/dist`, multi-stage Dockerfile, PWA-ikon, test på mobil via Tailscale. Kodesplitting: Oversikt og Jobber ligger i hovedbunten, resten av skjermene lastes ved første besøk (`lazy` i `routes.tsx`); hovedbunten gikk fra 693 til 304 kB. | `docker compose up` gir hele appen på én port | Bygget 2026-10-11 sammen med fase 4b (ARCHITECTURE §12) |
 
 Rekkefølgen er F0 → F1 → brukertest → F2 → backend-fase 1–2 → 2b/F2b → F3 → fase 3 → F4 → fase 4 (ARCHITECTURE §17). Ved brukertest kjører appen i mock-modus på PC og mobil (`npm run dev:mock -- --host`, §3.2). Funn rettes i dette dokumentet og i kontrakten før neste bølge. Fixture-settet må være realistisk nok til å teste flyten: ~40 jobber over alle jobbtyper, frister, reposts, forkastede jobber og søknader i alle statuser.
 

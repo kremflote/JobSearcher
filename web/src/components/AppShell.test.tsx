@@ -47,9 +47,9 @@ describe('AppShell', () => {
     expect(await screen.findByText(/^\d+ jobber$/)).toBeInTheDocument()
   })
 
-  it('shows the remaining pages under "Mer"', () => {
+  it('shows the remaining pages under "Mer"', async () => {
     renderAt('/mer')
-    const main = screen.getByRole('main')
+    const main = await screen.findByRole('main')
     expect(within(main).getAllByRole('link').map((a) => a.textContent)).toEqual([
       'Søknader',
       'Profil',
