@@ -111,6 +111,12 @@ cd web && npm run gen:api
 bash scripts/deploy_pi.sh
 ```
 
+Fra PowerShell peker `bash` på WSL, så bruk Git Bash direkte:
+
+```powershell
+& "C:\Program Files\Git\bin\bash.exe" scripts/deploy_pi.sh
+```
+
 Skriptet sender koden til Pi-en (`ssh pi`), bygger imaget der og starter containeren på nytt. Hemmelighetene ligger i `~/infra/config/jobsearcher/jobsearcher.env` på Pi-en, og data og profil i `~/infra/config/jobsearcher/data/`. Når appen kjører på Pi-en, er PC-ens `data/` og `context/profile/` bare en utviklingskopi.
 
 Profilen fyller du ut slik:
