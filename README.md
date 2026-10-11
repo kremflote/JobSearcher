@@ -105,6 +105,14 @@ cd web && npm run gen:api
 
 **Tester:** `uv run pytest` (backend), og i `web/`: `npm test`, `npm run typecheck`, `npm run e2e`.
 
+**Drift på hjemmeserveren** (Raspberry Pi, ARCHITECTURE §12). Appen kjører som tjenesten `jobsearcher` i Pi-ens `infra`-stack og nås på https://jobb.mariuskristensen.no over Tailscale. Etter en endring, fra PC-en:
+
+```bash
+bash scripts/deploy_pi.sh
+```
+
+Skriptet sender koden til Pi-en (`ssh pi`), bygger imaget der og starter containeren på nytt. Hemmelighetene ligger i `~/infra/config/jobsearcher/jobsearcher.env` på Pi-en, og data og profil i `~/infra/config/jobsearcher/data/`. Når appen kjører på Pi-en, er PC-ens `data/` og `context/profile/` bare en utviklingskopi.
+
 Profilen fyller du ut slik:
 
 1. Les [context/README.md](context/README.md).

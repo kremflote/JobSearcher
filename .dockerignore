@@ -1,0 +1,23 @@
+# Personal data and secrets never go into the image (AGENTS.md hard rule 1).
+.env
+data/
+context/profile/
+context/derived/
+tests/fixtures/private/
+
+# Not needed in the image
+.git/
+.venv/
+.claude/
+.obsidian/
+docs/
+tests/
+scripts/
+deploy/
+*.apk
+**/__pycache__/
+web/node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/
+web/e2e/

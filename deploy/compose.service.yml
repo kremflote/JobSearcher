@@ -1,0 +1,16 @@
+# The `jobsearcher` service in the Pi's infra stack (/home/kremflote/infra/docker-compose.yml).
+# Reference copy: the live file is on the Pi. ARCHITECTURE §12.
+# Source: scripts/deploy_pi.sh ships the repo to ~/infra/jobsearcher and builds there.
+services:
+  jobsearcher:
+    build:
+      context: ./jobsearcher
+    image: jobsearcher:latest
+    container_name: jobsearcher
+    env_file:
+      - ./config/jobsearcher/jobsearcher.env
+    volumes:
+      - ./config/jobsearcher/data:/data
+    networks:
+      - shared-network
+    restart: unless-stopped
