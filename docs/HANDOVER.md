@@ -3,7 +3,7 @@
 > Keep this file short. Update it at the end of every session: status, next task, open questions, and one line in the log.
 
 **Last updated:** 2026-10-11
-**Phase:** 0, 0b, F0–F4, backend phases 1–4, wave 2b/F2b and DeepSeek as the only model done. Phase 3 is merged to `main` (PRs #11–#15). F4 + phase 4 are uncommitted on `feat/frontend-f4` (branched from `main`). The user commits and merges. Roadmap (ARCHITECTURE §17): … → F4 → 4 → **4b/F5 next** (ARCHITECTURE v0.21, FRONTEND v0.15).
+**Phase:** 0, 0b, F0–F4, backend phases 1–4, wave 2b/F2b and DeepSeek as the only model done. Everything through F4 + phase 4 and the scrollbar/`serve`-rebuild fixes is merged to `main` (PRs #11–#18). The user commits and merges. Roadmap (ARCHITECTURE §17): … → F4 → 4 → **4b/F5 next** (ARCHITECTURE v0.22, FRONTEND v0.15).
 
 ## Status
 
@@ -158,3 +158,4 @@ Known small things: the API's `is_new` groups `scrape_runs` within 1 h as one ru
 - 2026-10-11: The user tested a second live letter (fine). Built F4 (Profil, Innstillinger, Logg) and backend phase 4 (profile/settings/rescore API, e-mail digest) on `feat/frontend-f4`; LLM backends now honour dashboard overrides. Rescored all 63 live jobs with DeepSeek on request ($0.038). A digest test sent one real e-mail to the user by mistake; conftest now blocks SMTP. ARCHITECTURE v0.21, FRONTEND v0.15.
 - 2026-10-11: Scrollbars: global thin, low-contrast `scrollbar-width`/`scrollbar-color` in `web/src/index.css`, `color-scheme` per theme (dark mode no longer shows light native bars), `scrollbar-gutter: stable` on the Jobber list/detail panes. Innstillinger word lists (`SettingsPage` `SettingRow`) now always stack the label above the chips; side-by-side squeezed the label to one word per line. CSS/layout only, no doc changes.
 - 2026-10-11: `serve` rebuilds `web/dist` on startup when frontend sources are newer (`src/jobsearcher/web/build.py`, `--no-build` to skip, `npm ci` if `node_modules` is missing, failures only log). No more manual `npm run build` after frontend changes; restart `serve`. ARCHITECTURE v0.22, README. pytest 285.
+- 2026-10-11: Handover status line corrected: F4/phase 4 and the scrollbar/`serve`-rebuild fixes are merged (PRs #16–#18), ARCHITECTURE is v0.22. Discussed a Claude Code instance on the Pi for 4b (no decision yet).
