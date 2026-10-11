@@ -31,7 +31,8 @@ describe('LLM-forbruk card (FRONTEND §5.1, F2b)', () => {
     expect(card.querySelector('[aria-busy="true"]')).not.toBeNull()
     expect(await within(card).findByText('$7,40 igjen av $10')).toBeInTheDocument()
     expect(within(card).getByRole('progressbar', { name: 'Andel av kostnadstaket' })).toBeInTheDocument()
-    expect(within(card).getByText(/av \$25 denne måneden/)).toBeInTheDocument()
+    expect(within(card).getByText(/av \$10 denne måneden/)).toBeInTheDocument()
+    expect(within(card).getByTestId('llm-cap-label')).toHaveTextContent('Claude-abonnementet teller ikke')
     expect(within(card).getByText(/Reservekall denne måneden/)).toBeInTheDocument()
     expect(within(card).queryByText('Nærmer seg kostnadstaket.')).toBeNull()
   })
@@ -43,7 +44,7 @@ describe('LLM-forbruk card (FRONTEND §5.1, F2b)', () => {
   })
 
   it.each([
-    ['unset', 'Reserve ikke satt opp'],
+    ['unset', 'OpenRouter ikke satt opp'],
     ['unknown', 'Ukjent'],
     ['low', '$0,62 igjen av $10'],
   ] as const)('shows the %s balance', async (state, text) => {
@@ -92,7 +93,7 @@ describe('LLM-forbruk card (FRONTEND §5.1, F2b)', () => {
   })
 
   it.each([
-    ['unset', 'Reserve ikke satt opp', /OPENROUTER_API_KEY/],
+    ['unset', 'OpenRouter ikke satt opp', /OPENROUTER_API_KEY/],
     ['unknown', 'Saldo ukjent', /OPENROUTER_MANAGEMENT_KEY/],
     ['low', '$0,62 igjen av $10', /Under \$1 igjen/],
     ['key_limit', '$3,85 igjen av $5', /Kredittgrense på nøkkelen/],

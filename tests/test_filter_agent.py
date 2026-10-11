@@ -198,6 +198,34 @@ def test_cost_cap_reached_between_batches(distilled, session):
     assert summary.scored == 10 and summary.skipped_reason == "cost_cap"
 
 
+def _subscription_mock(**kw) -> MockBackend:
+    backend = MockBackend(**kw)
+    backend.name = "claude_code"
+    return backend
+
+
+def test_subscription_cost_does_not_count_toward_cap(distilled, session):
+    add_job(session, 1)
+    session.add(AgentRun(agent="filter", backend="claude_code", model="m", prompt_version="1", cost_usd=30.0,
+                         created_at=datetime.now(UTC)))
+    session.commit()
+    summary = score_pending(session, backend=_subscription_mock())
+    assert summary.scored == 1 and summary.skipped_reason is None
+
+
+def test_cost_cap_drops_paid_fallback_but_keeps_subscription(distilled, session):
+    from jobsearcher.llm.base import FallbackBackend
+
+    add_job(session, 1)
+    session.add(AgentRun(agent="filter", backend="openrouter", model="m", prompt_version="1", cost_usd=30.0,
+                         created_at=datetime.now(UTC)))
+    session.commit()
+    primary, paid = _subscription_mock(), MockBackend()
+    summary = score_pending(session, backend=FallbackBackend(primary, paid))
+    assert summary.scored == 1 and summary.skipped_reason is None
+    assert len(primary.requests) == 1 and paid.requests == []
+
+
 def test_cancel_between_batches(distilled, session):
     for i in range(15):
         add_job(session, i)
@@ -227,3 +255,29 @@ def test_profile_change_does_not_rescore_automatically_but_rescore_does(distille
     assert summary.scored == 1
     evs = session.exec(select(Evaluation).where(Evaluation.job_id == job.id)).all()
     assert len(evs) == 2 and evs[0].profile_hash != evs[1].profile_hash
+
+
+def test_cli_rescore_all_ignores_age_and_status(distilled, session, monkeypatch):
+    from typer.testing import CliRunner
+
+    import jobsearcher.agents.filter as filter_mod
+    from jobsearcher.cli import app
+    from jobsearcher.db.models import Application
+
+    backend = MockBackend()
+    monkeypatch.setattr(filter_mod, "get_backend", lambda *a, **kw: backend)
+    old = add_job(session, 1, published_at=datetime(2020, 1, 1, tzinfo=UTC))
+    applied = add_job(session, 2)
+    fresh = add_job(session, 3)
+    score_pending(session, backend=backend)
+    session.add(Application(job_id=applied.id, status="sokt"))
+    session.commit()
+    session.delete(session.exec(select(Evaluation).where(Evaluation.job_id == fresh.id)).one())  # unscored: left to score_pending
+    session.commit()
+
+    result = CliRunner().invoke(app, ["rescore", "--all"])
+    assert result.exit_code == 0, result.output
+    session.expire_all()
+    counts = {j: len(session.exec(select(Evaluation).where(Evaluation.job_id == j)).all())
+              for j in (old.id, applied.id, fresh.id)}
+    assert counts == {old.id: 2, applied.id: 2, fresh.id: 0}

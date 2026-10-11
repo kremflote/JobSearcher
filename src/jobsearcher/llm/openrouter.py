@@ -222,6 +222,7 @@ class Balance:
     configured: bool
     balance_usd: float | None = None
     total_credits_usd: float | None = None
+    used_usd: float | None = None
     balance_source: str | None = None  # account | key_limit
     fetched_at: datetime | None = None
 
@@ -256,6 +257,7 @@ def _fetch_balance(transport: httpx.BaseTransport | None) -> Balance:
                     configured=True,
                     balance_usd=round(total - float(d["total_usage"]), 6),
                     total_credits_usd=total,
+                    used_usd=round(float(d["total_usage"]), 6),
                     balance_source="account",
                     fetched_at=datetime.now(UTC),
                 )
@@ -267,11 +269,12 @@ def _fetch_balance(transport: httpx.BaseTransport | None) -> Balance:
         return Balance(configured=True)
     now = datetime.now(UTC)
     if d.get("limit") is None or d.get("limit_remaining") is None:
-        return Balance(configured=True, fetched_at=now)
+        return Balance(configured=True, used_usd=_num(d.get("usage")), fetched_at=now)
     return Balance(
         configured=True,
         balance_usd=_num(d["limit_remaining"]),
         total_credits_usd=_num(d["limit"]),
+        used_usd=_num(d.get("usage")),
         balance_source="key_limit",
         fetched_at=now,
     )

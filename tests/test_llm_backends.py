@@ -208,4 +208,4 @@ def test_month_cost_and_status(session):
     session.commit()
     assert month_cost_usd(session, now) == pytest.approx(22.0)
     spent, cap, warn = cost_status(session, now)
-    assert (spent, cap, warn) == (pytest.approx(22.0), 25, True)
+    assert (spent, cap, warn) == (pytest.approx(22.0), 10, True)

@@ -102,7 +102,15 @@ def _set_key(monkeypatch, key: str) -> None:
     env.cache_clear()
 
 
+def _set_fallback(monkeypatch, value):
+    from jobsearcher import config
+
+    real = config.load_settings
+    monkeypatch.setattr(config, "load_settings", lambda overrides=None: real({"llm.fallback": value}))
+
+
 def test_get_backend_wraps_only_with_key(monkeypatch):
+    _set_fallback(monkeypatch, "openrouter")
     assert not isinstance(get_backend("claude_code"), FallbackBackend)  # conftest blanks the key
     _set_key(monkeypatch, "sk-or-test-not-real")
     wrapped = get_backend("claude_code")
@@ -113,13 +121,23 @@ def test_get_backend_wraps_only_with_key(monkeypatch):
     assert not isinstance(get_backend("claude_code", fallback=False), FallbackBackend)
 
 
+def test_get_backend_openrouter_primary_with_claude_fallback(monkeypatch):
+    _set_fallback(monkeypatch, "claude_code")
+    wrapped = get_backend("openrouter")
+    assert isinstance(wrapped, FallbackBackend) and wrapped.fallback.name == "claude_code"
+
+
+def test_default_settings_use_openrouter_without_fallback():
+    from jobsearcher.config import load_settings
+
+    llm = load_settings().llm
+    assert llm.backend == "openrouter" and llm.fallback_backend is None
+
+
 @pytest.mark.parametrize("value", ["none", None])
 def test_get_backend_fallback_disabled(monkeypatch, value):
-    from jobsearcher import config
-
     _set_key(monkeypatch, "sk-or-test-not-real")
-    real = config.load_settings
-    monkeypatch.setattr(config, "load_settings", lambda overrides=None: real({"llm.fallback": value}))
+    _set_fallback(monkeypatch, value)
     assert not isinstance(get_backend("claude_code"), FallbackBackend)
 
 

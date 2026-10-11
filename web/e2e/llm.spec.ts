@@ -55,7 +55,7 @@ test('card shows cost, balance and fallback calls; detail opens as panel or shee
 test('not configured: card and detail say the fallback is not set up', async ({ page }, info) => {
   await page.goto(home(info.project.name, '?mock_llm=unset'))
   const card = page.getByTestId('llm-usage')
-  await expect(card.getByText('Reserve ikke satt opp')).toBeVisible()
+  await expect(card.getByText('OpenRouter ikke satt opp')).toBeVisible()
   await expect(card.getByText('Reservekall denne måneden: 0')).toBeVisible()
 
   const dialog = await openDetail(page)

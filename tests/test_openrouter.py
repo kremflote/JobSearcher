@@ -191,7 +191,7 @@ def test_balance_from_account_with_management_key(monkeypatch):
     assert rec.requests[0].headers["Authorization"] == "Bearer sk-or-mgmt-test"
     assert (b.configured, b.balance_source) == (True, "account")
     assert b.balance_usd == pytest.approx(7.4)
-    assert b.total_credits_usd == 10.0
+    assert b.total_credits_usd == 10.0 and b.used_usd == pytest.approx(2.6)
     assert b.fetched_at is not None
 
 
@@ -200,7 +200,7 @@ def test_balance_from_key_limit(monkeypatch):
     rec = Recorder(httpx.Response(200, json={"data": {"limit": 5.0, "limit_remaining": 4.25, "usage": 0.75}}))
     b = get_balance(transport=httpx.MockTransport(rec))
     assert str(rec.requests[0].url) == "https://openrouter.ai/api/v1/key"
-    assert (b.balance_source, b.balance_usd, b.total_credits_usd) == ("key_limit", 4.25, 5.0)
+    assert (b.balance_source, b.balance_usd, b.total_credits_usd, b.used_usd) == ("key_limit", 4.25, 5.0, 0.75)
 
 
 def test_balance_unknown_when_key_has_no_limit(monkeypatch):
@@ -208,6 +208,7 @@ def test_balance_unknown_when_key_has_no_limit(monkeypatch):
     rec = Recorder(httpx.Response(200, json={"data": {"limit": None, "limit_remaining": None, "usage": 0.1}}))
     b = get_balance(transport=httpx.MockTransport(rec))
     assert b.configured is True and b.balance_usd is None and b.balance_source is None
+    assert b.used_usd == pytest.approx(0.1)
     assert b.fetched_at is not None
 
 

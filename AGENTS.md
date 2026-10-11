@@ -10,7 +10,7 @@ JobSearcher: a local, AI-assisted job search tool for one user (a newly graduate
 - Drafts cover letters (.docx)
 - Tracks applications and deadlines
 
-Python 3.12, SQLite, Claude via `claude -p` (subscription). Fallback: DeepSeek V4.1 Flash via OpenRouter, replacing the Anthropic API backend in wave 2b (ARCHITECTURE §8, spike 05).
+Python 3.12, SQLite, DeepSeek V4.1 Flash via OpenRouter for every agent, so scores and drafts come from one model. No fallback by default; `claude -p` (subscription) stays available as an optional backend (ARCHITECTURE §8, spike 05).
 
 ## Read order (keep context small)
 1. `docs/HANDOVER.md`: current status, next task, open questions. **Always.**
@@ -40,7 +40,7 @@ Do not read `context/profile/` or `context/derived/` unless the task is about th
   - Chat: reply in the language the user writes in
 - Layout as in ARCHITECTURE §15. Config in `config/*.yaml`, secrets in `.env` (template: `.env.example`).
 - Frontend in `web/` (TypeScript). API types are generated from `src/jobsearcher/api/schemas.py`, never hand-written. Mock fixtures in `web/src/mocks/fixtures/` must be invented data, never real ads or contacts.
-- Tests with pytest. Tests never touch the network or `data/`: `tests/conftest.py` gives each test its own `DATA_DIR` and sets `SCHEDULER_ENABLED=false`; stub HTTP with `HttpClient(transport=...)`/respx and LLM calls with `llm.mock.MockBackend`. Live checks against Finn, NAV or `claude -p` are scratch scripts, kept low-volume.
+- Tests with pytest. Tests never touch the network or `data/`: `tests/conftest.py` gives each test its own `DATA_DIR` and sets `SCHEDULER_ENABLED=false`; stub HTTP with `HttpClient(transport=...)`/respx and LLM calls with `llm.mock.MockBackend`. Live checks against Finn, NAV, OpenRouter or `claude -p` are scratch scripts, kept low-volume.
 - Parsers are tested against fixtures in `tests/fixtures/`. Real emails or data go in `tests/fixtures/private/` (gitignored), with anonymized copies in `tests/fixtures/`.
 
 ## Documentation: source of truth

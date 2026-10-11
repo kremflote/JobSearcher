@@ -299,6 +299,8 @@ class OpenRouterBalance(Model):
     """Credit left: account balance (`account`) or the key's remaining limit (`key_limit`)."""
     total_credits_usd: float | None
     """Account credits bought, or the key's limit. Null when unknown."""
+    used_usd: float | None
+    """Total spent at OpenRouter (account, or this key), including calls made outside the app."""
     balance_source: BalanceSource | None
     """Null when the balance is unknown (key without limit, no management key) or not configured."""
     fetched_at: datetime | None

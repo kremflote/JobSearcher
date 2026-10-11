@@ -12,7 +12,7 @@ export type LlmState = (typeof LLM_STATES)[number]
 
 export const isLlmState = (s: string | null | undefined): s is LlmState => LLM_STATES.includes(s as LlmState)
 
-const CAP_USD = 25
+const CAP_USD = 10
 const WARN_RATIO = 0.8
 /** Days (relative to today) where `claude -p` failed and calls went to OpenRouter. */
 const FALLBACK_DAYS = new Set([-22, -21, -9, -3, 0])
@@ -62,15 +62,15 @@ function balance(c: Clock, state: LlmState): OpenRouterBalance {
   const fetched_at = new Date(c.now.getTime() - 6 * 60_000).toISOString()
   switch (state) {
     case 'unset':
-      return { configured: false, balance_usd: null, total_credits_usd: null, balance_source: null, fetched_at: null }
+      return { configured: false, balance_usd: null, total_credits_usd: null, used_usd: null, balance_source: null, fetched_at: null }
     case 'unknown':
-      return { configured: true, balance_usd: null, total_credits_usd: null, balance_source: null, fetched_at }
+      return { configured: true, balance_usd: null, total_credits_usd: null, used_usd: 0.31, balance_source: null, fetched_at }
     case 'key_limit':
-      return { configured: true, balance_usd: 3.85, total_credits_usd: 5, balance_source: 'key_limit', fetched_at }
+      return { configured: true, balance_usd: 3.85, total_credits_usd: 5, used_usd: 1.15, balance_source: 'key_limit', fetched_at }
     case 'low':
-      return { configured: true, balance_usd: 0.62, total_credits_usd: 10, balance_source: 'account', fetched_at }
+      return { configured: true, balance_usd: 0.62, total_credits_usd: 10, used_usd: 9.38, balance_source: 'account', fetched_at }
     default:
-      return { configured: true, balance_usd: 7.4, total_credits_usd: 10, balance_source: 'account', fetched_at }
+      return { configured: true, balance_usd: 7.4, total_credits_usd: 10, used_usd: 2.6, balance_source: 'account', fetched_at }
   }
 }
 
@@ -94,9 +94,11 @@ export function buildLlmUsage(c: Clock, state: LlmState = 'account'): LlmUsage {
     }
   })
 
-  const spent = round(by_backend.reduce((a, b) => a + b.cost_usd, 0), 2)
-  // The warn variant lowers the cap so this month's spend sits at ~88 % of it.
-  const cap = state === 'warn' ? Math.max(0.01, round(spent / 0.88, 2)) : CAP_USD
+  // The warn variant is a heavy fallback month: OpenRouter's cost is raised to 88 % of the cap.
+  if (state === 'warn') by_backend[1]!.cost_usd = round(CAP_USD * 0.88)
+  // The cap counts paid calls only; the Claude subscription's estimate is left out.
+  const spent = round(by_backend.filter((b) => !b.estimated).reduce((a, b) => a + b.cost_usd, 0), 2)
+  const cap = CAP_USD
 
   return {
     month_start: monthStart,

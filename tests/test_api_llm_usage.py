@@ -14,8 +14,8 @@ from jobsearcher.web.app import create_app
 from jobsearcher.web.routes.llm import build_usage
 
 NOW = datetime(2026, 10, 15, 10, 0, tzinfo=UTC)
-BALANCE = OpenRouterBalance(configured=True, balance_usd=7.4, total_credits_usd=10.0, balance_source="account",
-                            fetched_at=NOW)
+BALANCE = OpenRouterBalance(configured=True, balance_usd=7.4, total_credits_usd=10.0, used_usd=2.6,
+                            balance_source="account", fetched_at=NOW)
 
 
 def _run(session, backend, created_at, *, cost=0.0, tin=100, tout=10, fallback_from=None, status="ok"):
@@ -35,7 +35,8 @@ def test_month_aggregation_per_backend(session):
 
     u = build_usage(session, NOW, balance=BALANCE)
     assert u.month_start == date(2026, 10, 1)
-    assert u.cap_usd == 25 and u.spent_usd == pytest.approx(20.003) and u.warn is True
+    # The cap counts paid calls only: claude_code's estimate is left out.
+    assert u.cap_usd == 10 and u.spent_usd == pytest.approx(0.003) and u.warn is False
     by = {b.backend: b for b in u.by_backend}
     assert list(by) == ["claude_code", "openrouter"]  # no mock calls → no mock row
     assert (by["claude_code"].calls, by["claude_code"].fallback_calls, by["claude_code"].estimated) == (2, 0, True)
@@ -81,6 +82,6 @@ def test_endpoint_uses_balance_function(engine, monkeypatch):
     r = TestClient(create_app(dist=None)).get("/api/llm/usage")
     assert r.status_code == 200
     body = r.json()
-    assert body["openrouter"] == {"configured": False, "balance_usd": None, "total_credits_usd": None,
+    assert body["openrouter"] == {"configured": False, "balance_usd": None, "total_credits_usd": None, "used_usd": None,
                                   "balance_source": None, "fetched_at": None}
     assert [b["backend"] for b in body["by_backend"]] == ["claude_code", "openrouter"]
