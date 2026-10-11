@@ -1,12 +1,13 @@
 # JobSearcher: design- og arkitekturdokument
 
-> Status: v0.21 (2026-10-11). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F4, backend-fase 1–4 og bølge 2b/F2b er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), hele dashboardet går mot ekte data, profil og innstillinger redigeres i dashboardet, og en e-postdigest sendes etter den planlagte kjøringen. Alle LLM-kall går til DeepSeek via `openrouter`. Neste: 4b/F5 (hjemmeserver).
+> Status: v0.22 (2026-10-11). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F4, backend-fase 1–4 og bølge 2b/F2b er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), hele dashboardet går mot ekte data, profil og innstillinger redigeres i dashboardet, og en e-postdigest sendes etter den planlagte kjøringen. Alle LLM-kall går til DeepSeek via `openrouter`. Neste: 4b/F5 (hjemmeserver).
 > Dokumentet er "source of truth" for designet. UI-designet står i [FRONTEND.md](FRONTEND.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato       | Endring                                                                                                                                                                                                                                                                           |
 | ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v0.22   | 2026-10-11 | `serve` bygger frontenden på nytt ved oppstart når kildene er nyere enn `web/dist` (§10, §15), så endringer vises uten manuell `npm run build`. |
 | v0.21   | 2026-10-11 | F4 og fase 4: profil-, innstillings- og «score på nytt»-API (§5.5, §6.1, §14), e-postdigest (§11). Innstillinger som kan endres i dashboardet er en fast liste i `web/routes/settings.py`, og `sources.*`-nøklene slår kilder av og på (§14). LLM-backendene leser nå effektive innstillinger, så modell, backend og reserve kan overstyres i dashboardet (§8.1). Digesten sendes bare etter den planlagte kjøringen og melder en ny jobb én gang (`data/digest_state.json`). Første lagring av en profilfil tar vare på originalen i `profile_revisions`; destilleren beholder forrige versjon i `derived/previous/` for diffen i Profil. |
 | v0.20   | 2026-10-11 | «Lagre som stilregel»: revisoren foreslår en stilregel (`RevisionResult.style_rule`, §7.2) når chatmeldingen er en generell preferanse, og brukeren lagrer den med én knapp i `style_overrides.md` (§6.1, §7.4). Forslaget lagres på chatmeldingen (migrasjon `0005`, §9). Faktaregelen strammet inn (§7.4): påstander uten dekning i profilen skal ikke stå i brevet, heller ikke oppdiktede koblinger mellom teknologi og prosjekt; `claims_to_verify` er for dekkede, men kanskje for sterke formuleringer. Grunn: første live brev med DeepSeek koblet Azure fra annonsen til hjemmeserveren, og var 325 ord. Prompt `writer` v0.3, `reviser` v0.5. |
 | v0.19   | 2026-10-11 | Fase 3 bygget: research-, skrive- og revisjonsagentene, bitene for fase 3 (§6.2), prosjektvalg (§6.4), utkast-API og `.docx`-eksport. Presisert etter implementering: research bruker OpenRouters web-plugin, bare `full`-notater caches og et mislykket søk gir et `limited`-notat fra annonsen (§7.3); skriveren oppretter søknaden først når utkastet finnes (§7.4); utkast og revisjon avvises ved kostnadstaket i stedet for å be om bekreftelse (§8.3); eksporten bruker ingen mal og lagrer ikke fil (§10.2). Prompt `reviser` v0.3, `researcher` v0.2. |
@@ -717,6 +718,7 @@ Sider: Oversikt, Jobber, Jobbdetalj, Tracker, Søknadseditor, Profil, Innstillin
 - Frontend poller `GET /api/tasks/{id}` hvert 2. sekund for progresjon (FRONTEND §3.3).
 - Avbryt: `cancel_requested` sjekkes mellom steg, f.eks. mellom kilder og filter-batcher. En jobb i kø avbrytes med en gang; en som kjører får status `cancelled` når den når neste sjekk.
 - FastAPI serverer `web/dist` på `/` (med `index.html` som fallback for klientruter) når mappen finnes.
+- `serve` bygger `web/dist` på nytt ved oppstart når en frontend-kilde (`web/src`, `web/public`, `index.html`, `package*.json`, Vite-/TS-config) er nyere enn `web/dist/index.html` (`web/build.py`, kjører `npm ci` først hvis `node_modules` mangler). Feiler bygget, starter serveren med gammel build. `--no-build` hopper over sjekken; uten `web/src` (containeren) gjøres ingenting.
 - `jobsearcher run` fra CLI finnes fortsatt for manuell kjøring. `data/run.lock` hindrer overlapp mellom CLI, planlegger og "Kjør nå".
 
 ### 10.2 Eksport
@@ -873,6 +875,7 @@ JobSearcher/
 │   ├── export/        docx.py         Brev → .docx (§10.2)
 │   └── web/
 │       ├── app.py, tasks.py           FastAPI-app med lifespan (DB, task-runner, planlegger), serverer web/dist
+│       ├── build.py                   Bygger web/dist på nytt ved serve-oppstart når frontenden er endret
 │       ├── queries.py                 DB → API-skjema, cursor-paging
 │       ├── errors.py                  Feilformat `{detail, code}`, 501 for ruter uten backend
 │       └── routes/    overview.py, jobs.py, applications.py, drafts.py, profile.py,

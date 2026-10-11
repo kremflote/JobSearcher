@@ -8,14 +8,22 @@ app = typer.Typer(no_args_is_help=True, add_completion=False)
 
 
 @app.command()
-def serve(host: str = "127.0.0.1", port: int = 8765, reload: bool = False) -> None:
+def serve(
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    reload: bool = False,
+    build: bool = typer.Option(True, help="Rebuild web/dist first if the frontend changed."),
+) -> None:
     """Start the API server (and the dashboard)."""
     import uvicorn
 
     from jobsearcher.db.session import init_db
     from jobsearcher.logging import setup_logging
+    from jobsearcher.web.build import ensure_built
 
     setup_logging()
+    if build:
+        ensure_built()
     init_db()
     uvicorn.run("jobsearcher.web.app:app", host=host, port=port, reload=reload)
 
