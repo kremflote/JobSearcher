@@ -103,3 +103,39 @@ def test_same_status_is_noop(session, job):
     app = triage(session, job, "interessant")
     apply_transition(session, app, "interessant")
     assert len(events(session, app)) == 1
+
+
+def _drafted(session, job):
+    from jobsearcher.tracking import drafts
+
+    app = triage(session, job, "interessant")
+    drafts.add_draft(session, app.id, "Versjon 1", author="agent")
+    apply_transition(session, app, "utkast")
+    drafts.add_message(session, app.id, "user", "Kortere")
+    session.commit()
+    return app
+
+
+def test_ikke_aktuell_deletes_drafts_and_undo_lands_on_interessant(session, job):
+    from jobsearcher.db.models import DraftMessage
+
+    app = _drafted(session, job)
+    apply_transition(session, app, "ikke_aktuell")
+    session.commit()
+    assert app.status == "ikke_aktuell"
+    assert session.exec(select(Draft)).all() == []
+    assert session.exec(select(DraftMessage)).all() == []
+    assert [(e.from_status, e.to_status) for e in events(session, app)] == [
+        ("ny", "interessant"),
+        ("interessant", "ikke_aktuell"),
+    ]
+    assert previous_status(session, app) == "interessant"
+
+
+def test_discard_drafts_steps_utkast_back(session, job):
+    from jobsearcher.tracking.status import discard_drafts
+
+    app = _drafted(session, job)
+    assert discard_drafts(session, app) == 1
+    assert app.status == "interessant"
+    assert [e.to_status for e in events(session, app)] == ["interessant"]

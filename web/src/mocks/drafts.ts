@@ -135,3 +135,23 @@ export function startRevise(db: MockDb, applicationId: number, body: S['ReviseRe
     },
   })
 }
+
+/**
+ * DELETE /api/applications/{id}/drafts, and part of a move to `ikke_aktuell`: drops versions and
+ * chat; `utkast` goes back to `interessant` by removing the event that moved it there.
+ */
+export function discardDrafts(db: MockDb, applicationId: number) {
+  db.applications.drafts = db.applications.drafts.filter((d) => d.application_id !== applicationId)
+  db.applications.messages = db.applications.messages.filter((m) => m.application_id !== applicationId)
+  const card = db.applications.cards.find((a) => a.id === applicationId)
+  const job = db.jobs.find((j) => j.application?.id === applicationId)
+  if (job?.application) job.application.latest_draft_id = null
+  if (card?.status !== 'utkast') return
+  const events = db.applications.events.get(applicationId) ?? []
+  if (events.at(-1)?.to_status === 'utkast') events.pop()
+  card.status = 'interessant'
+  if (job) {
+    job.status = 'interessant'
+    if (job.application) job.application.status = 'interessant'
+  }
+}

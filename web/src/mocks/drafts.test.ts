@@ -2,7 +2,7 @@ import { createMockDb } from './db'
 import { zip } from './docx'
 import { startDraft, saveUserDraft, startRevise, USER_VERSION_WINDOW_MS } from './drafts'
 import { isQuestion, reviseText } from './fixtures/drafts'
-import { tick, toCard } from './handlers'
+import { patchApplication, tick, toCard } from './handlers'
 
 const fresh = () => createMockDb(new Date(2026, 9, 10, 12))
 
@@ -28,6 +28,22 @@ describe('mock drafts (FRONTEND §5.5)', () => {
     expect(toCard(db, card).latest_draft_id).toBe(task.result!.draft_id)
     expect(db.applications.events.get(card.id)!.map((e) => e.to_status)).toEqual(['interessant', 'utkast'])
     expect(startDraft(db, job)).toBeNull() // already has a draft → 409
+  })
+
+  it('moving to ikke_aktuell deletes the drafts and steps utkast back to interessant', () => {
+    const db = fresh()
+    const job = db.jobs.find((j) => j.status === 'ny')!
+    const task = finish(db, startDraft(db, job)!.task_id)
+    const card = db.applications.cards.find((a) => a.id === task.result!.application_id)!
+    patchApplication(db, card, { status: 'ikke_aktuell' })
+    expect(card.status).toBe('ikke_aktuell')
+    expect(db.applications.drafts.some((d) => d.application_id === card.id)).toBe(false)
+    expect(db.applications.messages.some((m) => m.application_id === card.id)).toBe(false)
+    expect(job.application?.latest_draft_id).toBeNull()
+    expect(db.applications.events.get(card.id)!.map((e) => [e.from_status, e.to_status])).toEqual([
+      ['ny', 'interessant'],
+      ['interessant', 'ikke_aktuell'],
+    ])
   })
 
   it('autosave updates a recent user version in place, otherwise adds one', () => {

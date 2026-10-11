@@ -10,7 +10,7 @@ import type { ApplicationStatus, JobDetail, JobListItem, JobType, Task } from '@
 import { CLOSED_STATUSES } from '@/lib/status'
 import { createMockDb, toListItem, type MockDb } from './db'
 import { markdownToDocx } from './docx'
-import { saveUserDraft, startDraft, startRevise } from './drafts'
+import { discardDrafts, saveUserDraft, startDraft, startRevise } from './drafts'
 import type { MockCard } from './fixtures/applications'
 import { buildLlmUsage } from './fixtures/llm'
 import { checkPath, patchSettings, profileTree, readTemplate, rescoreEstimate, startMockTask, writeProfileFile } from './system'
@@ -215,6 +215,7 @@ export function patchApplication(db: MockDb, card: MockCard, patch: S['Applicati
         if (!('follow_up_at' in patch)) card.follow_up_at = null
       }
     } else if (TRANSITIONS[card.status].includes(to)) {
+      if (to === 'ikke_aktuell') discardDrafts(db, card.id)
       const now = new Date().toISOString()
       events.push({ id: nextEventId(db), from_status: card.status, to_status: to, at: now, comment: patch.comment ?? null })
       if (to === 'sokt') {
@@ -353,6 +354,13 @@ export function createHandlers(db: MockDb = createMockDb()) {
           .map(({ content: _c, claims_to_verify: _v, ...summary }) => summary),
       ),
     ),
+
+    http.delete('/api/applications/:id/drafts', ({ params }) => {
+      const id = Number(params.id)
+      if (!db.applications.cards.some((a) => a.id === id)) return error(404, 'not_found', 'Fant ikke søknaden.')
+      discardDrafts(db, id)
+      return new HttpResponse(null, { status: 204 })
+    }),
 
     http.get('/api/applications/:id/messages', ({ params }) =>
       json<S['DraftMessage'][]>(db.applications.messages.filter((m) => m.application_id === Number(params.id))),

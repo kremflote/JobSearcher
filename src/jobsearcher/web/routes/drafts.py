@@ -18,6 +18,7 @@ from jobsearcher.db import models as m
 from jobsearcher.db.models import utcnow
 from jobsearcher.db.session import get_session
 from jobsearcher.tracking import drafts
+from jobsearcher.tracking.status import discard_drafts
 from jobsearcher.web.errors import ApiError
 from jobsearcher.web.tasks import TaskCancelled, TaskContext, TaskFailed, get_runner
 
@@ -105,6 +106,14 @@ def create_draft(application_id: int, body: DraftCreate, session: SessionDep) ->
         raise ApiError(404, "not_found", "Fant ikke versjonen.") from e
     session.commit()
     return draft_out(draft)
+
+
+@router.delete("/applications/{application_id}/drafts", status_code=204)
+def delete_drafts(application_id: int, session: SessionDep) -> None:
+    """Delete all versions and the revision chat; `utkast` goes back to `interessant`."""
+    app = _get_application(session, application_id)
+    discard_drafts(session, app)
+    session.commit()
 
 
 @router.get("/applications/{application_id}/messages")

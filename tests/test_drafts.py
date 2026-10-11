@@ -409,3 +409,15 @@ def test_clean_letter_removes_dashes():
     out = clean_letter(text)
     assert "–" not in out and "—" not in out
     assert out == "Jeg bygde Matflote, en app for rester.\n- punkt\nStudert 2022-2025, med A."
+
+
+def test_api_delete_drafts(client, session):
+    app, _ = _app_with_draft(session)
+    drafts.add_message(session, app.id, "user", "Kortere")
+    session.commit()
+    assert client.delete(f"/api/applications/{app.id}/drafts").status_code == 204
+    assert client.get(f"/api/applications/{app.id}/drafts").json() == []
+    assert client.get(f"/api/applications/{app.id}/messages").json() == []
+    session.refresh(app)
+    assert app.status == "interessant"
+    assert client.delete("/api/applications/999/drafts").status_code == 404

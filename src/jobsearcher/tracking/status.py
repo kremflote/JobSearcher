@@ -13,6 +13,7 @@ from sqlmodel import Session, col, delete, select
 
 from jobsearcher.config import today as config_today
 from jobsearcher.db.models import Application, ApplicationEvent, Draft, Job, utcnow
+from jobsearcher.tracking.drafts import delete_all as delete_all_drafts
 
 TRANSITIONS: dict[str, tuple[str, ...]] = {
     "ny": ("interessant", "ikke_aktuell"),
@@ -90,6 +91,11 @@ def apply_transition(
             application.applied_at = None
             application.follow_up_at = None
     elif to_status in TRANSITIONS.get(current, ()):
+        if to_status == "ikke_aktuell":
+            # Not relevant any more: drop its cover letters. From `utkast` this steps back to
+            # `interessant` first, so undo lands there instead of on an empty draft.
+            discard_drafts(session, application)
+            current = application.status
         session.add(
             ApplicationEvent(
                 application_id=application.id,
@@ -108,6 +114,23 @@ def apply_transition(
     session.add(application)
     session.flush()
     return application
+
+
+def discard_drafts(session: Session, application: Application) -> int:
+    """Delete the application's drafts and revision chat (ARCHITECTURE §9.1). An application
+    at `utkast` goes back to `interessant` by removing the event that moved it to `utkast`.
+    Returns how many draft versions were deleted. The caller commits.
+    """
+    assert application.id is not None
+    deleted = delete_all_drafts(session, application.id)
+    if application.status == "utkast":
+        event = last_event(session, application.id)
+        if event is not None and event.to_status == "utkast":
+            session.delete(event)
+        application.status = "interessant"
+        session.add(application)
+        session.flush()
+    return deleted
 
 
 def application_for_job(session: Session, job_id: int) -> Application | None:

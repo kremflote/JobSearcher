@@ -3,7 +3,7 @@
 > Keep this file short. Update it at the end of every session: status, next task, open questions, and one line in the log.
 
 **Last updated:** 2026-10-11
-**Phase:** 0, 0b, F0–F4, backend phases 1–4, wave 2b/F2b and DeepSeek as the only model done. Everything through F4 + phase 4 and the scrollbar/`serve`-rebuild fixes is merged to `main` (PRs #11–#18). The user commits and merges. 4b/F5 is done and **live on the Pi** (https://jobb.mariuskristensen.no) since 2026-10-11; code on `feat/phase4b-f5` (PR). Phase 5 (Teamtailor + page watcher) is built on `feat/phase5-sources` (branched from `feat/phase4b-f5`), **not deployed yet**. Roadmap (ARCHITECTURE §17): … → 4b/F5 → 5 → **6 next** (ARCHITECTURE v0.24, FRONTEND v0.16).
+**Phase:** 0, 0b, F0–F4, backend phases 1–4, wave 2b/F2b and DeepSeek as the only model done. Everything through F4 + phase 4 and the scrollbar/`serve`-rebuild fixes is merged to `main` (PRs #11–#18). The user commits and merges. 4b/F5 is done and **live on the Pi** (https://jobb.mariuskristensen.no) since 2026-10-11; code on `feat/phase4b-f5` (PR). Phase 5 (Teamtailor + page watcher) is merged (PR #21) and deployed. Draft deletion on Ikke aktuell / in Søknader and the "Se annonsen" button are on `feat/discard-drafts-ad-link`, **not merged or deployed**. Roadmap (ARCHITECTURE §17): … → 4b/F5 → 5 → **6 next** (ARCHITECTURE v0.25, FRONTEND v0.17).
 
 ## Status
 
@@ -118,6 +118,7 @@
 - (No longer needed: Finn saved searches, Gmail label `JobSearcher/Finn`, sample `.eml` fixture. The user can delete them.)
 
 ## Next task
+0. **Merge and deploy `feat/discard-drafts-ad-link`** (user commits/merges; deploy with `scripts/deploy_pi.sh`).
 1. **Check phase 5 after the next scheduled run** (deployed 2026-10-11; the first run reads all 14 pages, ~$0.03, and scores ~25 new jobs, ~$0.03). Oversikt › Kildestatus: Teamtailor and Karrieresider should be `ok`; a page with "nesten ingen tekst" or HTTP errors gets swapped or removed in `sources.yaml`.
 2. **User tests the live app** (list in the PR/session summary): phone PWA install, triage, tracker, a draft, profile edit, settings, the 07:00 run + digest from the Pi.
 3. After 2–4 weeks: which Teamtailor feeds and pages give jobs that NAV/Finn don't (spike 03). Then **phase 6** (filter eval, cost page).
@@ -176,3 +177,4 @@ Known small things: `title_require_any` matches substrings, so "intern" lets "Ju
 - 2026-10-11: krem-pi added a "Jobbsøk" tile to the Pi's homepage dashboard (Tools group, siteMonitor on `/api/health`, no restart). Homeserver note updated. No code changes.
 - 2026-10-11: Phase 5 on `feat/phase5-sources`: Teamtailor RSS (9 companies) and page watcher + extractor (14 pages), company list checked live, `output_json_schema` no longer drops fields named `title`. Live run on a DB copy: 27 new jobs past the hard filter, extractor $0.036. Not deployed. ARCHITECTURE v0.24, spike 03, FRONTEND (settings text), README.
 - 2026-10-11: Phase 5 merged (PR #21). Deploy from the agent was blocked by auto mode; `bash` in PowerShell hit WSL with no distro. README and AGENTS now give the Git Bash command for PowerShell. User deployed phase 5 from PowerShell via Git Bash; container healthy, `/api/health` ok.
+- 2026-10-11: On `feat/discard-drafts-ad-link`: Ikke aktuell deletes the application's drafts and chat (Utkast steps back to Interessant first, so undo lands there; Tracker confirms first), `DELETE /api/applications/{id}/drafts` + trash button in Søknader, "Se annonsen ↗" in the job detail. Not deployed. ARCHITECTURE v0.25 §9.1, FRONTEND v0.17 §5.3/§5.5/§7.

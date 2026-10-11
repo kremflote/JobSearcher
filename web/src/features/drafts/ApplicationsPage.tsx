@@ -1,9 +1,11 @@
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Trash2 } from 'lucide-react'
 import { Link } from 'react-router'
-import { useApplications } from '@/api/queries'
+import { ApiError } from '@/api/client'
+import { useApplications, useDeleteDrafts } from '@/api/queries'
 import type { ApplicationCard } from '@/api/types'
 import { DeadlineBadge, StatusBadge } from '@/components/badges'
 import { Page } from '@/components/Page'
+import { useToast } from '@/components/Toaster'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StartDraftButton } from './StartDraftButton'
@@ -17,6 +19,15 @@ const BEFORE_APPLYING = ['interessant', 'utkast']
  */
 export function ApplicationsPage() {
   const apps = useApplications()
+  const deleteDrafts = useDeleteDrafts()
+  const toast = useToast()
+  const onDelete = (c: ApplicationCard) => {
+    if (!window.confirm(`Slette søknadsutkastet til ${c.company}? Alle versjoner og chatten forsvinner.`)) return
+    deleteDrafts.mutate(c.id, {
+      onSuccess: () => toast({ message: `Utkast slettet: ${c.job_title}` }),
+      onError: (e) => toast({ message: e instanceof ApiError ? e.message : 'Kunne ikke slette utkastet.' }),
+    })
+  }
   const cards = apps.data?.items ?? []
   const withDrafts = cards
     .filter((c) => c.latest_draft_id !== null)
@@ -49,14 +60,25 @@ export function ApplicationsPage() {
             {withDrafts.length ? (
               <ul className="divide-y rounded-lg border" data-testid="draft-list">
                 {withDrafts.map((c) => (
-                  <li key={c.id}>
-                    <Link to={`/soknader/${c.id}`} className="hover:bg-muted/50 flex items-center gap-3 px-3 py-2.5">
+                  <li key={c.id} className="hover:bg-muted/50 flex items-center pr-1">
+                    <Link to={`/soknader/${c.id}`} className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5">
                       <Summary card={c} />
                       <span className="text-muted-foreground hidden shrink-0 text-xs sm:inline">
                         Endret {fmtVersionTime(c.latest_draft_at!)}
                       </span>
                       <ChevronRight className="text-muted-foreground size-4 shrink-0" aria-hidden />
                     </Link>
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      className="text-muted-foreground hover:text-destructive shrink-0"
+                      aria-label={`Slett utkastet til ${c.job_title}`}
+                      title="Slett utkast"
+                      disabled={deleteDrafts.isPending && deleteDrafts.variables === c.id}
+                      onClick={() => onDelete(c)}
+                    >
+                      <Trash2 />
+                    </Button>
                   </li>
                 ))}
               </ul>
