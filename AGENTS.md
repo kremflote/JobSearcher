@@ -3,7 +3,7 @@
 Instructions for AI agents (Claude Code, Codex, etc.) working in this repo. Read this file first, then `docs/HANDOVER.md`.
 
 ## What this is
-JobSearcher: a local, AI-assisted job search tool for one user (a newly graduated developer in Nittedal, Norway).
+JobSearcher: a local, AI-assisted job search tool for one user (a developer student in Nittedal, Norway; bachelor done June 2027, part-time before that, full-time from June).
 - Collects job ads daily (Finn mobile API, NAV feed, Teamtailor RSS, career pages)
 - Filters and scores them against the user's profile
 - Shows them in a dashboard for PC and phone (React SPA over a FastAPI JSON API, see `docs/FRONTEND.md`)

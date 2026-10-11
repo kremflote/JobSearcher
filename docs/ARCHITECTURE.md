@@ -32,7 +32,7 @@
 
 ## 1. Mål
 
-Et frittstående Python-program som kjører på brukerens egen maskin (PC under utvikling, hjemmeserver i drift) og automatiserer jobbsøkingen for en nyutdannet utvikler i Nittedal:
+Et frittstående Python-program som kjører på brukerens egen maskin (PC under utvikling, hjemmeserver i drift) og automatiserer jobbsøkingen for en utviklerstudent i Nittedal som fullfører bacheloren i juni 2027 (deltid før det, fulltid fra juni):
 
 1. **Samler inn** relevante stillinger daglig: Finn (via varsler), NAV-feeden og kilder for trainee/graduate.
 2. **Filtrerer og rangerer** stillingene mot brukerens profil.
@@ -528,6 +528,7 @@ Ugyldig output → ett nytt forsøk med valideringsfeilen i prompten → derette
 - Språket følger `ad_language`, og kan overstyres i dashboardet.
 - Lengde og stil fra `style_overrides.md`. Stemme fra `voice.md`.
 - **Faktaregel:** Brevet kan bare påstå ting om brukeren som finnes i profilen, også koblinger (at en teknologi er brukt i et bestemt prosjekt). Det som mangler i profilen, utelates eller sies ærlig ("har ikke jobbet med X ennå"), uten oppdiktet bro. `claims_to_verify` er for dekkede formuleringer som kanskje er for sterke, og vises som advarsel i editoren.
+- **Oppstart:** søkeren studerer til datoen i profilen (`practical.available_from`, `availability`). Har annonsen oppstart før det eller ingen oppstartsdato, skriver brevet én setning om når søkeren kan begynne (deltid og fulltid). Filteret trekker ikke for uklar oppstart, men noterer den i `concerns`.
 - **Lengde:** grensen i `style_overrides.md` er en øvre grense. Prompten ber modellen telle ord og kutte svakeste avsnitt heller enn å korte hver setning.
 - Kort form: prosjekter nevnes med én setning (navn, relevant teknologi, resultat), ikke forklart i detalj. Ingen tankestrek (– eller —): prompten forbyr den, og `clean_letter` bytter den ut i alt skriveren og revisoren lagrer (komma, eller bindestrek i tallintervaller og punktlister). Brukerens egne redigeringer røres ikke.
 - Skriveeksemplene ga ikke intervju. De brukes for stemmen, ikke for strukturen (står i `style_overrides.md`).

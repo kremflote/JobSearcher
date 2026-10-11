@@ -112,7 +112,7 @@ def search_prefs(ctx: SliceContext, spec: dict[str, Any]) -> str:
     enabled = [JOB_TYPE_NO.get(t, t) for t, on in s.job_types.items() if on]
     lines = [
         f"- Aktuelle jobbtyper: {', '.join(enabled)}.",
-        "- Søkeren er nyutdannet og har ingen relevant arbeidserfaring som utvikler.",
+        "- Søkeren er student til utdanningen er ferdig (se profilen) og har ingen relevant arbeidserfaring som utvikler.",
         "- Stillinger som krever ett år eller mer med arbeidserfaring passer ikke (`seniority: experienced`).",
         f"- Uttalt senioritet mangler (`unspecified`): koden setter tak på {s.unspecified_seniority_max_score} på scoren.",
         f"- Uønskede roller (ekskluderes): {', '.join(s.role_exclude)}.",
