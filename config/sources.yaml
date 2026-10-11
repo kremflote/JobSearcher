@@ -82,10 +82,51 @@ nav:
   # Maks feed-sider per kjøring. Resten leses neste kjøring (cursoren peker på neste side).
   max_pages_per_run: 200
 
+# --- Fase 5: trainee-, graduate- og sommerkilder (ARCHITECTURE §4.4, spike 03) ---
+# Kuratert selskapsliste. Selskaper som ikke står her (Workday, SmartRecruiters, sider som bare
+# lastes med JavaScript) dekkes av NAV og Finn; se spike 03 §Oppdatering 2026-10-11.
+# Felles for begge: `key` er cursor-nøkkelen (endres den, leses kilden som ny), `company` er
+# navnet jobben får (brukes ved dedupe mot NAV og Finn), `job_type` er valgfritt hint.
+
 teamtailor:
-  enabled: false   # fase 5
-  feeds: []
+  enabled: true
+  # Hopp over en feed som ble lest for under så mange timer siden ("Kjør nå" flere ganger).
+  # `jobsearcher run --force` overstyrer.
+  min_hours_between_runs: 3
+  # Offentlig RSS per karriereside: https://<karriereside>/jobs.rss. Hele annonseteksten står i
+  # feeden. En stilling som forsvinner fra feeden blir inaktiv.
+  feeds:
+    - { key: vipps, company: Vipps MobilePay, url: "https://vipps.teamtailor.com/jobs.rss" }
+    - { key: hafslund, company: Hafslund, url: "https://hafslund.teamtailor.com/jobs.rss" }
+    - { key: akerbp, company: Aker BP, url: "https://akerbp.teamtailor.com/jobs.rss" }
+    - { key: schibsted, company: Schibsted, url: "https://schibsted.teamtailor.com/jobs.rss" }
+    - { key: skatteetaten, company: Skatteetaten, url: "https://skatteetaten.teamtailor.com/jobs.rss" }
+    - { key: computas, company: Computas, url: "https://computas.teamtailor.com/jobs.rss" }
+    - { key: itera, company: Itera, url: "https://itera.teamtailor.com/jobs.rss" }
+    - { key: twoday, company: Twoday, url: "https://twoday.teamtailor.com/jobs.rss" }
+    - { key: oda, company: Oda, url: "https://careers.oda.com/jobs.rss" }
 
 page_watch:
-  enabled: false   # fase 5
-  companies: []
+  enabled: true
+  # Hver side hentes maks én gang per så mange timer. `run --force` overstyrer.
+  min_hours_between_checks: 20
+  # Maks utlysningssider (lenker fra karrieresidene) som hentes per kjøring.
+  max_details_per_run: 30
+  # Karrieresider uten feed. Siden gjøres om til tekst og hashes; bare ved endring leser
+  # extractor-agenten (tier fast) ut utlysningene. `selector` (CSS) avgrenser delen som
+  # overvåkes, ellers brukes <main>. En utlysning som forsvinner fra siden blir inaktiv.
+  companies:
+    - { key: bekk, company: Bekk, url: "https://www.bekk.no/jobb" }
+    - { key: kantega, company: Kantega, url: "https://jobb.kantega.no/" }
+    - { key: variant, company: Variant, url: "https://www.variant.no/no/jobb" }
+    - { key: knowit, company: Knowit, url: "https://www.knowit.no/jobb-hos-oss/talentprogram-og-sommerstudenter/" }
+    - { key: soprasteria, company: Sopra Steria, url: "https://www.soprasteria.no/bli-en-av-oss" }
+    - { key: capgemini, company: Capgemini, url: "https://www.capgemini.com/no-no/careers/career-paths/students-and-graduates/" }
+    - { key: netcompany, company: Netcompany, url: "https://netcompany.com/careers/vacancies/" }
+    - { key: kongsberg, company: Kongsberg, url: "https://www.kongsberg.com/careers/vacancies/" }
+    - { key: nrk, company: NRK, url: "https://info.nrk.no/karriere/" }
+    - { key: statnett, company: Statnett, url: "https://www.statnett.no/karriere/for-studenter-og-larlinger/" }
+    - { key: dnb, company: DNB, url: "https://www.dnb.no/om-oss/jobb-og-karriere/studenter-og-nyutdannede" }
+    - { key: gjensidige, company: Gjensidige, url: "https://www.gjensidige.no/om-oss/jobb/student" }
+    - { key: telenor, company: Telenor, url: "https://www.telenor.no/om/jobbitelenor/" }
+    - { key: vegvesen, company: Statens vegvesen, url: "https://www.vegvesen.no/om-oss/jobb/traineeprogram/", job_type: trainee }

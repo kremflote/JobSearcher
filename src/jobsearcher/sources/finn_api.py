@@ -27,6 +27,7 @@ from jobsearcher.config import env
 from jobsearcher.sources.base import CollectResult, CursorState, RawJob
 from jobsearcher.sources.finn_sig import sign_url
 from jobsearcher.sources.http import HttpClient, save_raw
+from jobsearcher.sources.web import parse_job_posting
 
 log = logging.getLogger(__name__)
 
@@ -199,26 +200,6 @@ def _merge(existing: RawJob, new: RawJob) -> None:
     old_t, new_t = existing.job_type_hint, new.job_type_hint
     if new_t and _TYPE_RANK.get(new_t, 0) > _TYPE_RANK.get(old_t or "unknown", 0):
         existing.job_type_hint = new_t
-
-
-def parse_job_posting(html: str) -> dict[str, Any] | None:
-    """Return the JobPosting object from the ad page's JSON-LD (Finn wraps it in
-    {"script:ld+json": {...}})."""
-    tree = LexborHTMLParser(html)
-    for node in tree.css('script[type="application/ld+json"]'):
-        try:
-            data = json.loads(node.text() or "")
-        except ValueError:
-            continue
-        items = data if isinstance(data, list) else [data]
-        for item in items:
-            if isinstance(item, dict) and isinstance(item.get("script:ld+json"), dict):
-                item = item["script:ld+json"]
-            graph = item.get("@graph") if isinstance(item, dict) else None
-            for obj in graph if isinstance(graph, list) else [item]:
-                if isinstance(obj, dict) and obj.get("@type") == "JobPosting":
-                    return obj
-    return None
 
 
 def _apply_url(html: str) -> str | None:

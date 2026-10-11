@@ -40,3 +40,19 @@ Brukeren redigerer listen fritt.
 
 ## Update 2026-10-10
 Brukeren har gått gjennom startlisten og godkjent den som den er. Dedupe mot NAV/Finn skjer på normalisert søknads-URL før fingerprint (ARCHITECTURE §4.5).
+
+## Oppdatering 2026-10-11: selskapslisten sjekket live (fase 5)
+
+Hver karriereside ble hentet én gang, og `https://<slug>.teamtailor.com/jobs.rss` ble prøvd per selskap. Resultatet står i `config/sources.yaml`.
+
+| Kilde | Selskaper |
+|---|---|
+| **Teamtailor-RSS** (9) | Vipps MobilePay (`vipps`), Hafslund, Aker BP, Schibsted, Skatteetaten, Computas, Itera, Twoday, Oda (`careers.oda.com`) |
+| **Sideovervåker** (14) | Bekk, Kantega (`jobb.kantega.no`), Variant, Knowit (talentprogram og sommerstudenter), Sopra Steria, Capgemini (studenter og nyutdannede), Netcompany (vacancies), Kongsberg (vacancies), NRK, Statnett (studenter), DNB (studenter og nyutdannede), Gjensidige (student), Telenor, Statens vegvesen (traineeprogram) |
+| **Ikke med, dekkes av NAV/Finn** | Equinor, Accenture, Storebrand (Workday); Statkraft (SmartRecruiters); Avinor (Webcruiter); Telia, Posten Bring, Kahoot (listene lastes med JavaScript); Vy (bot-sjekk, svarer 202); Tietoevry (403); Visma (Teamtailor-feeden er tom, karrieresiden samler flere ATS-er); Vend/Finn (stillingene ligger på Finn); Sector Alarm (bare kategorier på siden); SpareBank 1, Miles, Ruter (fant ingen karriereside med liste); NAV IT (i NAV-feeden) |
+
+Funn:
+- Mange karrieresider er oversiktssider som bare lenker til en underside. Den første live-kjøringen (18 sider) ga 0 utlysninger på 10 av dem. Listen bruker derfor undersidene for studenter, trainee og ledige stillinger der de finnes.
+- Bekk lister stillinger fra Lever (`jobs.lever.co/bekk`), som har et offentlig JSON-API. Ikke brukt: sideovervåkeren fanger dem.
+- Sopra Steria pakker hele siden i ett `<form>` (ASP.NET), så sideovervåkeren beholder `<form>` (annonserensingen fjerner den).
+- Første live-kjøring mot en DB-kopi (uten scoring): Teamtailor 105 stillinger, 18 etter hardfilteret; karrieresidene 86 utlysninger, 9 etter hardfilteret, blant dem Kantega «Sommerjobb som utvikler 2027», Telenor «summer internship», Computas NXT 2027 (via Teamtailor) og Sopra Steria graduate og sommerjobb. Extractor: 18 kall, $0,036.

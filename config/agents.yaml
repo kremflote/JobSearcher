@@ -73,3 +73,12 @@ distiller:
     - { slice: profile_all, priority: 1 } # alle kildefiler i lag 1
   input_budget_tokens: 40000
   output_schema: DistilledProfile
+
+extractor:
+  model_tier: fast
+  effort: low
+  prompt: prompts/extractor.md
+  context:
+    - { slice: career_page, priority: 1, max_tokens: 8000 } # rensket karriereside med lenker
+  input_budget_tokens: 12000
+  output_schema: ExtractResult

@@ -130,11 +130,37 @@ def _revision(req: AgentRequest) -> dict[str, Any]:
     }
 
 
+_MD_LINK = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")
+_POSTING_WORDS = re.compile(r"utvikler|developer|engineer|trainee|graduate|sommer|summer|intern", re.I)
+
+
+def _extract(req: AgentRequest) -> dict[str, Any]:
+    """Links on the page whose text looks like a posting."""
+    page = _tag(req, "page")
+    postings, seen = [], set()
+    for title, url in _MD_LINK.findall(page):
+        title = title.strip()
+        if not _POSTING_WORDS.search(title) or url in seen:
+            continue
+        seen.add(url)
+        lower = title.lower()
+        job_type = (
+            "trainee" if "trainee" in lower else "graduate" if "graduate" in lower
+            else "summer" if "sommer" in lower or "summer" in lower else "unknown"
+        )
+        postings.append({
+            "title": title, "url": url, "location": None, "deadline": None, "deadline_text": None,
+            "job_type": job_type, "summary": None,
+        })
+    return {"postings": postings, "page_note": None if postings else "Mock: ingen utlysninger funnet."}
+
+
 BUILTIN: dict[str, Callable[[AgentRequest], dict[str, Any]]] = {
     "FilterBatchResult": _filter_batch,
     "DistilledProfile": _distilled,
     "DraftResult": _draft,
     "RevisionResult": _revision,
+    "ExtractResult": _extract,
 }
 
 

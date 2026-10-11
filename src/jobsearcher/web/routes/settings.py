@@ -101,6 +101,11 @@ FIELDS: tuple[Field, ...] = (
     ),
     Field(f"{SOURCES_PREFIX}finn_api.enabled", "sources", "Finn", "bool"),
     Field(f"{SOURCES_PREFIX}nav.enabled", "sources", "NAV", "bool", "Krever NAV_FEED_TOKEN i .env."),
+    Field(f"{SOURCES_PREFIX}teamtailor.enabled", "sources", "Teamtailor", "bool", "RSS fra karrieresidene i sources.yaml."),
+    Field(
+        f"{SOURCES_PREFIX}page_watch.enabled", "sources", "Karrieresider", "bool",
+        "Sjekker sidene i sources.yaml én gang i døgnet. AI leser siden bare når den har endret seg.",
+    ),
 )
 BY_KEY = {f.key: f for f in FIELDS}
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")

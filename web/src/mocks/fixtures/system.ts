@@ -244,6 +244,15 @@ export function buildSettings(): SettingItem[] {
     },
     { key: 'sources.finn_api.enabled', section: 'sources', label: 'Finn', kind: 'bool', default: true },
     { key: 'sources.nav.enabled', section: 'sources', label: 'NAV', kind: 'bool', help: 'Krever NAV_FEED_TOKEN i .env.', default: true },
+    { key: 'sources.teamtailor.enabled', section: 'sources', label: 'Teamtailor', kind: 'bool', help: 'RSS fra karrieresidene i sources.yaml.', default: true },
+    {
+      key: 'sources.page_watch.enabled',
+      section: 'sources',
+      label: 'Karrieresider',
+      kind: 'bool',
+      help: 'Sjekker sidene i sources.yaml én gang i døgnet. AI leser siden bare når den har endret seg.',
+      default: true,
+    },
   ]
   return defs.map(({ override, ...d }) => ({
     help: null,
