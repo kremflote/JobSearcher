@@ -1,12 +1,13 @@
 # JobSearcher: frontend-design
 
-> Status: v0.12 (2026-10-11). F0, F1, F2 og F2b er bygget og koblet til ekte API (backend-fase 1–2 og bølge 2b). F3 (søknadseditor) er bygget mot mock og kobles i backend-fase 3. Neste bølge: F4.
+> Status: v0.13 (2026-10-11). F0–F3 og F2b er bygget og koblet til ekte API (backend-fase 1–3 og bølge 2b). Neste bølge: F4.
 > Dokumentet eier UI-designet: skjermer, layout, komponenter, API-kontrakt og frontend-bølger. Resten av systemet står i [ARCHITECTURE.md](ARCHITECTURE.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato | Endring |
 |---|---|---|
+| v0.13 | 2026-10-11 | Backend-fase 3 kobler F3: alle utkast-ruter er ekte (§7.1). Avvik fra mocken står i §7.1. |
 | v0.12 | 2026-10-11 | Etter brukertest av F3: chatten skiller spørsmål fra endringer. Et spørsmål får et svar i chatten uten ny versjon. Historikken kommer fra nytt endepunkt `GET /api/applications/{id}/messages` i stedet for versjonslisten (§5.5, §7). Mock-revisoren svarer på spørsmål (§3.2). |
 | v0.11 | 2026-10-11 | F3 bygget mot mock (§5.5): editor med autosave, revisjonschat, versjoner med ord-diff og "Gjenopprett", påstander som krysses av, "Kopier" (ren tekst), `.docx` og "Merk som søkt". `/soknader` lister utkast og interessante jobber uten utkast. Kontrakt (§7): kortet har `latest_draft_id`/`latest_draft_at`; autosave oppdaterer en fersk brukerversjon (< 10 min) i stedet for å lage en ny; `base_draft_id` og `draft_id` velger versjonen det bygges på; 409 `draft_exists` og `no_draft`. |
 | v0.10 | 2026-10-11 | Kostnadstaket gjelder bare betalte kall, og kortet sier det. Saldodelen viser totalt forbruk hos OpenRouter (`used_usd`, også kall utenfor appen). |
@@ -321,7 +322,7 @@ Statusverdier i API-et er snake_case uten norske tegn (`ny`, `interessant`, `utk
 
 ### 7.1 Ekte API (backend-fase 1–2)
 
-Implementert: alle ruter merket F1, F2 og F2b, `GET /api/logs/*` og `GET /api/health`. Resten (utkast, profil, innstillinger) svarer `501 not_implemented` til sin fase. Der det ekte API-et oppfører seg annerledes enn MSW-mocken, gjelder dette:
+Implementert: alle ruter merket F1, F2, F2b og F3, `GET /api/logs/*` og `GET /api/health`. Resten (profil, innstillinger) svarer `501 not_implemented` til fase 4. Der det ekte API-et oppfører seg annerledes enn MSW-mocken, gjelder dette:
 
 | Tema | Ekte API |
 |---|---|
@@ -335,6 +336,10 @@ Implementert: alle ruter merket F1, F2 og F2b, `GET /api/logs/*` og `GET /api/he
 | Ugyldig cursor | `400 invalid_cursor` (ikke deklarert i OpenAPI) |
 | `GET /api/llm/usage` | `by_backend` har alltid `claude_code` og `openrouter` (nuller uten kall). `daily` har én rad per Oslo-dag og backend med kall. `spent_usd` er summen av betalte `agent_runs` (alle backender unntatt `claude_code`), også rader fra fjernede backender, som ikke vises per backend. Saldoen caches 10 min; feiler hentingen, er `balance_usd` og `balance_source` null. |
 | Kildestatus | Kildene som er slått på i `config/sources.yaml`, pluss kilder med kjøringer. `manual` vises ikke. |
+| `POST /api/jobs/{id}/draft` | 404 for ukjent jobb. 409 `draft_exists` også når et utkast til samme jobb allerede lages. Søknaden opprettes først når utkastet er skrevet; feiler oppgaven, er jobben uendret. Oppgavemeldingen er "Ferdig: versjon N", progresjonen "Sjekker profilen" → "Researcher <bedrift>" → "Skriver utkast". |
+| Utkast-feil | Ukjent søknad eller versjon gir 404 `not_found` (også `base_draft_id`/`draft_id` som tilhører en annen søknad). Ved kostnadstaket, manglende destillert profil eller ugyldig svar to ganger feiler oppgaven med en norsk melding. |
+| `POST /api/applications/{id}/revise` | Revisjonen bygger på versjonen som var nyeste (eller `draft_id`) da meldingen ble sendt. En revisjon med uendret tekst blir et svar uten versjon. |
+| `.docx` | Avsender fra `profile.yaml`, bedrift og dato over brevet (ARCHITECTURE §10.2). |
 
 ---
 
@@ -348,7 +353,7 @@ Bølgene F0–F4 bygges før backend-fasene i ARCHITECTURE §17. Hver bølge er 
 | ~~F1. Daglig sløyfe~~ | Oversikt, Jobber (faner, filtre, sveip, tastatur), Jobbdetalj, bakgrunnsjobb-indikator, "Kjør nå" | ✅ bygget 2026-10-10; venter på brukertest (triage av en mock-dag < 2 min på mobil) | ✅ Koblet til ekte API i fase 2 |
 | ~~F2. Tracker~~ | Kanban (PC), gruppert liste (mobil), statusoverganger, neste steg, hendelseslogg | ✅ 2026-10-10 | ✅ Koblet til ekte API i fase 2 |
 | ~~F2b. LLM-forbruk~~ | Kortet LLM-forbruk med detaljpanel (§5.1), mock-fixtures for alle saldotilstander (konto, nøkkelgrense, ukjent, ikke satt opp, lav) | ✅ 2026-10-11 | ✅ Koblet i backend-bølge 2b |
-| ~~F3. Søknadseditor~~ | Editor, forhåndsvisning, autosave/versjoner, diff, revisjonschat, `claims_to_verify`, `.docx`, `/soknader` | ✅ 2026-10-11 (mock) | Kobles i fase 3 |
+| ~~F3. Søknadseditor~~ | Editor, forhåndsvisning, autosave/versjoner, diff, revisjonschat, `claims_to_verify`, `.docx`, `/soknader` | ✅ 2026-10-11 | ✅ Koblet til ekte API i fase 3 |
 | **F4. Profil, innstillinger, logg** | Profileditor med historikk, innstillingsskjema, loggfaner | Profilen kan redigeres uten filsystemtilgang | Nei. Kobles i fase 4 (destilleren finnes fra fase 2). |
 | **F5. Drift** | FastAPI serverer `web/dist`, multi-stage Dockerfile, PWA-ikon, test på mobil via Tailscale | `docker compose up` gir hele appen på én port | Ja: fase 1 (`serve`). `serve` serverer allerede `web/dist`; Dockerfile gjenstår. |
 

@@ -115,7 +115,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Start Draft */
+        /**
+         * Start Draft
+         * @description Research + writer as a task (ARCHITECTURE §9.1 "Utkast"). 409 `draft_exists` if the
+         *     application has drafts or a draft for the job is already being written.
+         */
         post: operations["start_draft"];
         delete?: never;
         options?: never;

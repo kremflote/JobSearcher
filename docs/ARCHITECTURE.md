@@ -1,12 +1,13 @@
 # JobSearcher: design- og arkitekturdokument
 
-> Status: v0.18 (2026-10-11). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F2, backend-fase 1 og 2 og bølge 2b/F2b er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), dashboardets oversikt, jobbliste og tracker går mot ekte data, og alle LLM-kall går til DeepSeek via `openrouter`. F3 (søknadseditor) er bygget mot mock. Neste: backend-fase 3.
+> Status: v0.19 (2026-10-11). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F3, backend-fase 1–3 og bølge 2b/F2b er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), dashboardets oversikt, jobbliste, tracker og søknadseditor går mot ekte data, og alle LLM-kall går til DeepSeek via `openrouter`. Søknadsutkast er ikke prøvd live med DeepSeek ennå. Neste: F4.
 > Dokumentet er "source of truth" for designet. UI-designet står i [FRONTEND.md](FRONTEND.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato       | Endring                                                                                                                                                                                                                                                                           |
 | ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v0.19   | 2026-10-11 | Fase 3 bygget: research-, skrive- og revisjonsagentene, bitene for fase 3 (§6.2), prosjektvalg (§6.4), utkast-API og `.docx`-eksport. Presisert etter implementering: research bruker OpenRouters web-plugin, bare `full`-notater caches og et mislykket søk gir et `limited`-notat fra annonsen (§7.3); skriveren oppretter søknaden først når utkastet finnes (§7.4); utkast og revisjon avvises ved kostnadstaket i stedet for å be om bekreftelse (§8.3); eksporten bruker ingen mal og lagrer ikke fil (§10.2). Prompt `reviser` v0.3, `researcher` v0.2. |
 | v0.18   | 2026-10-11 | Revisjonschatten skiller spørsmål fra endringer: revisoren svarer i chatten uten ny versjon når meldingen er et spørsmål (`RevisionResult.kind`, §7.2; prompt `reviser` v0.2). Chatten lagres i ny tabell `draft_messages` (migrasjon `0004`, §9). Grunn: i brukertesten av F3 ble et spørsmål om en påstand limt inn i brevet. |
 | v0.17   | 2026-10-11 | F3 bygget mot mock (FRONTEND §5.5, §17). Utkastregler presisert (§9.1): et utkast flytter Interessant → Utkast og oppretter søknaden for en jobb som ikke er vurdert; autosave oppdaterer en brukerversjon yngre enn 10 min på plass i stedet for å lage en ny; brukerversjoner arver `claims_to_verify` fra versjonen de bygger på. Tracker-kortet har nyeste utkast. |
 | v0.16   | 2026-10-11 | Én modell for alle agenter: `openrouter` (DeepSeek V4.1 Flash) er standard-backend, og reserven er av som standard (§2, §8). Grunn: scorer og senere søknadsutkast skal være sammenlignbare, og DeepSeek scorer på en annen skala enn Claude (spike 05). `claude_code` finnes fortsatt og kan settes som standard eller reserve. Filter-prompten v0.3 har en strengere skala, så snittet treffer den gamle (terskler som 65 og 70 beholder betydningen). Ny CLI-kommando `jobsearcher rescore [--all]` (§5.5). |
@@ -404,7 +405,7 @@ distiller:
   output_schema: DistilledProfile
 ```
 
-**Format:** felles biter pakkes som `<slice_navn>…</slice_navn>`. Hver annonse er `<job_ad id=… prefiltered=…><meta>…</meta><text>…</text></job_ad>`, og `<job_ad` inne i annonseteksten escapes. Bitene for fase 3 (`company_meta`, `job_ad_summary`, `company_note`, `relevant_projects`, `evaluation`, `current_draft`, `user_message`, `revision_log`) er ikke skrevet ennå.
+**Format:** felles biter pakkes som `<slice_navn>…</slice_navn>`. Hver annonse er `<job_ad id=… prefiltered=…><meta>…</meta><text>…</text></job_ad>`, og `<job_ad` inne i annonseteksten escapes. Bitene for fase 3 leser det agenten legger i `extras` (`job`, `evaluation`, `company`, `company_note`, `draft`, `instruction`, `history`). Bruker- og annonsetekst escapes så den ikke kan lukke sin egen tagg. `job_ad_summary` faller tilbake til starten av annonsen når jobben ikke er scoret. `revision_log` er de siste chatmeldingene før den nye, forkortet til 400 tegn.
 
 **Budsjett:** Kontekstbyggeren teller tokens før hvert kall (også systemprompten) (estimat: tegn/3.5, med `count_tokens` på API-backend). Over budsjett kuttes biter med prioritet 3, deretter 2. Prioritet 1 kuttes aldri. En annonseblokk i en batch kuttes som helhet, med laveste prioritet blant bitene sine. Går det fortsatt over, feiler kallet med en tydelig melding.
 
@@ -437,7 +438,7 @@ distiller:
    - +2 hvis `categories` inneholder annonsens `role_category`
    - +2 hvis `highlight: true`
    - +1 hvis `type` er `jobb` eller `personlig` og prosjektet er i bruk (skiller fra rene skoleoppgaver ved lik score)
-4. De 3 beste tas med i sin helhet. Resten nevnes med én linje i `profile_long`.
+4. De 3 beste tas med i sin helhet (`context/projects.py`, fra `PROFILE_DIR/projects/*.md`). Resten nevnes med én linje i `profile_long`. Uten evaluering teller bare `highlight` og `type`.
 
 ### 6.5 Sikkerhet
 
@@ -513,11 +514,11 @@ Ugyldig output → ett nytt forsøk med valideringsfeilen i prompten → derette
 
 ### 7.3 Research-agenten
 
-- Verktøy: websøk og -henting (`claude_code`: `--allowedTools "WebSearch,WebFetch"`. API: server-verktøyene `web_search`/`web_fetch`).
+- Verktøy: `openrouter` (standard) bruker OpenRouters web-plugin (`plugins: [{id: web}]`), som legger søkeresultater ved meldingen. `claude_code` får `--allowedTools "WebSearch,WebFetch"` (maks ~8 kall).
 - Prioriterte kilder: bedriftens nettside (om oss, karriere, techblogg), nyheter siste 12 måneder, Proff/Brønnøysund for størrelse.
-- Maks ~8 verktøykall.
-- **Fallback uten web:** notatet bygges bare fra arbeidsgiverbeskrivelsen i NAV-annonsen og annonsen selv, og merkes `limited`.
-- Cache 90 dager per `company_slug`. Kan oppdateres manuelt i dashboardet.
+- Notatet lagres som Markdown i `data/companies/<slug>.md` med en rad i `companies` (`agents/researcher.py`). Detaljvisningen og skriveren leser det derfra.
+- **Cache:** et `full`-notat brukes i 90 dager per `company_slug`. Ukjent bedrift (`ukjent`) får ikke notat.
+- **Når research feiler:** notatet bygges fra arbeidsgiverbeskrivelsen i annonsen (NAV har den) og merkes `limited`; neste utkast prøver research på nytt. Uten beskrivelse brukes et eldre notat om det finnes, ellers skriver skriveren uten. Research-feil stopper aldri utkastet.
 
 ### 7.4 Skrive-agenten
 
@@ -526,6 +527,8 @@ Ugyldig output → ett nytt forsøk med valideringsfeilen i prompten → derette
 - Lengde og stil fra `style_overrides.md`. Stemme fra `voice.md`.
 - **Faktaregel:** Brevet kan bare påstå ting om brukeren som finnes i profilen. Alt annet skal i `claims_to_verify`, og vises som advarsel i editoren.
 - Skriveeksemplene ga ikke intervju. De brukes for stemmen, ikke for strukturen (står i `style_overrides.md`).
+- **Flyt** (`agents/writer.py`, oppgaven `draft`): destiller ved behov → research → skriver. Hvert steg har egen DB-transaksjon, så ingen skrivelås holdes under et LLM-kall. Søknaden opprettes (triage til Interessant) og flyttes til Utkast først når første versjon er lagret, så et mislykket utkast lar jobben være som den var. Agentmeldingen for første utkast nevner prosjektene og `notes_for_user`.
+- **Revisjon** (`agents/reviser.py`, oppgaven `revise`): et svar med `kind: revision` uten brevtekst gir ett nytt forsøk; en «revisjon» med uendret tekst lagres som svar.
 
 ### 7.5 Destiller
 
@@ -599,7 +602,7 @@ OpenRouter-modellen per tier settes i `config/settings.yaml` (`llm.openrouter.mo
 
 **Kostnadstak:** $10/mnd for **betalte kall** (`llm.monthly_cap_usd`; kalendermåned i Oslo-tid, sum av `agent_runs.cost_usd` for alle backender unntatt `claude_code`, `llm/costs.py`). Estimatet fra `claude_code` teller ikke, siden abonnementet betaler.
 - Ved 80 %: advarsel i dashboardet og digesten.
-- Ved 100 %: betalte kall stoppes, og med `openrouter` som standard stopper scoringen (`subscription_only` gir ingen backend). Er `claude_code` standard, scorer filter-agenten videre med den uten reserve. Brukerinitierte kall (utkast, revisjon) krever bekreftelse i dashboardet.
+- Ved 100 %: betalte kall stoppes, og med `openrouter` som standard stopper scoringen (`subscription_only` gir ingen backend). Er `claude_code` standard, scorer filter-agenten videre med den uten reserve. Utkast og revisjon feiler med en melding om taket (ingen bekreftelsesdialog ennå; taket heves i innstillingene, F4).
 - OpenRouter-nøkkelens egen kredittgrense er en ekstra sperre utenfor appen.
 
 ---
@@ -710,14 +713,13 @@ Sider: Oversikt, Jobber, Jobbdetalj, Tracker, Søknadseditor, Profil, Innstillin
 
 ### 10.2 Eksport
 
-`.docx` via `python-docx` fra én mal (`src/jobsearcher/export/template.docx`):
-- avsender (fra `profile.yaml`)
-- dato
-- mottaker (bedrift, kontaktperson hvis kjent)
-- tittel ("Søknad på stilling som …")
-- brevtekst (Markdown → avsnitt)
+`GET /api/drafts/{id}/docx` lager filen med `python-docx` (`export/docx.py`), uten mal og uten å lagre den:
+- avsender: `name` og kontaktfelt (`email`, `phone`, `location`, `github`, `linkedin` m.fl.) fra `profile.yaml`, på toppnivå eller under `contact`
+- mottaker (bedriften)
+- dato (Oslo, "11. oktober 2026"; engelsk format når annonsen er engelsk)
+- brevtekst: Markdown → avsnitt, linjeskift, overskrifter, punktlister, fet og kursiv
 
-Filnavn: `Soknad_<Bedrift>_<Stilling>.docx` i `data/exports/`.
+Filnavn i `Content-Disposition`: `Søknad <Bedrift> v<versjon>.docx` (UTF-8, med ASCII-reserve).
 
 ---
 
@@ -849,14 +851,15 @@ JobSearcher/
 │   │   ├── page_watch.py
 │   │   └── manual.py                  import av limt inn annonsetekst
 │   ├── pipeline/      run.py, normalize.py, clean.py, dedupe.py, hardfilter.py, lifecycle.py, lock.py
-│   ├── context/       loader.py, slices.py, builder.py, budget.py (projects.py i fase 3)
-│   ├── agents/        base.py, schemas.py, filter.py, distiller.py
-│   │                  (fase 3: researcher.py, writer.py, reviser.py; fase 5: extractor.py)
+│   ├── context/       loader.py, slices.py, builder.py, budget.py, projects.py (prosjektvalg §6.4)
+│   ├── agents/        base.py, schemas.py, filter.py, distiller.py, researcher.py, writer.py, reviser.py
+│   │                  (fase 5: extractor.py)
 │   │   (ingen enricher — Finn-annonsesiden gir full annonsetekst)
 │   ├── llm/           base.py (protokoll, FallbackBackend, bryter), claude_code.py, openrouter.py (+ saldo), mock.py, costs.py
 │   ├── tracking/      status.py       Overgangstabell §9.1, triage, angre
+│   │                  drafts.py       Versjoner (autosave-regelen), chatmeldinger
 │   ├── notify/        email.py, templates/digest.html
-│   ├── export/        docx.py, template.docx
+│   ├── export/        docx.py         Brev → .docx (§10.2)
 │   └── web/
 │       ├── app.py, tasks.py           FastAPI-app med lifespan (DB, task-runner, planlegger), serverer web/dist
 │       ├── queries.py                 DB → API-skjema, cursor-paging
@@ -898,6 +901,7 @@ JobSearcher/
     ├── test_normalize.py, test_clean.py, test_dedupe.py, test_hardfilter.py, test_pipeline_run.py
     ├── test_llm_backends.py, test_context_builder.py, test_filter_agent.py, test_distiller.py
     ├── test_status_transitions.py, test_scheduler.py, test_db.py
+    ├── test_drafts.py                 Fase 3: prosjektvalg, research, skriver, revisjon, utkast-API, .docx
     └── evals/
 ```
 
@@ -941,7 +945,7 @@ Rekkefølge: fase 1 → fase 2 → 2b/F2b → F3 → fase 3 → F4 → fase 4 �
 | ~~2. Scoring + API v1~~ | LLM-backends, destiller, filter i batch, `/api` for oversikt, jobber, jobbdetalj, triage og tasks. Kobler F1. Trukket frem fra fase 4: tracker-API-et (kobler F2), logg-API-et og planleggeren i `serve`. | ✅ 2026-10-10 |
 | ~~2b. OpenRouter-reserve~~ | `llm/openrouter.py`, reserve-regel med bryter (§8.1), `anthropic_api` fjernet, migrasjon `0003`, `GET /api/llm/usage`, forbrukskortet (F2b). Sjekk mot Haiku: spike 05 §Oppdatering. | ✅ 2026-10-11 |
 | ~~F3. Søknadseditor~~ | FRONTEND §5.5 mot mock | ✅ 2026-10-11 |
-| **3. Søknader** | Research, writer, revisjon, versjoner, `.docx`-eksport, `/api` for utkast. Kobler F3. | Brev kan lages, itereres og lastes ned |
+| ~~3. Søknader~~ | Research, writer, revisjon, versjoner, `.docx`-eksport, `/api` for utkast. Kobler F3. | ✅ 2026-10-11 (mock-LLM ende til ende; ikke prøvd live med DeepSeek) |
 | **F4. Profil, innstillinger, logg** | FRONTEND §5.6–5.8 mot mock | Profilen kan redigeres uten filsystemtilgang |
 | **4. Tracking + varsling** | E-postdigest, profil-API, innstillings-API, "score på nytt"-knapp. Kobler F4. (Statusflyt, oppfølging, planlegger og backup kom i fase 1–2.) | Hele flyten går uten manuelt arbeid |
 | **4b. Hjemmeserver** | Dockerfile (arm64), tjeneste i Pi-ens `infra`-stack, NPM-proxy, DNS, `claude setup-token`, flytte profil og DB til volumet, healthcheck i Uptime Kuma | Appen kjører på Pi-en og brukes fra mobil via Tailscale |

@@ -87,7 +87,8 @@ def build_context(
     system_prompt: str = "",
 ) -> BuiltContext:
     """Render shared slices and per-item blocks, applying the token budget."""
-    ctx = slices.SliceContext(settings=settings, session=session, extras=extras or {})
+    extras = extras or {}
+    ctx = slices.SliceContext(settings=settings, session=session, job=extras.get("job"), extras=extras)
     parts: list[Part] = []
     for spec in manifest.context:
         text = slices.render(spec.slice, ctx, spec.model_dump())
