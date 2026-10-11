@@ -85,6 +85,18 @@ describe('mock drafts (FRONTEND §5.5)', () => {
     const appId = db.applications.drafts[0]!.application_id
     const task = finish(db, startRevise(db, appId, { instruction: 'Mer formell tone' })!.task_id)
     expect(db.applications.messages.at(-1)).toMatchObject({ role: 'agent', draft_id: task.result!.draft_id })
+    expect(db.applications.messages.at(-1)!.style_rule).toBeNull()
+  })
+
+  it('a general preference gets a suggested style rule', () => {
+    const db = fresh()
+    const appId = db.applications.drafts[0]!.application_id
+    finish(db, startRevise(db, appId, { instruction: 'aldri bruk «brenner for»' })!.task_id)
+    expect(db.applications.messages.at(-1)).toMatchObject({
+      role: 'agent',
+      style_rule: 'Aldri bruk «brenner for»',
+      style_rule_saved: false,
+    })
   })
 
   it('reviseText shortens on "kortere" and adds a sentence otherwise', () => {

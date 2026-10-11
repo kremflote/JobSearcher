@@ -183,6 +183,9 @@ class DraftMessage(SQLModel, table=True):
     text: str
     draft_id: int | None = Field(default=None, foreign_key="drafts.id")
     """Version an agent message produced; None for answers and user messages."""
+    style_rule: str | None = None
+    """Rule the reviser suggests for style_overrides.md (agent messages only)."""
+    style_rule_saved_at: datetime | None = None
     agent_run_id: int | None = Field(default=None, foreign_key="agent_runs.id")
     created_at: datetime = Field(default_factory=utcnow)
 

@@ -38,7 +38,16 @@ export function buildApplications(jobs: JobDetail[], c: Clock): MockApplications
   const drafts: Draft[] = []
   const messages: DraftMessage[] = []
   const say = (application_id: number, role: DraftMessage['role'], text: string, draft_id: number | null, created_at: string) =>
-    messages.push({ id: messages.length + 1, application_id, role, text, draft_id, created_at })
+    messages.push({
+      id: messages.length + 1,
+      application_id,
+      role,
+      text,
+      draft_id,
+      style_rule: null,
+      style_rule_saved: false,
+      created_at,
+    })
   let eventId = 1
   let draftId = 1
 

@@ -37,5 +37,9 @@ export function reviseText(text: string, instruction: string): { content: string
 export const isQuestion = (text: string) =>
   text.trim().endsWith('?') || /^(hvorfor|hva|hvordan|hvem|hvilke|hvor|kommer|er|kan|bør|skal|stemmer)(?=\s|$)/i.test(text.trim())
 
+/** The mock reviser suggests a style rule for instructions that read as general ("aldri …", "alltid …"). */
+export const styleRule = (instruction: string) =>
+  /^(aldri|alltid|unngå)\b/i.test(instruction.trim()) ? instruction.trim().replace(/^./, (c) => c.toUpperCase()) : null
+
 export const MOCK_ANSWER =
   'Mock-svar: her forklarer agenten uten å endre brevet, for eksempel hvor en påstand kommer fra (profilen, annonsen eller ingen kilde). Ingen ny versjon.'

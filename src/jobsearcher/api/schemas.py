@@ -252,6 +252,10 @@ class DraftMessage(Model):
     role: Literal["user", "agent"]
     text: str
     draft_id: int | None
+    style_rule: str | None
+    """Agent messages: a rule for all letters the reviser suggests, when the user's message
+    was a general preference. Saved to `style_overrides.md` with `POST …/style-rule`."""
+    style_rule_saved: bool
     created_at: datetime
 
 

@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { ApiError } from '@/api/client'
-import { downloadDocx, draftQuery, useApplications, useDraft, useDrafts, useMessages, useRevise, useTask } from '@/api/queries'
+import { downloadDocx, draftQuery, useApplications, useDraft, useDrafts, useMessages, useRevise, useSaveStyleRule, useTask } from '@/api/queries'
 import type { ApplicationCard, DraftSummary } from '@/api/types'
 import { DeadlineBadge, StatusBadge } from '@/components/badges'
 import { Page } from '@/components/Page'
@@ -69,6 +69,7 @@ export function EditorPage() {
   const base = useDraft(editor.baseId)
   const messages = useMessages(id)
   const revise = useRevise(id)
+  const saveRule = useSaveStyleRule(id)
   const [pending, setPending] = useState<{ instruction: string; taskId: string | null } | null>(null)
   const task = useTask(pending?.taskId ?? null)
   const revising = !!pending && (!task.data || task.data.status === 'queued' || task.data.status === 'running')
@@ -146,6 +147,12 @@ export function EditorPage() {
       pending={pending && { instruction: pending.instruction, stored: pending.taskId !== null, task: task.data }}
       onSend={send}
       onSelectVersion={selectVersion}
+      onSaveRule={(messageId) =>
+        saveRule.mutate(messageId, {
+          onSuccess: () => toast({ message: 'Lagret i stilreglene' }),
+          onError: (e) => toast({ message: e instanceof ApiError ? e.message : 'Kunne ikke lagre stilregelen.' }),
+        })
+      }
       disabled={!editor.baseId}
       className={wide ? 'h-full' : undefined}
     />

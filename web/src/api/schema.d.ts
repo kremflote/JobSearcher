@@ -213,6 +213,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{application_id}/messages/{message_id}/style-rule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Style Rule
+         * @description Append the message's suggested rule to `style_overrides.md`. Saving twice is a no-op.
+         */
+        post: operations["save_style_rule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/applications/{application_id}/revise": {
         parameters: {
             query?: never;
@@ -761,6 +781,14 @@ export interface components {
             text: string;
             /** Draft Id */
             draft_id: number | null;
+            /**
+             * Style Rule
+             * @description Agent messages: a rule for all letters the reviser suggests, when the user's message
+             *     was a general preference. Saved to `style_overrides.md` with `POST …/style-rule`.
+             */
+            style_rule: string | null;
+            /** Style Rule Saved */
+            style_rule_saved: boolean;
             /**
              * Created At
              * Format: date-time
@@ -2100,6 +2128,65 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DraftMessage"][];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Not Implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    save_style_rule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: number;
+                message_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftMessage"];
                 };
             };
             /** @description Not Found */

@@ -13,7 +13,9 @@ from jobsearcher.api.schemas import (
     ReviseRequest,
     TaskRef,
 )
+from jobsearcher.context.style_rules import add_style_rule
 from jobsearcher.db import models as m
+from jobsearcher.db.models import utcnow
 from jobsearcher.db.session import get_session
 from jobsearcher.tracking import drafts
 from jobsearcher.web.errors import ApiError
@@ -65,6 +67,8 @@ def message_out(msg: m.DraftMessage) -> DraftMessage:
         role=msg.role,
         text=msg.text,
         draft_id=msg.draft_id,
+        style_rule=msg.style_rule,
+        style_rule_saved=msg.style_rule_saved_at is not None,
         created_at=msg.created_at,
     )
 
@@ -107,6 +111,22 @@ def create_draft(application_id: int, body: DraftCreate, session: SessionDep) ->
 def list_messages(application_id: int, session: SessionDep) -> list[DraftMessage]:
     _get_application(session, application_id)
     return [message_out(msg) for msg in drafts.messages_of(session, application_id)]
+
+
+@router.post("/applications/{application_id}/messages/{message_id}/style-rule")
+def save_style_rule(application_id: int, message_id: int, session: SessionDep) -> DraftMessage:
+    """Append the message's suggested rule to `style_overrides.md`. Saving twice is a no-op."""
+    msg = session.get(m.DraftMessage, message_id)
+    if msg is None or msg.application_id != application_id:
+        raise ApiError(404, "not_found", "Fant ikke meldingen.")
+    if not msg.style_rule:
+        raise ApiError(409, "no_style_rule", "Meldingen har ingen foreslått stilregel.")
+    if msg.style_rule_saved_at is None:
+        add_style_rule(session, msg.style_rule)
+        msg.style_rule_saved_at = utcnow()
+        session.add(msg)
+        session.commit()
+    return message_out(msg)
 
 
 @router.post("/applications/{application_id}/revise", status_code=202)

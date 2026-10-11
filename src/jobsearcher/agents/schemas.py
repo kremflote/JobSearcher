@@ -100,6 +100,10 @@ class RevisionResult(BaseModel):
     reply: str = Field(description="Svaret i chatten; ved revision én setning om hva som ble endret")
     letter_markdown: str = Field(description="Hele det reviderte brevet ved revision, ellers tom")
     claims_to_verify: list[str]
+    style_rule: OptStr = Field(
+        default=None,
+        description="Én kort stilregel for alle brev når meldingen uttrykker en generell preferanse, ellers null",
+    )
 
 
 SCHEMAS: dict[str, type[BaseModel]] = {

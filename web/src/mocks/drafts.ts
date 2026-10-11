@@ -6,7 +6,7 @@
 import type { components } from '@/api/schema'
 import type { Draft, DraftMessage, JobDetail } from '@/api/types'
 import type { MockDb } from './db'
-import { DRAFT_CLAIMS, draftText, isQuestion, MOCK_ANSWER, reviseText } from './fixtures/drafts'
+import { DRAFT_CLAIMS, draftText, isQuestion, MOCK_ANSWER, reviseText, styleRule } from './fixtures/drafts'
 import { patchApplication, setTriageStatus, startTask } from './handlers'
 
 type S = components['schemas']
@@ -29,13 +29,22 @@ function addDraft(db: MockDb, fields: Omit<Draft, 'id' | 'version' | 'created_at
   return draft
 }
 
-function addMessage(db: MockDb, applicationId: number, role: DraftMessage['role'], text: string, draftId: number | null = null) {
+function addMessage(
+  db: MockDb,
+  applicationId: number,
+  role: DraftMessage['role'],
+  text: string,
+  draftId: number | null = null,
+  styleRule: string | null = null,
+) {
   const message: DraftMessage = {
     id: Math.max(0, ...db.applications.messages.map((m) => m.id)) + 1,
     application_id: applicationId,
     role,
     text,
     draft_id: draftId,
+    style_rule: styleRule,
+    style_rule_saved: false,
     created_at: new Date().toISOString(),
   }
   db.applications.messages.push(message)
@@ -121,7 +130,7 @@ export function startRevise(db: MockDb, applicationId: number, body: S['ReviseRe
         content,
         claims_to_verify: base.claims_to_verify.slice(0, 1),
       })
-      addMessage(db, applicationId, 'agent', summary, draft.id)
+      addMessage(db, applicationId, 'agent', summary, draft.id, styleRule(body.instruction))
       return { message: `Ferdig: versjon ${draft.version}`, result: { application_id: applicationId, draft_id: draft.id } }
     },
   })
