@@ -198,6 +198,34 @@ def test_cost_cap_reached_between_batches(distilled, session):
     assert summary.scored == 10 and summary.skipped_reason == "cost_cap"
 
 
+def _subscription_mock(**kw) -> MockBackend:
+    backend = MockBackend(**kw)
+    backend.name = "claude_code"
+    return backend
+
+
+def test_subscription_cost_does_not_count_toward_cap(distilled, session):
+    add_job(session, 1)
+    session.add(AgentRun(agent="filter", backend="claude_code", model="m", prompt_version="1", cost_usd=30.0,
+                         created_at=datetime.now(UTC)))
+    session.commit()
+    summary = score_pending(session, backend=_subscription_mock())
+    assert summary.scored == 1 and summary.skipped_reason is None
+
+
+def test_cost_cap_drops_paid_fallback_but_keeps_subscription(distilled, session):
+    from jobsearcher.llm.base import FallbackBackend
+
+    add_job(session, 1)
+    session.add(AgentRun(agent="filter", backend="openrouter", model="m", prompt_version="1", cost_usd=30.0,
+                         created_at=datetime.now(UTC)))
+    session.commit()
+    primary, paid = _subscription_mock(), MockBackend()
+    summary = score_pending(session, backend=FallbackBackend(primary, paid))
+    assert summary.scored == 1 and summary.skipped_reason is None
+    assert len(primary.requests) == 1 and paid.requests == []
+
+
 def test_cancel_between_batches(distilled, session):
     for i in range(15):
         add_job(session, i)

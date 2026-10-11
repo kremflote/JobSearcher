@@ -1,12 +1,13 @@
 # JobSearcher: design- og arkitekturdokument
 
-> Status: v0.14 (2026-10-11). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F2, backend-fase 1 og 2 og bølge 2b/F2b er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), dashboardets oversikt, jobbliste og tracker går mot ekte data, og `openrouter` tar over når `claude -p` feiler. Neste: F3.
+> Status: v0.15 (2026-10-11). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F2, backend-fase 1 og 2 og bølge 2b/F2b er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), dashboardets oversikt, jobbliste og tracker går mot ekte data, og `openrouter` tar over når `claude -p` feiler. Neste: F3.
 > Dokumentet er "source of truth" for designet. UI-designet står i [FRONTEND.md](FRONTEND.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato       | Endring                                                                                                                                                                                                                                                                           |
 | ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v0.15   | 2026-10-11 | Kostnadstaket gjelder bare betalte kall (§2, §8.3): `claude_code`-estimatet teller ikke, siden abonnementet betaler. Taket er senket fra $25 til $10/mnd. Nås det, stopper reserven, men `claude_code` scorer videre. Saldoen fra OpenRouter har også totalt forbruk (`used_usd`), så forskjellen mot appens egne tall kan forklares. |
 | v0.14   | 2026-10-11 | Bølge 2b bygget. Presisert etter implementering (§8.1): hvilke feil som gir bytte til reserven, en bryter som sender alle kall til reserven i 30 min etter en backendfeil, egen `llm.openrouter.timeout_s`, og saldo uten `usage_monthly`. `anthropic_api` og `anthropic`-pakken er fjernet (§2, §15). Migrasjon `0003` (§9). |
 | v0.13   | 2026-10-11 | LLM-reserve: `anthropic_api` erstattes av en ny backend `openrouter` med DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash`). `claude_code` er fortsatt standard; feiler et kall på grunn av backenden (CLI mangler, innlogging, bruksgrense, tidsavbrudd), kjøres det på nytt med `openrouter` (§2, §8.1). Ny kolonne `agent_runs.fallback_from` (§9). Nytt API `GET /api/llm/usage` og et forbrukskort i dashboardet med tokens, kostnad og saldo hos OpenRouter. Bygges i bølge 2b før F3 (§17). Bakgrunn og priser: spike 05. |
 | v0.12   | 2026-10-10 | Hensyn til Finn (§4.2 punkt 8): annonsesider hentes som appens WebView (ikke `python-httpx`), tilfeldig avstand per vert (søk 2–4 s, annonsesider 5–10 s), maks 40 annonsesider per kjøring, stopp ved 403/429, 404/410 gjør jobben inaktiv, nye forsøk etter 1, 3 og 7 dager (nye kolonner i `job_sources`, §9), 3 timers pause mellom Finn-hentinger (`run --force` overstyrer), filter-metadata caches i 7 dager. `it_oslo` er fjernet (delmengde av `it_norge`), og typesøkene kjøres ukentlig. Planlagt kjøring starter 0–40 min etter `daily_at` (§11). Appheaderne har enhetsinfo og `Ab-Test-Device-Id`. Bakgrunn: gjennomgang i spike 04 §Oppdatering "Hensyn til Finn". |
@@ -77,7 +78,7 @@ Et frittstående Python-program som kjører på brukerens egen maskin (PC under 
 | Kildetillit | Finn-API-kall sendes med `experience`- og `education`-filtre (ingen erfaring/junior, ingen/bachelor) og regnes som forhåndsfiltrert. Andre kilder filtreres med strengmatching + LLM. |
 | Søknad | Ett vanlig søknadsbrev per stilling. Eksport til `.docx`. |
 | Tracking | Søknadsfrist er viktigst. Kontaktpersoner og nøkkelinfo lagres når de finnes. |
-| Kostnad | Tak $25/mnd. E-postvarsel ved score ≥ 70. |
+| Kostnad | Tak $10/mnd for betalte kall (OpenRouter); Claude-abonnementet teller ikke. E-postvarsel ved score ≥ 70. |
 | Reposts | Kobles til opprinnelig jobb via fingerprint og merkes "lagt ut på nytt" |
 | Profil i git | Nei. `context/profile/` er gitignored, bare malene versjoneres. I drift ligger profilen i datavolumet og redigeres i dashboardet (§6.1). |
 
@@ -256,7 +257,7 @@ Hardfilteret logger *hvorfor* noe ble forkastet (`hardfilter_log.rule`: `geograp
   - `experienced` skjules.
   - `unspecified` (ingen krav om erfaring, men heller ikke uttalt junior) **vises med lavere score**: maks 65, altså under e-postterskelen på 70. Disse havner i dashboardet, men utløser ikke varsel.
   - Taket på 65 settes av koden etter LLM-kallet (`search.unspecified_seniority_max_score`), slik at det gjelder uansett hva modellen svarer.
-- **Hva som scores** (`agents.filter.score_pending`): aktive jobber som ikke er forkastet og mangler en evaluering for gjeldende `content_hash`. Er den destillerte profilen utdatert, kjøres destilleren først. Kostnadstaket (§8.3) stopper scoringen.
+- **Hva som scores** (`agents.filter.score_pending`): aktive jobber som ikke er forkastet og mangler en evaluering for gjeldende `content_hash`. Er den destillerte profilen utdatert, kjøres destilleren først. Når kostnadstaket (§8.3) er nådd, scores det bare med abonnementet (uten reserve); er standard-backenden selv betalt, stopper scoringen.
 - **Koden fyller inn** fra resultatet: `job_type` hvis ukjent, `seniority`, `ad_language`, frist og søknads-URL hvis jobben mangler dem, og kontakter (`source = llm`) hvis kilden ikke hadde noen.
 - **Ugyldig output:** skjemafeil eller manglende `job_id` gir ett nytt forsøk. Deretter godtas delvise batcher, og manglende jobber telles som feilet og prøves neste kjøring. Pydantic klemmer score til 0–100, korter lister til maks antall og gjør ugyldige datoer til null.
 - Finn-jobber får full annonsetekst fra annonsesiden (§4.2), så `confidence: low` er ikke normalt for Finn-jobber. Faller API-et ut og en jobb havner inn via manuell innliming uten tekst, gjelder samme regel som før: `confidence: low` skjules ikke på grunn av lav score alene.
@@ -575,7 +576,7 @@ claude -p --output-format json --json-schema '<schema>' --model <haiku|sonnet|op
 - HTTP-feil fra OpenRouter (401, 402 for lite kreditt, 429, 5xx), tidsavbrudd og manglende nøkkel er backendfeil. Ugyldig JSON to ganger er en modellfeil.
 - På Pi-en kan `llm.backend: openrouter` settes direkte hvis `claude -p` ikke virker i containeren (§19 #8).
 
-**Saldo:** `llm/openrouter.py` leser saldoen til forbrukskortet (FRONTEND §5.1). Med `OPENROUTER_MANAGEMENT_KEY` (valgfri) brukes `GET /api/v1/credits` (`total_credits` − `total_usage` = kontosaldo). Uten den brukes `GET /api/v1/key` med vanlig nøkkel: `limit_remaining` gir det som er igjen hvis nøkkelen har en kredittgrense; uten grense er saldoen ukjent. Svaret caches i 10 minutter, også når hentingen feiler (da er saldoen ukjent). Tidsavbrudd 5 s.
+**Saldo:** `llm/openrouter.py` leser saldoen til forbrukskortet (FRONTEND §5.1). Med `OPENROUTER_MANAGEMENT_KEY` (valgfri) brukes `GET /api/v1/credits` (`total_credits` − `total_usage` = kontosaldo). Uten den brukes `GET /api/v1/key` med vanlig nøkkel: `limit_remaining` gir det som er igjen hvis nøkkelen har en kredittgrense; uten grense er saldoen ukjent. Totalt forbruk (`used_usd`) kommer fra `total_usage` (konto) eller `usage` (nøkkel) og tar med kall utenfor appen. Svaret caches i 10 minutter, også når hentingen feiler (da er saldoen ukjent). Tidsavbrudd 5 s.
 
 **`mock`:** faste svar for tester og dashboardutvikling.
 
@@ -593,9 +594,10 @@ OpenRouter-modellen per tier settes i `config/settings.yaml` (`llm.openrouter.mo
 
 Med `claude_code` trekkes bruken fra abonnementet, men `total_cost_usd` logges likevel som estimat. `openrouter` koster ekte penger fra forhåndsbetalt kreditt: med DeepSeek V4.1 Flash ($0.15/$0.60 per million tokens hos DeepSeek, spike 05) under $1/mnd selv om alt skulle gå via reserven. Forbrukskortet viser de to hver for seg.
 
-**Kostnadstak:** $25/mnd (kalendermåned i Oslo-tid, sum av `agent_runs.cost_usd`, `llm/costs.py`).
+**Kostnadstak:** $10/mnd for **betalte kall** (`llm.monthly_cap_usd`; kalendermåned i Oslo-tid, sum av `agent_runs.cost_usd` for alle backender unntatt `claude_code`, `llm/costs.py`). Estimatet fra `claude_code` teller ikke, siden abonnementet betaler.
 - Ved 80 %: advarsel i dashboardet og digesten.
-- Ved 100 %: filter-kall stoppes. Brukerinitierte kall (utkast, revisjon) krever bekreftelse i dashboardet.
+- Ved 100 %: betalte kall stoppes. Filter-agenten scorer videre med `claude_code` uten reserve (`subscription_only`); er standard-backenden betalt (`llm.backend: openrouter`), stopper scoringen. Brukerinitierte kall (utkast, revisjon) krever bekreftelse i dashboardet.
+- OpenRouter-nøkkelens egen kredittgrense er en ekstra sperre utenfor appen.
 
 ---
 

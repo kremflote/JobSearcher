@@ -23,7 +23,7 @@ from jobsearcher.context import loader
 from jobsearcher.context.builder import load_manifest
 from jobsearcher.db.models import Application, Evaluation, HardfilterLog, Job, JobContact
 from jobsearcher.llm.base import LLMBackend, get_backend
-from jobsearcher.llm.costs import cap_reached, effective_settings
+from jobsearcher.llm.costs import cap_reached, effective_settings, subscription_only
 
 log = logging.getLogger(__name__)
 
@@ -195,8 +195,11 @@ def score_jobs(
     settings = effective_settings(session)
     backend = backend or get_backend(settings.llm.backend)
     if cap_reached(session):
-        summary.skipped_reason = "cost_cap"
-        return summary
+        # The cap counts paid calls: keep scoring on the subscription, without the paid fallback.
+        backend = subscription_only(backend)
+        if backend is None:
+            summary.skipped_reason = "cost_cap"
+            return summary
     reason = _ensure_profile(backend)
     if reason:
         summary.skipped_reason = reason
@@ -211,8 +214,10 @@ def score_jobs(
             summary.skipped_reason = "cancelled"
             break
         if cap_reached(session):
-            summary.skipped_reason = "cost_cap"
-            break
+            backend = subscription_only(backend)
+            if backend is None:
+                summary.skipped_reason = "cost_cap"
+                break
         if progress:
             progress(n / len(batches), f"Scorer annonser {n * size + 1}–{n * size + len(batch)} av {len(jobs)}")
         outcome = run_agent(

@@ -1,12 +1,13 @@
 # JobSearcher: frontend-design
 
-> Status: v0.9 (2026-10-11). F0, F1, F2 og F2b er bygget og koblet til ekte API (backend-fase 1–2 og bølge 2b). Neste bølge: F3 (søknadseditor).
+> Status: v0.10 (2026-10-11). F0, F1, F2 og F2b er bygget og koblet til ekte API (backend-fase 1–2 og bølge 2b). Neste bølge: F3 (søknadseditor).
 > Dokumentet eier UI-designet: skjermer, layout, komponenter, API-kontrakt og frontend-bølger. Resten av systemet står i [ARCHITECTURE.md](ARCHITECTURE.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato | Endring |
 |---|---|---|
+| v0.10 | 2026-10-11 | Kostnadstaket gjelder bare betalte kall, og kortet sier det. Saldodelen viser totalt forbruk hos OpenRouter (`used_usd`, også kall utenfor appen). |
 | v0.9 | 2026-10-11 | F2b bygget: LLM-forbruk-kortet ligger under Kildestatus (PC: høyre kolonne, mobil: "Mer") og åpner detaljen i sidepanel ≥ 1024 px, ellers handlingsark. Varselet sier "Nærmer seg kostnadstaket" (terskelen kan endres). Mock-tilstand for saldoen velges med `?mock_llm=` (§3.2). `GET /api/llm/usage` er ekte (§7.1). |
 | v0.8 | 2026-10-11 | Ny bølge F2b: kortet Kostnad på Oversikt blir LLM-forbruk, med tokens og kostnad per backend denne måneden, OpenRouter-saldo og tokens per dag (§5.1). Nytt endepunkt `GET /api/llm/usage` (§7). Bygges sammen med backend-bølge 2b (ARCHITECTURE §17). |
 | v0.7 | 2026-10-10 | Backend-fase 1–2: ekte API for oversikt, jobber, triage, tracker, tasks og logg (§7.1). F3 og F4 flyttes etter backend-fase 2 (ARCHITECTURE §17 v0.11). |
@@ -183,10 +184,10 @@ Bølge (§8) står i parentes. Alle skjermer har tilstandene laster (skjelett), 
 
 | Del | Innhold |
 |---|---|
-| Kompakt | Månedens kostnad mot taket med stolpe (varsel ved 80 %), OpenRouter-saldo ("$7,40 igjen av $10"), antall reservekall denne måneden |
+| Kompakt | Månedens betalte kostnad mot taket med stolpe (varsel ved 80 %), merket "Kostnadstak for betalte kall (Claude-abonnementet teller ikke)", OpenRouter-saldo ("$7,40 igjen av $10"), antall reservekall denne måneden |
 | Per backend | Claude-abonnement og OpenRouter hver for seg: kall, tokens inn/ut, kostnad. Claude merkes "estimat, fra abonnementet", OpenRouter "betalt". |
 | Per dag | Stablede søyler for tokens siste 30 dager, farget per backend. Trykk på en søyle viser tall for dagen. |
-| Saldo | Kilde (`account` med management-nøkkel, `key_limit` med kredittgrense på nøkkelen), tidspunkt for siste henting. Under $1: advarsel. Ingen nøkkel: "Reserve ikke satt opp". Saldo ukjent (nøkkel uten grense, ingen management-nøkkel): bare forbruket vises, med en tekst om hvordan saldoen slås på. |
+| Saldo | Kilde (`account` med management-nøkkel, `key_limit` med kredittgrense på nøkkelen), tidspunkt for siste henting, totalt brukt hos OpenRouter (også kall utenfor appen, så tallet kan være høyere enn per backend). Under $1: advarsel. Ingen nøkkel: "Reserve ikke satt opp". Saldo ukjent (nøkkel uten grense, ingen management-nøkkel): bare forbruket vises, med en tekst om hvordan saldoen slås på. |
 
 Kortet ligger under Kildestatus. Fra 1024 px åpner det detaljen i et sidepanel til høyre, under det i et handlingsark. Søylene er knapper; i dag er valgt fra start. Varselet ved `warn` sier "Nærmer seg kostnadstaket", siden terskelen (`llm.warn_ratio`) kan endres. `overview.cost` finnes fortsatt i API-et, men brukes ikke av UI-et.
 
@@ -285,7 +286,7 @@ Alle ruter under `/api`. JSON. Datoer i ISO 8601. Feil som `{"detail": "...", "c
 | Metode og sti | Bruk | Bølge |
 |---|---|---|
 | `GET /api/overview` | Frister, nye, oppfølginger, kildestatus, kostnad | F1 |
-| `GET /api/llm/usage` | LLM-forbruk denne måneden: `cap_usd`, `spent_usd`, `by_backend[]` (`backend`, `calls`, `fallback_calls`, `input_tokens`, `output_tokens`, `cost_usd`, `estimated`), `daily[]` siste 30 dager (`date`, `backend`, tokens, `cost_usd`), `openrouter` (`configured`, `balance_usd`, `total_credits_usd`, `balance_source`: `account` \| `key_limit` \| `null`, `fetched_at`). Saldoen caches 10 min i backend (ARCHITECTURE §8.1). | F2b |
+| `GET /api/llm/usage` | LLM-forbruk denne måneden: `cap_usd`, `spent_usd`, `by_backend[]` (`backend`, `calls`, `fallback_calls`, `input_tokens`, `output_tokens`, `cost_usd`, `estimated`), `daily[]` siste 30 dager (`date`, `backend`, tokens, `cost_usd`), `openrouter` (`configured`, `balance_usd`, `total_credits_usd`, `used_usd`, `balance_source`: `account` \| `key_limit` \| `null`, `fetched_at`). Saldoen caches 10 min i backend (ARCHITECTURE §8.1). | F2b |
 | `GET /api/jobs` | Liste. Query: `type`, `status`, `min_score`, `source`, `deadline_before`, `role`, `q`, `sort`, `cursor`, `limit` | F1 |
 | `GET /api/jobs/{id}` | Detalj inkl. evaluering, kontakter, kilder, bedriftsnotat, søknad | F1 |
 | `PUT /api/jobs/{id}/status` | Triage: `{status: "interessant" \| "ikke_aktuell" \| "ny"}` (`ny` = angre). Oppretter søknadsrad ved behov, `ny` sletter den. Bare fra `ny`/`interessant`/`ikke_aktuell`; ellers 409 `invalid_transition`. | F1 |
@@ -325,7 +326,7 @@ Implementert: alle ruter merket F1, F2 og F2b, `GET /api/logs/*` og `GET /api/he
 | Triage | Samme status igjen gjør ingenting. `interessant` ↔ `ikke_aktuell` tilbake til forrige status sletter siste hendelse (angre). Tilbake til `ny` gir 409 hvis søknaden har utkast. |
 | Ukjent søknad | `GET /api/applications/{id}/events` gir 404 |
 | Ugyldig cursor | `400 invalid_cursor` (ikke deklarert i OpenAPI) |
-| `GET /api/llm/usage` | `by_backend` har alltid `claude_code` og `openrouter` (nuller uten kall). `daily` har én rad per Oslo-dag og backend med kall. `spent_usd` er summen av alle `agent_runs`, også rader fra fjernede backender, som ikke vises per backend. Saldoen caches 10 min; feiler hentingen, er `balance_usd` og `balance_source` null. |
+| `GET /api/llm/usage` | `by_backend` har alltid `claude_code` og `openrouter` (nuller uten kall). `daily` har én rad per Oslo-dag og backend med kall. `spent_usd` er summen av betalte `agent_runs` (alle backender unntatt `claude_code`), også rader fra fjernede backender, som ikke vises per backend. Saldoen caches 10 min; feiler hentingen, er `balance_usd` og `balance_source` null. |
 | Kildestatus | Kildene som er slått på i `config/sources.yaml`, pluss kilder med kjøringer. `manual` vises ikke. |
 
 ---

@@ -1074,6 +1074,11 @@ export interface components {
              */
             total_credits_usd: number | null;
             /**
+             * Used Usd
+             * @description Total spent at OpenRouter (account, or this key), including calls made outside the app.
+             */
+            used_usd: number | null;
+            /**
              * Balance Source
              * @description Null when the balance is unknown (key without limit, no management key) or not configured.
              */

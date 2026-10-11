@@ -10,6 +10,7 @@ const bal = (b: Partial<OpenRouterBalance>): OpenRouterBalance => ({
   configured: true,
   balance_usd: 7.4,
   total_credits_usd: 10,
+  used_usd: 2.6,
   balance_source: 'account',
   fetched_at: null,
   ...b,
@@ -113,7 +114,8 @@ describe('mock fixtures (F2b)', () => {
     expect(u.by_backend.map((b) => b.backend)).toEqual(['claude_code', 'openrouter'])
     expect(u.daily.every((r) => r.date >= '2026-09-12' && r.date <= '2026-10-11')).toBe(true)
     expect(fallbackCalls(u)).toBeGreaterThan(0)
-    expect(u.spent_usd).toBeCloseTo(u.by_backend.reduce((a, b) => a + b.cost_usd, 0), 2)
+    // The cap counts paid calls only (not the Claude subscription's estimate).
+    expect(u.spent_usd).toBeCloseTo(u.by_backend.filter((b) => !b.estimated).reduce((a, b) => a + b.cost_usd, 0), 2)
   })
 
   it('has no OpenRouter usage when the fallback is not set up', () => {

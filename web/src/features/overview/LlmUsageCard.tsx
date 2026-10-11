@@ -91,6 +91,9 @@ function CapMeter({ usage }: { usage: LlmUsage }) {
   const pct = capPercent(usage.spent_usd, usage.cap_usd)
   return (
     <div data-warn={usage.warn || undefined}>
+      <p className="text-muted-foreground mb-1 text-xs" data-testid="llm-cap-label">
+        Kostnadstak for betalte kall (Claude-abonnementet teller ikke)
+      </p>
       <div className="flex items-baseline justify-between gap-2">
         <span className="font-semibold tabular-nums" data-testid="llm-spent">
           {usd(usage.spent_usd)}
@@ -309,6 +312,12 @@ function BalanceDetail({ balance }: { balance: OpenRouterBalance }) {
           Bare forbruket vises. Slå på saldoen ved å sette en kredittgrense på nøkkelen hos OpenRouter, eller legg inn{' '}
           <Code>OPENROUTER_MANAGEMENT_KEY</Code> i <Code>.env</Code>.
         </p>
+        {balance.used_usd != null && (
+          <p className="mt-1 text-xs" data-testid="llm-used">
+            Brukt totalt: {usd(balance.used_usd)}{' '}
+            <span className="text-muted-foreground">(hos OpenRouter, også kall utenfor appen)</span>
+          </p>
+        )}
       </div>
     )
   return (
@@ -321,6 +330,11 @@ function BalanceDetail({ balance }: { balance: OpenRouterBalance }) {
         </p>
       )}
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+        <dt className="text-muted-foreground">Brukt totalt</dt>
+        <dd data-testid="llm-used">
+          {balance.used_usd != null ? usd(balance.used_usd) : 'ukjent'}{' '}
+          <span className="text-muted-foreground">(hos OpenRouter, også kall utenfor appen)</span>
+        </dd>
         <dt className="text-muted-foreground">Kilde</dt>
         <dd>{BALANCE_SOURCE_LABEL[balance.balance_source!]}</dd>
         <dt className="text-muted-foreground">Sist hentet</dt>

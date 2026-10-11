@@ -118,8 +118,9 @@ llm:
   # tidsavbrudd, prosessfeil). openrouter | none. Krever OPENROUTER_API_KEY i .env; uten nøkkel
   # er reserven av. Etter en feil går kallene rett til reserven i 30 minutter.
   fallback: openrouter
-  # Kostnadstak per kalendermåned i USD (§8.3). Varsel ved warn_ratio.
-  monthly_cap_usd: 25
+  # Kostnadstak per kalendermåned i USD for betalte kall (§8.3): alt unntatt claude_code, som
+  # abonnementet betaler. Nås taket, stopper reserven; claude_code scorer videre. Varsel ved warn_ratio.
+  monthly_cap_usd: 10
   warn_ratio: 0.8
   # Maks kostnad per enkeltkall (sendes som --max-budget-usd).
   max_budget_usd_per_call: 1.0

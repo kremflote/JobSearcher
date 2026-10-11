@@ -4015,6 +4015,18 @@
             "title": "Total Credits Usd",
             "description": "Account credits bought, or the key's limit. Null when unknown."
           },
+          "used_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Used Usd",
+            "description": "Total spent at OpenRouter (account, or this key), including calls made outside the app."
+          },
           "balance_source": {
             "anyOf": [
               {
@@ -4049,6 +4061,7 @@
           "configured",
           "balance_usd",
           "total_credits_usd",
+          "used_usd",
           "balance_source",
           "fetched_at"
         ],

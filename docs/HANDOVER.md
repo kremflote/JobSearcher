@@ -3,7 +3,7 @@
 > Keep this file short. Update it at the end of every session: status, next task, open questions, and one line in the log.
 
 **Last updated:** 2026-10-11
-**Phase:** 0, 0b, F0–F2, backend phases 1 + 2, the Finn politeness pass and **wave 2b/F2b** done, all on `feat/backend-phase1-2` with a PR against `main`. Roadmap (ARCHITECTURE §17): … → 2b/F2b → **F3 next** → 3 → F4 → 4 (ARCHITECTURE v0.14, FRONTEND v0.9).
+**Phase:** 0, 0b, F0–F2, backend phases 1 + 2, the Finn politeness pass and **wave 2b/F2b** done, all on `feat/backend-phase1-2` with a PR against `main`. Roadmap (ARCHITECTURE §17): … → 2b/F2b → **F3 next** → 3 → F4 → 4 (ARCHITECTURE v0.15, FRONTEND v0.10).
 
 ## Status
 
@@ -60,7 +60,8 @@
   - Frontend: LLM-forbruk card (replaces Kostnad) + detail sheet/panel, six mock states via `?mock_llm=`.
   - Live: with a broken `claude` path, a filter batch completed via OpenRouter and logged both rows; `/api/llm/usage` on a DB copy showed the account balance ($9.98 of $10).
   - DeepSeek vs Haiku on all 63 jobs: same ranking (Spearman 0.84 vs Haiku-with-itself 0.88) but **~20 points higher** scores; 16 jobs would cross the digest threshold 70. Usable as fallback, not as a scorer on the same scale. Cost $0.05 for 63 jobs.
-  - Tests: pytest 230, Vitest 76, Playwright 23 (+7 skipped), typecheck and build OK.
+  - User feedback: the cost cap now counts paid calls only ($10/mnd, was $25 including Claude's estimate); at the cap the fallback stops but `claude_code` keeps scoring. The card labels the cap and shows OpenRouter's own total (`used_usd`), which includes calls outside the app (e.g. the comparison above ran on DB copies, so it is in OpenRouter's total but not in the app's per-backend numbers).
+  - Tests: pytest 232, Vitest 76, Playwright 23 (+7 skipped), typecheck and build OK.
 - Live Finn check 2026-10-11 after the politeness pass: only `it_norge` ran (weekly searches not due), one gateway call, 0 new ads since the cursor, so ad-page spacing is still unobserved live.
 
 ### Waiting on the user
@@ -123,3 +124,4 @@ Research, writer and reviser agents, the phase-3 context slices + `context/proje
 - 2026-10-11: LLM decision baked into docs: `claude_code` stays default, DeepSeek V4.1 Flash via OpenRouter replaces `anthropic_api` as automatic fallback. New wave 2b/F2b before F3, with a usage card (tokens, cost, OpenRouter balance) and `GET /api/llm/usage`. ARCHITECTURE v0.13, FRONTEND v0.8, spike 05, AGENTS. No code yet. Found the 07:00 run failed because `serve` predates migration `0002` (not restarted, per the user). User added both OpenRouter keys; verified live, `.env.example` updated.
 - 2026-10-10: Jobber on PC: the filters under the search field now fold out with a "Filtre" toggle (active-filter count badge, open state in localStorage). Mobile sheet unchanged. FRONTEND §Jobber filters line.
 - 2026-10-11: Committed the Finn politeness pass; live Finn check OK (only `it_norge`, 0 new). Built wave 2b/F2b with two parallel subagents (backend, frontend) against a contract written first: OpenRouter backend, fallback with breaker, `fallback_from` (0003), `/api/llm/usage`, LLM-forbruk card; `anthropic_api` removed. Verified fallback live and compared DeepSeek with Haiku on 63 jobs (same order, +20 points). ARCHITECTURE v0.14, FRONTEND v0.9, spike 05 update, README. Opened PR to `main`.
+- 2026-10-11: User feedback on the usage card: cost cap now counts paid calls only and defaults to $10 (ARCHITECTURE v0.15 §8.3), card labels the cap and shows OpenRouter's total spend (`used_usd`, FRONTEND v0.10). Added a `web-mock` preview config.

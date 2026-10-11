@@ -21,7 +21,7 @@ from jobsearcher.api.schemas import (
 from jobsearcher.config import TZ
 from jobsearcher.db.models import AgentRun
 from jobsearcher.db.session import get_session
-from jobsearcher.llm.costs import cost_status, month_start
+from jobsearcher.llm.costs import SUBSCRIPTION_BACKENDS, cost_status, month_start
 
 router = APIRouter(tags=["llm"])
 
@@ -29,7 +29,7 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 KNOWN_BACKENDS: tuple[str, ...] = get_args(LlmBackendName)
 ALWAYS_SHOWN = ("claude_code", "openrouter")
-ESTIMATED = {"claude_code"}
+ESTIMATED = set(SUBSCRIPTION_BACKENDS)
 DAILY_DAYS = 30
 
 
