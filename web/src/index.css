@@ -87,34 +87,35 @@
   --violet-soft: oklch(0.3 0.07 300);
 }
 
-/* Styx: dark palette from a forest image. River Styx (#13191f) for the sidebar, a deep brown page
-   background, afternoon tea (#594c3d) for panels and section cards, amber autumn (#ca9c68) for tiles (kanban cards, the selected job)
-   and as the single accent. Sits on top of `.dark`, so status colours and `dark:` variants carry over. */
+/* Styx: three colours from a forest-image palette. River Styx blue (#13191f) and lighter shades of
+   it for every background, amber autumn (#ca9c68) for tiles (kanban cards, the selected job) and
+   as the single accent, warm off-white for text. Sits on top of `.dark`, so status colours and
+   `dark:` variants carry over. */
 .dark.styx {
-  --background: #241e18;
+  --background: #13191f;
   --foreground: #ebe5dc;
-  --card: #594c3d;
-  --card-foreground: #f3ece2;
-  --popover: #3a3129;
+  --card: #1c252e;
+  --card-foreground: #ebe5dc;
+  --popover: #26313b;
   --popover-foreground: #ebe5dc;
   --primary: #ca9c68;
   --primary-foreground: #13191f;
-  --secondary: #3a3129;
+  --secondary: #26313b;
   --secondary-foreground: #ebe5dc;
-  --muted: #3a3129;
-  --muted-foreground: #c9bead;
-  --accent: #3a3129;
+  --muted: #26313b;
+  --muted-foreground: #9fabb7;
+  --accent: #26313b;
   --accent-foreground: #ebe5dc;
-  --border: rgb(255 255 255 / 9%);
+  --border: rgb(255 255 255 / 8%);
   --input: rgb(255 255 255 / 12%);
   --ring: #ca9c68;
-  --panel: #594c3d;
+  --panel: #1c252e;
   --tile: #ca9c68;
   --tile-foreground: #13191f;
-  --sidebar: #13191f;
+  --sidebar: #0e1317;
   --sidebar-foreground: #ebe5dc;
-  --sidebar-accent: #594c3d;
-  --sidebar-accent-foreground: #f3e6d4;
+  --sidebar-accent: #1c252e;
+  --sidebar-accent-foreground: #ca9c68;
   --sidebar-border: rgb(255 255 255 / 8%);
 }
 

@@ -52,7 +52,7 @@
 | Rammeverk | Vite + React + TypeScript, ren SPA. Ingen Node-server i drift. |
 | Servering | `vite build` → `web/dist/`, servert av FastAPI som statiske filer på `/`. API-et ligger under `/api`. Én prosess, én port (8765). |
 | Styling | Tailwind CSS + shadcn/ui (Radix). Komponentene kopieres inn og eies av prosjektet. |
-| Stil | Ren og tett (Linear/GitHub-aktig). Nøytrale farger; farge brukes bare for score, frist og status. Lys + mørk modus (følger systemet, kan overstyres), pluss «Styx» (palett fra et skogbilde): blåsvart sidemeny, dyp brun bakgrunn, seksjoner (kanban-kolonner, kort på Oversikt, lister) i mørk brun, og kort i seksjonene (kanban-kort, valgt jobb) i ravgult med mørk tekst. |
+| Stil | Ren og tett (Linear/GitHub-aktig). Nøytrale farger; farge brukes bare for score, frist og status. Lys + mørk modus (følger systemet, kan overstyres), pluss «Styx» (palett fra et skogbilde): maks tre farger: blåsvart (River Styx) og lysere blåtoner for alle bakgrunner og seksjoner, ravgult for aksent og for kort i seksjonene (kanban-kort, valgt jobb) med mørk tekst, og varm off-white for tekst. |
 | Ruting | React Router (library mode) |
 | Data | TanStack Query + `openapi-fetch` med typer generert fra OpenAPI (`openapi-typescript`) |
 | API-kontrakt | Kontrakt først. Pydantic-modeller i `src/jobsearcher/api/schemas.py` er kilden. OpenAPI eksporteres og TS-typer genereres. |
