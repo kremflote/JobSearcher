@@ -16,6 +16,7 @@ from jobsearcher.agents.schemas import RevisionResult
 from jobsearcher.agents.writer import (
     DraftError,
     DraftOutcome,
+    clean_letter,
     ensure_profile,
     latest_evaluation,
     prepare_backend,
@@ -88,9 +89,9 @@ def revise(
             raise DraftError(f"Revisjonen feilet: {outcome.error}")
         out: RevisionResult = outcome.output
         reply = out.reply.strip() or ("Endret." if out.kind == "revision" else "…")
-        letter = out.letter_markdown.strip()
+        letter = clean_letter(out.letter_markdown)
 
-        if out.kind == "answer" or letter == base.content.strip():
+        if out.kind == "answer" or letter == clean_letter(base.content):
             drafts.add_message(session, application_id, "agent", reply, agent_run_id=outcome.run_id)
             return DraftOutcome(application_id, None, "Ferdig: svar i chatten")
 

@@ -9,6 +9,7 @@ failed draft leaves the job as it was.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -33,6 +34,20 @@ LANGUAGE_INSTRUCTION = {
     "no": "Skriv brevet på norsk (bokmål).",
     "en": "Skriv brevet på engelsk, siden annonsen er på engelsk.",
 }
+
+
+# The user bans dashes in letters; the prompt says so, this guarantees it (writer.md "Form").
+_BULLET_DASH = re.compile(r"^([ \t]*)[–—][ \t]*", re.MULTILINE)
+_RANGE_DASH = re.compile(r"(?<=\d)\s*[–—]\s*(?=\d)")
+_SPACED_DASH = re.compile(r"[ \t]*[–—][ \t]*")
+
+
+def clean_letter(text: str) -> str:
+    """Replace en/em dashes: a list bullet or number range gets a hyphen, anything else a comma."""
+    text = _BULLET_DASH.sub(r"\1- ", text)
+    text = _RANGE_DASH.sub("-", text)
+    text = _SPACED_DASH.sub(", ", text)
+    return text.strip()
 
 
 class DraftError(RuntimeError):
@@ -173,7 +188,7 @@ def write_first_draft(
         draft = drafts.add_draft(
             session,
             app.id,
-            out.letter_markdown.strip() + "\n",
+            clean_letter(out.letter_markdown) + "\n",
             author="agent",
             change_summary="Første utkast.",
             claims_to_verify=out.claims_to_verify,
