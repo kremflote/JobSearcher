@@ -8,10 +8,14 @@ Validation against the Pydantic schema, retries and agent_runs bookkeeping live 
 from __future__ import annotations
 
 import copy
+import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel
+
+log = logging.getLogger(__name__)
 
 Tier = Literal["fast", "balanced", "best"]
 TIERS: tuple[str, ...] = ("fast", "balanced", "best")
@@ -19,6 +23,25 @@ TIERS: tuple[str, ...] = ("fast", "balanced", "best")
 
 class LLMError(RuntimeError):
     """The backend could not produce a response (process error, timeout, API error, refusal)."""
+
+
+class LLMBackendError(LLMError):
+    """The backend itself is unavailable: CLI missing, login expired, usage limit, timeout,
+    process or transport error. Only these trigger the fallback (ARCHITECTURE §8.1); model-level
+    failures (invalid or missing structured output, per-call budget) stay plain `LLMError`.
+    """
+
+
+class FallbackError(LLMError):
+    """The fallback backend failed too (or was used directly while the circuit breaker is open)."""
+
+    def __init__(self, message: str, *, backend: str, fallback_from: str, primary_error: str | None,
+                 primary_duration_ms: int = 0) -> None:
+        super().__init__(message)
+        self.backend = backend
+        self.fallback_from = fallback_from
+        self.primary_error = primary_error
+        self.primary_duration_ms = primary_duration_ms
 
 
 @dataclass
@@ -75,6 +98,13 @@ class AgentResponse:
     cost_usd: float
     model: str
     duration_ms: int
+    backend: str | None = None
+    """Backend that answered; set by `FallbackBackend` (None = the backend that was called)."""
+    fallback_from: str | None = None
+    """Primary backend this call fell back from."""
+    primary_error: str | None = None
+    """Error of the failed primary attempt (None when the circuit breaker skipped it)."""
+    primary_duration_ms: int = 0
 
 
 class LLMBackend(Protocol):
@@ -128,22 +158,98 @@ def output_json_schema(model: type[BaseModel]) -> dict[str, Any]:
     return walk(raw)
 
 
-def get_backend(name: str | None = None) -> LLMBackend:
-    """Backend by name (`claude_code` | `anthropic_api` | `mock`); default from settings.llm.backend."""
-    if name is None:
-        from jobsearcher.config import load_settings
+# --- Fallback (ARCHITECTURE §8.1) ---------------------------------------------------------
 
-        name = load_settings().llm.backend
+BREAKER_S = 30 * 60
+"""After a primary backend failure, skip the primary for this long (in-process)."""
+
+_breaker_until: dict[str, float] = {}
+
+
+def reset_breaker() -> None:
+    _breaker_until.clear()
+
+
+def breaker_open(name: str) -> bool:
+    return _breaker_until.get(name, 0.0) > time.monotonic()
+
+
+class FallbackBackend:
+    """Runs the primary backend and, on a backend error, the same request once on the fallback.
+
+    A primary failure opens a circuit breaker: for `BREAKER_S` seconds calls go straight to the
+    fallback, so a batch does not wait out a timeout per call.
+    """
+
+    def __init__(self, primary: LLMBackend, fallback: LLMBackend) -> None:
+        self.primary = primary
+        self.fallback = fallback
+        self.name = primary.name
+
+    def run(self, req: AgentRequest) -> AgentResponse:
+        primary_error: str | None = None
+        primary_ms = 0
+        if not breaker_open(self.primary.name):
+            started = time.monotonic()
+            try:
+                resp = self.primary.run(req)
+            except LLMBackendError as e:
+                primary_error = str(e)
+                primary_ms = int((time.monotonic() - started) * 1000)
+                _breaker_until[self.primary.name] = time.monotonic() + BREAKER_S
+                log.warning(
+                    "primary LLM backend failed, using fallback",
+                    extra={"data": {"primary": self.primary.name, "fallback": self.fallback.name,
+                                    "error": primary_error[:500]}},
+                )
+            else:
+                resp.backend = resp.backend or self.primary.name
+                return resp
+        try:
+            resp = self.fallback.run(req)
+        except LLMError as e:
+            raise FallbackError(
+                str(e), backend=self.fallback.name, fallback_from=self.primary.name,
+                primary_error=primary_error, primary_duration_ms=primary_ms,
+            ) from e
+        resp.backend = self.fallback.name
+        resp.fallback_from = self.primary.name
+        resp.primary_error = primary_error
+        resp.primary_duration_ms = primary_ms
+        return resp
+
+
+def _make_backend(name: str) -> LLMBackend:
     if name == "claude_code":
         from jobsearcher.llm.claude_code import ClaudeCodeBackend
 
         return ClaudeCodeBackend()
-    if name == "anthropic_api":
-        from jobsearcher.llm.anthropic_api import AnthropicApiBackend
+    if name == "openrouter":
+        from jobsearcher.llm.openrouter import OpenRouterBackend
 
-        return AnthropicApiBackend()
+        return OpenRouterBackend()
     if name == "mock":
         from jobsearcher.llm.mock import MockBackend
 
         return MockBackend()
     raise ValueError(f"Unknown LLM backend: {name!r}")
+
+
+def get_backend(name: str | None = None, *, fallback: bool = True) -> LLMBackend:
+    """Backend by name (`claude_code` | `openrouter` | `mock`); default from settings.llm.backend.
+
+    With `fallback` (default) and `llm.fallback` set to another backend, the primary is wrapped
+    in `FallbackBackend`. An `openrouter` fallback needs `OPENROUTER_API_KEY`; without it the
+    fallback is off.
+    """
+    from jobsearcher.config import env, load_settings
+
+    llm = load_settings().llm
+    name = name or llm.backend
+    primary = _make_backend(name)
+    fb = llm.fallback_backend
+    if not fallback or fb is None or fb == name or name == "mock":
+        return primary
+    if fb == "openrouter" and not env().openrouter_api_key:
+        return primary
+    return FallbackBackend(primary, _make_backend(fb))

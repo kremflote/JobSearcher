@@ -1,12 +1,13 @@
 # JobSearcher: design- og arkitekturdokument
 
-> Status: v0.13 (2026-10-11). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F2 og backend-fase 1 og 2 er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), og dashboardets oversikt, jobbliste og tracker går mot ekte data. Neste: F3.
+> Status: v0.14 (2026-10-11). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F2, backend-fase 1 og 2 og bølge 2b/F2b er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), dashboardets oversikt, jobbliste og tracker går mot ekte data, og `openrouter` tar over når `claude -p` feiler. Neste: F3.
 > Dokumentet er "source of truth" for designet. UI-designet står i [FRONTEND.md](FRONTEND.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato       | Endring                                                                                                                                                                                                                                                                           |
 | ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v0.14   | 2026-10-11 | Bølge 2b bygget. Presisert etter implementering (§8.1): hvilke feil som gir bytte til reserven, en bryter som sender alle kall til reserven i 30 min etter en backendfeil, egen `llm.openrouter.timeout_s`, og saldo uten `usage_monthly`. `anthropic_api` og `anthropic`-pakken er fjernet (§2, §15). Migrasjon `0003` (§9). |
 | v0.13   | 2026-10-11 | LLM-reserve: `anthropic_api` erstattes av en ny backend `openrouter` med DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash`). `claude_code` er fortsatt standard; feiler et kall på grunn av backenden (CLI mangler, innlogging, bruksgrense, tidsavbrudd), kjøres det på nytt med `openrouter` (§2, §8.1). Ny kolonne `agent_runs.fallback_from` (§9). Nytt API `GET /api/llm/usage` og et forbrukskort i dashboardet med tokens, kostnad og saldo hos OpenRouter. Bygges i bølge 2b før F3 (§17). Bakgrunn og priser: spike 05. |
 | v0.12   | 2026-10-10 | Hensyn til Finn (§4.2 punkt 8): annonsesider hentes som appens WebView (ikke `python-httpx`), tilfeldig avstand per vert (søk 2–4 s, annonsesider 5–10 s), maks 40 annonsesider per kjøring, stopp ved 403/429, 404/410 gjør jobben inaktiv, nye forsøk etter 1, 3 og 7 dager (nye kolonner i `job_sources`, §9), 3 timers pause mellom Finn-hentinger (`run --force` overstyrer), filter-metadata caches i 7 dager. `it_oslo` er fjernet (delmengde av `it_norge`), og typesøkene kjøres ukentlig. Planlagt kjøring starter 0–40 min etter `daily_at` (§11). Appheaderne har enhetsinfo og `Ab-Test-Device-Id`. Bakgrunn: gjennomgang i spike 04 §Oppdatering "Hensyn til Finn". |
 | v0.11   | 2026-10-10 | Veikartet (§17): backend-fase 1 og 2 går foran F3 og F4, så de prøvde skjermene får ekte data nå. Fase 1 og 2 er bygget; tracker-API og planlegger er trukket frem fra fase 4. Presisert etter implementering: kildegrensesnitt og cursorer (§4.1), NAV i to steg med tittelregel før detaljhenting (§4.3, §5.1), dedupe-score og repost (§4.5), hva filter-agenten scorer og fyller inn (§5.2), profilhash (§6.1), verifiserte `claude -p`-flagg (§8.1), nye kolonner (§9), planlegger (§11), filhierarki (§15). |
@@ -66,7 +67,7 @@ Et frittstående Python-program som kjører på brukerens egen maskin (PC under 
 | Tilgang | Utvikling: `127.0.0.1`. Drift: bare via Tailscale på `jobb.mariuskristensen.no`. Ingen innlogging i appen. |
 | Database | SQLite via SQLModel, migrasjoner med Alembic |
 | E-post | Gmail SMTP for utsending av digest. Ingen IMAP. |
-| LLM | Standard: Claude via `claude_code` (abonnement via `claude -p`). Reserve: DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash`) via OpenRouter, backend `openrouter`, som tar over kall som feiler i `claude_code` (§8.1, spike 05). `anthropic_api` fjernes i bølge 2b. |
+| LLM | Standard: Claude via `claude_code` (abonnement via `claude -p`). Reserve: DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash`) via OpenRouter, backend `openrouter`, som tar over kall som feiler i `claude_code` (§8.1, spike 05). `anthropic_api` er fjernet (bølge 2b). |
 | Finn | Mobil-API på `https://appsgw.finn.no/` med HMAC-SHA512-signering (egen implementasjon fra spike 04 §Signering, verifisert i fase 0b) for søk. Annonsetekst fra `JobPosting` JSON-LD på den offentlige annonsesiden, bare for nye jobber etter hardfilteret. Søk defineres i `config/sources.yaml`. Endepunkter er reverse-engineert fra Android-APK (v`261006-ec709768`). Se spike 04. |
 | NAV | pam-stilling-feed med privat token |
 | Trainee/graduate | NAV + Teamtailor-RSS + kuratert selskapsliste med sideovervåker |
@@ -554,15 +555,27 @@ claude -p --output-format json --json-schema '<schema>' --model <haiku|sonnet|op
 - Kostnad fra `total_cost_usd`. Målt: filter-batch med 3 annonser (Haiku) ~$0.0025, destillering (Sonnet) ~$0.12.
 - **I container:** Claude Code CLI installeres i imaget (linux-arm64). Innlogging på abonnementet gjøres én gang med `claude setup-token`, og tokenet legges i `.env` som `CLAUDE_CODE_OAUTH_TOKEN`. Verifiseres når fase 4b starter.
 
-**`openrouter` (reserve, spike 05):** OpenRouters OpenAI-kompatible API (`https://openrouter.ai/api/v1/chat/completions`) med `httpx`, nøkkel i `OPENROUTER_API_KEY`. Modell `deepseek/deepseek-v4.1-flash` for alle tiers. Erstatter `anthropic_api` (fjernes i bølge 2b).
+**`openrouter` (reserve, spike 05):** OpenRouters OpenAI-kompatible API (`https://openrouter.ai/api/v1/chat/completions`) med `httpx`, nøkkel i `OPENROUTER_API_KEY`. Modell `deepseek/deepseek-v4.1-flash` for alle tiers. Erstatter `anthropic_api` (fjernet i bølge 2b).
 - Strukturert output med `response_format: {type: json_schema, json_schema: {strict: true, schema}}`. Svaret valideres mot Pydantic-skjemaet, og ugyldig JSON gir ett nytt forsøk.
 - `provider: {require_parameters: true, data_collection: "deny"}`: bare leverandører som støtter skjemaet og ikke lagrer eller trener på data.
-- `effort` sendes som `reasoning.effort`. Research-agenten bruker OpenRouters websøk (`plugins: [{id: web}]`), de andre ingen verktøy.
+- `effort` sendes som `reasoning.effort` (`xhigh`/`max` blir `high`). `max_budget_usd` har ingen motpart hos OpenRouter. Tidsavbrudd: `llm.openrouter.timeout_s` (300 s). Research-agenten bruker OpenRouters websøk (`plugins: [{id: web}]`), de andre ingen verktøy.
 - Kostnad fra `usage.cost` i svaret (ekte penger, i motsetning til `claude_code`-estimatet). Systemprompt og profilkontekst først i meldingen, så leverandørenes automatiske prompt-cache treffer.
 
-**Reserve-regel (`llm.fallback`, standard `openrouter`):** `llm/base.py` pakker standard-backenden. Feiler et kall med en backendfeil (CLI ikke funnet, innlogging utløpt, bruksgrense i abonnementet, tidsavbrudd, prosessfeil), kjøres samme forespørsel én gang med reserven. Ugyldig svar fra modellen og nådd kostnadstak gir ikke bytte. Begge forsøkene logges i `agent_runs`; reservekallet får `fallback_from = claude_code`. Mangler `OPENROUTER_API_KEY`, er reserven av. På Pi-en kan `llm.backend: openrouter` settes direkte hvis `claude -p` ikke virker i containeren (§19 #8).
+**Reserve-regel (`llm.fallback`, standard `openrouter`):** `get_backend()` i `llm/base.py` pakker standard-backenden i `FallbackBackend` når `llm.fallback` er satt til en annen backend, standarden ikke er `mock` og `OPENROUTER_API_KEY` finnes. Ellers er reserven av. `llm.fallback` leses fra `settings.yaml`, ikke fra dashboardets overstyringer.
 
-**Saldo:** `llm/openrouter.py` leser saldoen til forbrukskortet (FRONTEND §5.1). Med `OPENROUTER_MANAGEMENT_KEY` (valgfri) brukes `GET /api/v1/credits` (`total_credits` − `total_usage` = kontosaldo). Uten den brukes `GET /api/v1/key` med vanlig nøkkel: `limit_remaining` gir det som er igjen hvis nøkkelen har en kredittgrense, og `usage_monthly` gir månedens forbruk. Svaret caches i 10 minutter.
+| Feil i `claude_code` | Bytter til reserven? |
+|---|---|
+| CLI ikke funnet, prosessen starter ikke, tidsavbrudd, output som ikke er JSON, `is_error` med annen subtype enn under (innlogging utløpt, bruksgrense, API-feil, `error_during_execution`) | Ja (`LLMBackendError`) |
+| `error_max_budget_usd`, `error_max_structured_output_retries`, `error_max_turns`, ingen strukturert output | Nei |
+| Ugyldig svar mot Pydantic-skjemaet eller `check` | Nei: ett nytt forsøk på samme backend (`agents/base.py`) |
+| Kostnadstaket | Nei: sjekkes før kallet |
+
+- **Bryter:** etter en backendfeil går alle kall rett til reserven i 30 minutter (i prosessen), så en batch med filter-kall ikke venter ut tidsavbruddet ett kall om gangen. Etterpå prøves standarden igjen.
+- **Logging:** det feilede forsøket blir en `error`-rad i `agent_runs` med `backend = claude_code` (0 tokens). Svaret fra reserven får `backend = openrouter` og `fallback_from = claude_code`. Mens bryteren er åpen skrives bare reserveraden. Feiler reserven også, blir det to feilrader.
+- HTTP-feil fra OpenRouter (401, 402 for lite kreditt, 429, 5xx), tidsavbrudd og manglende nøkkel er backendfeil. Ugyldig JSON to ganger er en modellfeil.
+- På Pi-en kan `llm.backend: openrouter` settes direkte hvis `claude -p` ikke virker i containeren (§19 #8).
+
+**Saldo:** `llm/openrouter.py` leser saldoen til forbrukskortet (FRONTEND §5.1). Med `OPENROUTER_MANAGEMENT_KEY` (valgfri) brukes `GET /api/v1/credits` (`total_credits` − `total_usage` = kontosaldo). Uten den brukes `GET /api/v1/key` med vanlig nøkkel: `limit_remaining` gir det som er igjen hvis nøkkelen har en kredittgrense; uten grense er saldoen ukjent. Svaret caches i 10 minutter, også når hentingen feiler (da er saldoen ukjent). Tidsavbrudd 5 s.
 
 **`mock`:** faste svar for tester og dashboardutvikling.
 
@@ -574,7 +587,7 @@ claude -p --output-format json --json-schema '<schema>' --model <haiku|sonnet|op
 | `balanced` | `sonnet` | `deepseek/deepseek-v4.1-flash` |
 | `best` | `opus` | `deepseek/deepseek-v4.1-flash` |
 
-OpenRouter-modellen per tier settes i `config/settings.yaml`, så modellen kan byttes uten kodeendring.
+OpenRouter-modellen per tier settes i `config/settings.yaml` (`llm.openrouter.models`), så modellen kan byttes uten kodeendring.
 
 ### 8.3 Kostnad
 
@@ -622,7 +635,7 @@ drafts               id, application_id, version, content, author (agent|user),
 
 agent_runs           id, agent, job_ids (json), application_id, backend, model, prompt_version,
                      input_tokens, output_tokens, cost_usd, duration_ms, status, error,
-                     fallback_from (backend som feilet, bølge 2b), created_at
+                     fallback_from (backend som feilet, migrasjon 0003), created_at
 
 scrape_runs          id, trigger (schedule|manual), source, started_at, finished_at,
                      found, new, updated, filtered_out, errors (json), health (ok|warn|fail)
@@ -744,7 +757,7 @@ Filnavn: `Soknad_<Bedrift>_<Stilling>.docx` i `data/exports/`.
 
 | Fil | Innhold | I git? |
 |---|---|---|
-| `config/settings.yaml` | Søk (roller, ekskluderinger, jobbtyper, senioritet, geo-modus), terskler, planlegging, LLM-backend, kostnadstak | Ja |
+| `config/settings.yaml` | Søk (roller, ekskluderinger, jobbtyper, senioritet, geo-modus), terskler, planlegging, LLM-backend, reserve og OpenRouter-modeller, kostnadstak | Ja |
 | `config/agents.yaml` | Kontekstmanifest, modell-tier og effort per agent | Ja |
 | `config/locations.yaml` | Geo-moduser → kommuner | Ja |
 | `config/sources.yaml` | Aktive kilder, Finn-søk (parametere per søk-id), Teamtailor-feeder, sideovervåkede selskaper | Ja |
@@ -829,8 +842,7 @@ JobSearcher/
 │   ├── agents/        base.py, schemas.py, filter.py, distiller.py
 │   │                  (fase 3: researcher.py, writer.py, reviser.py; fase 5: extractor.py)
 │   │   (ingen enricher — Finn-annonsesiden gir full annonsetekst)
-│   ├── llm/           base.py, claude_code.py, anthropic_api.py, mock.py, costs.py
-│   │                  (bølge 2b: openrouter.py erstatter anthropic_api.py)
+│   ├── llm/           base.py (protokoll, FallbackBackend, bryter), claude_code.py, openrouter.py (+ saldo), mock.py, costs.py
 │   ├── tracking/      status.py       Overgangstabell §9.1, triage, angre
 │   ├── notify/        email.py, templates/digest.html
 │   ├── export/        docx.py, template.docx
@@ -839,7 +851,7 @@ JobSearcher/
 │       ├── queries.py                 DB → API-skjema, cursor-paging
 │       ├── errors.py                  Feilformat `{detail, code}`, 501 for ruter uten backend
 │       └── routes/    overview.py, jobs.py, applications.py, drafts.py, profile.py,
-│                      settings.py, logs.py, tasks.py
+│                      settings.py, logs.py, tasks.py, llm.py (/api/llm/usage)
 │
 ├── web/                               Frontend (FRONTEND.md)
 │   ├── package.json, vite.config.ts, tsconfig*.json, components.json, playwright.config.ts
@@ -916,7 +928,7 @@ Rekkefølge: fase 1 → fase 2 → 2b/F2b → F3 → fase 3 → F4 → fase 4 �
 | ~~F0–F2. Frontend mot mock~~ | Skjelett, daglig sløyfe og tracker (FRONTEND §8) | ✅ 2026-10-10 |
 | ~~1. Fundament~~ | Repo-oppsett, config med `DATA_DIR`/`PROFILE_DIR`, DB + Alembic, HTTP-lag, NAV-kilde, Finn-API-kilde (`finn_api.py` + `finn_sig.py`, se spike 04), normalisering, dedupe, hardfilter, `jobsearcher run` uten LLM, `serve` med de første ekte endepunktene. Ingen Windows-spesifikk kode. | ✅ 2026-10-10 |
 | ~~2. Scoring + API v1~~ | LLM-backends, destiller, filter i batch, `/api` for oversikt, jobber, jobbdetalj, triage og tasks. Kobler F1. Trukket frem fra fase 4: tracker-API-et (kobler F2), logg-API-et og planleggeren i `serve`. | ✅ 2026-10-10 |
-| **2b. OpenRouter-reserve** | Backend: `llm/openrouter.py` og reserve-regelen (§8.1), `anthropic_api.py` og `anthropic`-pakken fjernes, `llm.fallback` og modell per tier i `settings.yaml`, nøkler i `.env.example`, migrasjon for `agent_runs.fallback_from`, `GET /api/llm/usage`. Frontend: forbrukskortet (FRONTEND §5.1, bølge F2b). Oppsett: brukeren lager nøkkel og fyller på kreditt (§18). Sjekk: filter-agenten kjøres på et utvalg jobber som allerede er scoret av Haiku, så vi vet hvordan DeepSeek scorer før den tar over kall. | Et kall der `claude -p` feiler fullføres via OpenRouter, og kortet viser tokens, kostnad og saldo |
+| ~~2b. OpenRouter-reserve~~ | `llm/openrouter.py`, reserve-regel med bryter (§8.1), `anthropic_api` fjernet, migrasjon `0003`, `GET /api/llm/usage`, forbrukskortet (F2b). Sjekk mot Haiku: spike 05 §Oppdatering. | ✅ 2026-10-11 |
 | **F3. Søknadseditor** | FRONTEND §5.5 mot mock | Brev kan itereres mot mock-agent |
 | **3. Søknader** | Research, writer, revisjon, versjoner, `.docx`-eksport, `/api` for utkast. Kobler F3. | Brev kan lages, itereres og lastes ned |
 | **F4. Profil, innstillinger, logg** | FRONTEND §5.6–5.8 mot mock | Profilen kan redigeres uten filsystemtilgang |
@@ -968,5 +980,5 @@ Finns lagrede søk og Gmail-etiketten `JobSearcher/Finn` trengs ikke lenger — 
 | 9   | Profilen finnes bare i Pi-ens datavolum i drift. Restic-repoet ligger på samme disk som dataene (runbook §10).                              | `profile_revisions` gir historikk. Mulighet for eksport av profilen fra dashboardet. Følger Pi-ens plan for backup til ekstern disk.                                                                                     |
 | 11  | NAV-feeden er treg (13–60 s per side) og svarte 500/504 under første live-forsøk 2026-10-10 | 90 s tidsavbrudd, ingen raske nye forsøk, første vindu 7 dager. Cursoren står urørt ved feil, og neste daglige kjøring prøver igjen. Kildehelsen viser `fail`. |
 | 12  | Finn-identiteten er delvis gjettet: formatet på appens `User-Agent` (`HttpUserAgent.getUserAgent()`), WebView-Chrome-versjonen og enhetsbygget er ikke lest fra APK-en eller en ekte enhet, og appversjonen blir gammel over tid | Verdiene står i `sources.yaml` (`os_version`, `device_model`, `device_build`, `webview_chrome_version`, `app_version`). Neste gang en APK dekompileres (spike 04): les `HttpUserAgent` og oppdater appversjon og WebView-versjon samtidig, helst hvert par måneder. |
-| 13  | Reserven (DeepSeek via OpenRouter): annonsetekst og destillert profil går til tredjepartsleverandører, kvaliteten kan variere med leverandør og kvantisering, og promptene er skrevet for Claude | `data_collection: deny` og `require_parameters` i hvert kall (§8.1). Sammenligning mot Haiku-scorer i bølge 2b. Reservekall er merket i `agent_runs`, så de kan scores på nytt med Claude. |
+| 13  | Reserven (DeepSeek via OpenRouter): annonsetekst og destillert profil går til tredjepartsleverandører, kvaliteten kan variere med leverandør og kvantisering, og promptene er skrevet for Claude | `data_collection: deny` og `require_parameters` i hvert kall (§8.1). Sammenlignet med Haiku 2026-10-11 (spike 05): samme rangering, men ~20 poeng høyere score, så absolutte terskler (`notify_min_score`) stemmer ikke for reservescorer. Reservekall er merket i `agent_runs` (`fallback_from`), så de kan scores på nytt med Claude (ikke automatisk ennå). |
 | 10  | Frontend og backend glir fra hverandre mens frontend bygges mot mock                                                                        | Kontrakten er Pydantic-modellene; TS-typer genereres og fixtures typesjekkes (FRONTEND §3.1)                                                                                                                             |

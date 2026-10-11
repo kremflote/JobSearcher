@@ -66,7 +66,7 @@ uv sync
 cd web && npm install
 ```
 
-**Fyll inn `.env`** (kopier `.env.example`). `NAV_FEED_TOKEN` trengs for NAV-kilden. Claude brukes via `claude`-CLI-en på abonnementet ditt (logg inn med `claude` først); alternativt `ANTHROPIC_API_KEY` og `llm.backend: anthropic_api` i `config/settings.yaml`.
+**Fyll inn `.env`** (kopier `.env.example`). `NAV_FEED_TOKEN` trengs for NAV-kilden. Claude brukes via `claude`-CLI-en på abonnementet ditt (logg inn med `claude` først). Valgfri reserve: `OPENROUTER_API_KEY` (DeepSeek via OpenRouter) tar over kall når `claude -p` feiler; uten nøkkelen er reserven av. `OPENROUTER_MANAGEMENT_KEY` (valgfri) viser kontosaldoen i forbrukskortet. `llm.backend: openrouter` i `config/settings.yaml` gjør OpenRouter til standard.
 
 **Kjør med ekte data:**
 

@@ -3,7 +3,10 @@
 from jobsearcher.llm.base import (
     AgentRequest,
     AgentResponse,
+    FallbackBackend,
+    FallbackError,
     LLMBackend,
+    LLMBackendError,
     LLMError,
     Usage,
     get_backend,
@@ -13,7 +16,10 @@ from jobsearcher.llm.base import (
 __all__ = [
     "AgentRequest",
     "AgentResponse",
+    "FallbackBackend",
+    "FallbackError",
     "LLMBackend",
+    "LLMBackendError",
     "LLMError",
     "Usage",
     "get_backend",

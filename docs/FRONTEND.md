@@ -1,12 +1,13 @@
 # JobSearcher: frontend-design
 
-> Status: v0.8 (2026-10-11). F0, F1 og F2 er bygget, og F1 og F2 er koblet til ekte API (backend-fase 1–2). Neste bølge: F2b (forbrukskort, sammen med backend-bølge 2b), så F3 (søknadseditor).
+> Status: v0.9 (2026-10-11). F0, F1, F2 og F2b er bygget og koblet til ekte API (backend-fase 1–2 og bølge 2b). Neste bølge: F3 (søknadseditor).
 > Dokumentet eier UI-designet: skjermer, layout, komponenter, API-kontrakt og frontend-bølger. Resten av systemet står i [ARCHITECTURE.md](ARCHITECTURE.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato | Endring |
 |---|---|---|
+| v0.9 | 2026-10-11 | F2b bygget: LLM-forbruk-kortet ligger under Kildestatus (PC: høyre kolonne, mobil: "Mer") og åpner detaljen i sidepanel ≥ 1024 px, ellers handlingsark. Varselet sier "Nærmer seg kostnadstaket" (terskelen kan endres). Mock-tilstand for saldoen velges med `?mock_llm=` (§3.2). `GET /api/llm/usage` er ekte (§7.1). |
 | v0.8 | 2026-10-11 | Ny bølge F2b: kortet Kostnad på Oversikt blir LLM-forbruk, med tokens og kostnad per backend denne måneden, OpenRouter-saldo og tokens per dag (§5.1). Nytt endepunkt `GET /api/llm/usage` (§7). Bygges sammen med backend-bølge 2b (ARCHITECTURE §17). |
 | v0.7 | 2026-10-10 | Backend-fase 1–2: ekte API for oversikt, jobber, triage, tracker, tasks og logg (§7.1). F3 og F4 flyttes etter backend-fase 2 (ARCHITECTURE §17 v0.11). |
 | v0.6 | 2026-10-10 | F2 (tracker) bygget. Kortet i API-et har `allowed_next` og `previous_status`, så UI-et viser bare lovlige overganger uten egen kopi av tabellen (ARCHITECTURE §9.1). Statusflytt har angre-toast. Avsluttet er sammenlagt som standard. Panelet åpnes med `?app=<id>`. Oppfølginger på Oversikt lenker til Tracker. Status `ny` vises som "Ikke vurdert" og har eget merke i lister og detalj, som alle andre statuser. Merket for ny siden sist heter "Ny" og har samme form som de andre merkene. |
@@ -93,7 +94,7 @@
 | Test på mobil under utvikling | `npm run dev:mock -- --host` (eller `npm run dev -- --host`), åpne `http://<PC-ens Tailscale-IP>:5173` | Mock eller ekte API |
 | Drift | `jobsearcher serve` (container) | Ekte API, `web/dist` |
 
-Fixtures ligger i `web/src/mocks/fixtures/*.ts` og er **oppdiktede** (bedrifter, personer, domener `*.example`). Ekte data går aldri inn i `web/`. Datoene regnes relativt til dagen mock-appen åpnes, så frister og "nye siden sist" alltid er aktuelle. `web/src/mocks/db.ts` bygger en minnedatabase fra dem ved hver sidelasting (endringer som triage forsvinner ved omlasting); `handlers.ts` svarer på kontrakten, og ruter som ikke er mocket ennå gir `501`. UI-et viser et `MOCK`-merke i mock-modus. "Kjør nå" i mock tar 6 s og finner ingen nye jobber; den oppdaterer bare kildestatus.
+Fixtures ligger i `web/src/mocks/fixtures/*.ts` og er **oppdiktede** (bedrifter, personer, domener `*.example`). Ekte data går aldri inn i `web/`. Datoene regnes relativt til dagen mock-appen åpnes, så frister og "nye siden sist" alltid er aktuelle. `web/src/mocks/db.ts` bygger en minnedatabase fra dem ved hver sidelasting (endringer som triage forsvinner ved omlasting); `handlers.ts` svarer på kontrakten, og ruter som ikke er mocket ennå gir `501`. UI-et viser et `MOCK`-merke i mock-modus. "Kjør nå" i mock tar 6 s og finner ingen nye jobber; den oppdaterer bare kildestatus. LLM-forbruket har seks mock-tilstander som velges med `?mock_llm=<tilstand>` i URL-en appen lastes med: `account` (standard), `key_limit`, `unknown`, `unset`, `low`, `warn`. I Vitest: `createMockDb(now, { llmState })`.
 
 ### 3.3 Bakgrunnsjobber i UI-et
 
@@ -187,7 +188,7 @@ Bølge (§8) står i parentes. Alle skjermer har tilstandene laster (skjelett), 
 | Per dag | Stablede søyler for tokens siste 30 dager, farget per backend. Trykk på en søyle viser tall for dagen. |
 | Saldo | Kilde (`account` med management-nøkkel, `key_limit` med kredittgrense på nøkkelen), tidspunkt for siste henting. Under $1: advarsel. Ingen nøkkel: "Reserve ikke satt opp". Saldo ukjent (nøkkel uten grense, ingen management-nøkkel): bare forbruket vises, med en tekst om hvordan saldoen slås på. |
 
-På PC åpner kortet detaljen i et sidepanel, på mobil i et handlingsark.
+Kortet ligger under Kildestatus. Fra 1024 px åpner det detaljen i et sidepanel til høyre, under det i et handlingsark. Søylene er knapper; i dag er valgt fra start. Varselet ved `warn` sier "Nærmer seg kostnadstaket", siden terskelen (`llm.warn_ratio`) kan endres. `overview.cost` finnes fortsatt i API-et, men brukes ikke av UI-et.
 
 ### 5.2 Jobber `/jobber` (F1)
 
@@ -312,7 +313,7 @@ Statusverdier i API-et er snake_case uten norske tegn (`ny`, `interessant`, `utk
 
 ### 7.1 Ekte API (backend-fase 1–2)
 
-Implementert: alle ruter merket F1 og F2, `GET /api/logs/*` og `GET /api/health`. Resten (utkast, profil, innstillinger) svarer `501 not_implemented` til sin fase. Der det ekte API-et oppfører seg annerledes enn MSW-mocken, gjelder dette:
+Implementert: alle ruter merket F1, F2 og F2b, `GET /api/logs/*` og `GET /api/health`. Resten (utkast, profil, innstillinger) svarer `501 not_implemented` til sin fase. Der det ekte API-et oppfører seg annerledes enn MSW-mocken, gjelder dette:
 
 | Tema | Ekte API |
 |---|---|
@@ -324,6 +325,7 @@ Implementert: alle ruter merket F1 og F2, `GET /api/logs/*` og `GET /api/health`
 | Triage | Samme status igjen gjør ingenting. `interessant` ↔ `ikke_aktuell` tilbake til forrige status sletter siste hendelse (angre). Tilbake til `ny` gir 409 hvis søknaden har utkast. |
 | Ukjent søknad | `GET /api/applications/{id}/events` gir 404 |
 | Ugyldig cursor | `400 invalid_cursor` (ikke deklarert i OpenAPI) |
+| `GET /api/llm/usage` | `by_backend` har alltid `claude_code` og `openrouter` (nuller uten kall). `daily` har én rad per Oslo-dag og backend med kall. `spent_usd` er summen av alle `agent_runs`, også rader fra fjernede backender, som ikke vises per backend. Saldoen caches 10 min; feiler hentingen, er `balance_usd` og `balance_source` null. |
 | Kildestatus | Kildene som er slått på i `config/sources.yaml`, pluss kilder med kjøringer. `manual` vises ikke. |
 
 ---
@@ -337,7 +339,7 @@ Bølgene F0–F4 bygges før backend-fasene i ARCHITECTURE §17. Hver bølge er 
 | ~~F0. Skjelett~~ | `web/` med Vite, TS, Tailwind, shadcn, React Router, TanStack Query, MSW. `api/schemas.py` + `export_openapi.py` + typegenerering. App-skall (sidemeny/bunnfaner), tema, PWA-manifest, fixture-sett. | ✅ 2026-10-10 (PR #4) | Nei |
 | ~~F1. Daglig sløyfe~~ | Oversikt, Jobber (faner, filtre, sveip, tastatur), Jobbdetalj, bakgrunnsjobb-indikator, "Kjør nå" | ✅ bygget 2026-10-10; venter på brukertest (triage av en mock-dag < 2 min på mobil) | ✅ Koblet til ekte API i fase 2 |
 | ~~F2. Tracker~~ | Kanban (PC), gruppert liste (mobil), statusoverganger, neste steg, hendelseslogg | ✅ 2026-10-10 | ✅ Koblet til ekte API i fase 2 |
-| **F2b. LLM-forbruk** | Kortet LLM-forbruk med detaljpanel (§5.1), mock-fixtures for alle saldotilstander (konto, nøkkelgrense, ukjent, ikke satt opp, lav) | Kortet viser tokens, kostnad og saldo på 390 px og 1440 px | Ja: kobles i backend-bølge 2b, bygges samtidig |
+| ~~F2b. LLM-forbruk~~ | Kortet LLM-forbruk med detaljpanel (§5.1), mock-fixtures for alle saldotilstander (konto, nøkkelgrense, ukjent, ikke satt opp, lav) | ✅ 2026-10-11 | ✅ Koblet i backend-bølge 2b |
 | **F3. Søknadseditor** | Editor, forhåndsvisning, autosave/versjoner, diff, revisjonschat, `claims_to_verify`, `.docx` | Brev kan itereres mot mock-agent | Nei. Kobles i fase 3. |
 | **F4. Profil, innstillinger, logg** | Profileditor med historikk, innstillingsskjema, loggfaner | Profilen kan redigeres uten filsystemtilgang | Nei. Kobles i fase 4 (destilleren finnes fra fase 2). |
 | **F5. Drift** | FastAPI serverer `web/dist`, multi-stage Dockerfile, PWA-ikon, test på mobil via Tailscale | `docker compose up` gir hele appen på én port | Ja: fase 1 (`serve`). `serve` serverer allerede `web/dist`; Dockerfile gjenstår. |
@@ -352,7 +354,7 @@ Rekkefølgen er F0 → F1 → brukertest → F2 → backend-fase 1–2 → 2b/F2
 |---|---|---|
 | Enhet | Vitest + Testing Library | Hooks (`useTask`), formattering (frist, score), statusoverganger i UI |
 | Kontrakt | `tsc` mot genererte typer | At fixtures og komponenter matcher API-et |
-| Ende-til-ende | Playwright mot `dev:mock`, to viewporter (390×844, 1440×900) | Navigasjon, tema og manifest (F0); triage med sveip (mobil) og tastatur (PC), filtre, "Kjør nå" (F1); hele statusflyten fra mobil, dra og slipp med ulovlig kolonne og angre, statusmeny og sidepanel (F2); autosave (senere) |
+| Ende-til-ende | Playwright mot `dev:mock`, to viewporter (390×844, 1440×900) | Navigasjon, tema og manifest (F0); triage med sveip (mobil) og tastatur (PC), filtre, "Kjør nå" (F1); hele statusflyten fra mobil, dra og slipp med ulovlig kolonne og angre, statusmeny og sidepanel (F2); forbrukskortet → detalj, trykk på søyle, "Reserve ikke satt opp" (F2b); autosave (senere) |
 
 Kommandoer i `web/`: `npm test` (Vitest), `npm run typecheck`, `npm run e2e` (Playwright starter `dev:mock` selv på port 5174). Backend: `uv run pytest`.
 

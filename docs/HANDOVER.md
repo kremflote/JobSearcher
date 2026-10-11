@@ -3,7 +3,7 @@
 > Keep this file short. Update it at the end of every session: status, next task, open questions, and one line in the log.
 
 **Last updated:** 2026-10-11
-**Phase:** 0, 0b, F0–F2, **backend phases 1 + 2** and the Finn politeness pass done (on `feat/backend-phase1-2`: phases 1 + 2 committed as `694c9d2`, the Finn politeness pass is uncommitted). Roadmap (ARCHITECTURE §17 v0.11): phase 1 → 2 → **2b/F2b next** → F3 → 3 → F4 → 4 (ARCHITECTURE v0.13).
+**Phase:** 0, 0b, F0–F2, backend phases 1 + 2, the Finn politeness pass and **wave 2b/F2b** done, all on `feat/backend-phase1-2` with a PR against `main`. Roadmap (ARCHITECTURE §17): … → 2b/F2b → **F3 next** → 3 → F4 → 4 (ARCHITECTURE v0.14, FRONTEND v0.9).
 
 ## Status
 
@@ -55,10 +55,19 @@
   - Gateway calls 2–4 s apart; 429 stops all searches. `it_oslo` removed; trainee/graduate/summer run weekly (`every_days`). Filter metadata cached 7 days (`data/finn_filters.json`). Finn is skipped if fetched < 3 h ago (`jobsearcher run --force` overrides). Scheduled run starts 0–40 min after 07:00 (`schedule.jitter_minutes`). App headers gained `x-nmp-os-version`, `x-nmp-device`, `Ab-Test-Device-Id`.
   - Tests: `uv run pytest` 189 (new `tests/test_http.py`). Not run live yet; the real DB migrates to `0002` on the next `serve`/`run`.
 
+- **Wave 2b/F2b done** (2026-10-11), see ARCHITECTURE v0.14 §8.1, FRONTEND v0.9 §5.1, spike 05 §Oppdatering:
+  - Backend: `llm/openrouter.py` (DeepSeek V4.1 Flash, json_schema, `require_parameters` + `data_collection: deny`, cost from `usage.cost`, balance via `/credits` or `/key`, cached 10 min). `FallbackBackend` in `llm/base.py`: only `LLMBackendError` switches; 30 min breaker. `agent_runs.fallback_from` (Alembic `0003`). `GET /api/llm/usage`. `anthropic_api` + `anthropic` dependency removed. New keys `llm.fallback`, `llm.openrouter.models.*`, `llm.openrouter.timeout_s`.
+  - Frontend: LLM-forbruk card (replaces Kostnad) + detail sheet/panel, six mock states via `?mock_llm=`.
+  - Live: with a broken `claude` path, a filter batch completed via OpenRouter and logged both rows; `/api/llm/usage` on a DB copy showed the account balance ($9.98 of $10).
+  - DeepSeek vs Haiku on all 63 jobs: same ranking (Spearman 0.84 vs Haiku-with-itself 0.88) but **~20 points higher** scores; 16 jobs would cross the digest threshold 70. Usable as fallback, not as a scorer on the same scale. Cost $0.05 for 63 jobs.
+  - Tests: pytest 230, Vitest 76, Playwright 23 (+7 skipped), typecheck and build OK.
+- Live Finn check 2026-10-11 after the politeness pass: only `it_norge` ran (weekly searches not due), one gateway call, 0 new ads since the cursor, so ad-page spacing is still unobserved live.
+
 ### Waiting on the user
 - [ ] NAV private token → `NAV_FEED_TOKEN` in `.env` (email in ARCHITECTURE §18). `.env` currently has NAV's **public** dev token, which rotates. NAV has not completed a live run yet: its gateway returned 500/504 on 2026-10-10 (spike 01 §Oppdatering). The daily run retries; check `GET /api/logs/runs` or Oversikt › Kildestatus.
 - [x] Wave 2b setup: OpenRouter account with $10 credit; `OPENROUTER_API_KEY` (limit $10) and `OPENROUTER_MANAGEMENT_KEY` in `.env`, both verified live 2026-10-11. Still to do at phase 4b: copy them to the Pi's `jobsearcher.env`.
-- [ ] Restart `serve` yourself (user asked me not to): the running process predates migration `0002`, so the 2026-10-11 07:00 run failed for Finn and NAV with `AttributeError: detail_attempts`. Startup applies the migration.
+- [ ] Restart `serve` after pulling this branch: the running process (started 2026-10-11 ~09:10) runs pre-2b code. Startup applies migration `0003`. Then run `uv sync` once (removes the `anthropic` package; it failed earlier because `serve` locked `.venv`).
+- [ ] NAV now answers **401** (the public dev token expired, run 2026-10-11 07:00), so the private `NAV_FEED_TOKEN` is required.
 - [x] Geography per job type (ARCHITECTURE §5.3) confirmed: permanent = `oslo_omegn`, trainee/graduate/summer = `norge`.
 - [x] Company list in spike 03 approved as is.
 - [x] Open questions in `docs/FRONTEND.md` resolved (preliminary choices accepted, now in §2).
@@ -67,23 +76,14 @@
 - (No longer needed: Finn saved searches, Gmail label `JobSearcher/Finn`, sample `.eml` fixture. The user can delete them.)
 
 ## Next task
-1. **First:** confirm NAV works once its gateway recovers (`uv run jobsearcher run --source nav --no-score`). First run asks 7 days back; expect several runs to catch up. Watch how many NAV ads pass the title rule and get detail-fetched; tune `search.title_require_any` from `GET /api/logs/discarded`.
-2. Let the user use the real dashboard for a few days (`uv run jobsearcher serve` + `npm run dev`, or `npm run build` and just `serve`). Collect feedback on scores and the hard filter.
-3. Then F3 below, then backend phase 3.
+1. **First:** NAV token (above), then confirm NAV works (`uv run jobsearcher run --source nav --no-score`). First run asks 7 days back. Tune `search.title_require_any` from `GET /api/logs/discarded`.
+2. Let the user use the real dashboard for a few days and collect feedback on scores and the hard filter. The first Finn run with new ads should show ad pages ~5–10 s apart in the log.
+3. Small follow-up from 2b (do before or with F3): rescore jobs whose latest evaluation came from the fallback (`agent_runs.fallback_from` set) with Claude once `claude -p` works again, since DeepSeek scores ~20 points higher (spike 05). Optionally expose `fallback_from` in `AgentRunEntry` for the Logg screen (F4).
+4. Then F3 below, then backend phase 3.
 
-Next Finn run: check the log/`data/cache/finn_api/<date>/` that only `it_norge` (+ weekly searches on their day) ran, and that ad pages took ~5–10 s each. A run with many new ads now takes several minutes; cancelling waits for the ad-page batch to finish.
+Known small things: the API's `is_new` groups `scrape_runs` within 1 h as one run (no run id column; add one if it misbehaves). `agents.filter.rescore()` has no UI/CLI yet (F4). Phase-3 context slices are not written. `llm.fallback` is read from `settings.yaml` only (dashboard overrides don't apply). `by_backend.calls` for `claude_code` counts failed attempts too.
 
-Known small things: the API's `is_new` groups `scrape_runs` within 1 h as one run (no run id column; add one if it misbehaves). `agents.filter.rescore()` has no UI/CLI yet (F4). Phase-3 context slices are not written.
-
-### Next: wave 2b/F2b (OpenRouter fallback + usage card), see ARCHITECTURE §8.1, §17, FRONTEND §5.1/§8 and spike 05
-User decision 2026-10-11: `claude_code` stays default; `deepseek/deepseek-v4.1-flash` via OpenRouter replaces `anthropic_api` as the fallback.
-- Backend: `llm/openrouter.py` (httpx, `response_format` json_schema, `provider.require_parameters` + `data_collection: deny`, cost from `usage.cost`, one retry on invalid JSON, balance via `/credits` or `/key` cached 10 min). Fallback wrapper in `llm/base.py` (backend errors only). Delete `anthropic_api.py` + the `anthropic` dependency. `llm.fallback` + per-tier OpenRouter models in `settings.yaml`. Migration for `agent_runs.fallback_from`. `GET /api/llm/usage` in `api/schemas.py`, re-export `web/openapi.json`.
-- Frontend F2b: LLM-forbruk card + detail panel/sheet replacing the Kostnad card, MSW fixtures for every balance state.
-- Check: run the filter agent via OpenRouter on a sample already scored by Haiku and report the score differences.
-- Docs when built: §15, README (setup), `.env.example`, settings YAML comments, FRONTEND §7.1.
-- Keys are in `.env` and verified (`/key` and `/credits` return 200), so the live check can run.
-
-### Then: frontend wave F3 (søknadseditor), see FRONTEND §5.5
+### Next: frontend wave F3 (søknadseditor), see FRONTEND §5.5
 Editor with Markdown preview, autosave 2 s → new version (`author=user`), version picker with diff, revision chat against a mock agent (background task → new version with `change_summary`), `claims_to_verify` as checkable warnings, copy and `.docx` download. Mock: `POST /api/jobs/{id}/draft`, `POST /api/applications/{id}/drafts`, `POST /api/applications/{id}/revise`, `GET /api/drafts/{id}/docx`; "Lag søknadsutkast" in the job detail and `/soknader` list page. Creating a draft should move the application to `utkast` (ARCHITECTURE §9.1).
 
 The F1 user test (triage a mock day in < 2 min on mobile) has not been reported; the user gave F1 feedback and asked to start F2. Known small things: the main JS chunk is > 500 kB (code-split in F5); the PC filter row on Jobber wraps to three lines.
@@ -98,7 +98,7 @@ Research, writer and reviser agents, the phase-3 context slices + `context/proje
 3. NAV's feed gateway is slow and was failing on 2026-10-10. Requests use a 90 s timeout and no quick retries; a failed run leaves the cursor and tries next day.
 4. Anthropic may change subscription billing for `claude -p`. The `openrouter` fallback (wave 2b) covers it.
 5. `claude -p` inside a Docker container on the Pi (arm64, `CLAUDE_CODE_OAUTH_TOKEN`) is unverified. Check at phase 4b.
-8. The DeepSeek/OpenRouter fallback sends ad text and the distilled profile to third-party providers, and prompts were written for Claude (ARCHITECTURE §19 #13).
+8. The DeepSeek/OpenRouter fallback sends ad text and the distilled profile to third-party providers, and scores ~20 points higher than Haiku on the same prompt (spike 05; ARCHITECTURE §19 #13).
 6. In production the profile lives only in the Pi data volume, edited via the dashboard. Backup relies on the Pi's Restic (same disk as data).
 
 ## Session log
@@ -122,3 +122,4 @@ Research, writer and reviser agents, the phase-3 context slices + `context/proje
 - 2026-10-10: Reviewed how JobSearcher treats Finn and implemented every improvement: WebView headers for ad pages, jittered spacing, per-run cap, back off on 403/429, gone ads inactive, spaced retries (migration `0002`), 3 h cooldown + `run --force`, weekly type searches, `it_oslo` dropped, cached filter check, scheduler start jitter, fuller app headers. ARCHITECTURE v0.12, spike 04 update, README.
 - 2026-10-11: LLM decision baked into docs: `claude_code` stays default, DeepSeek V4.1 Flash via OpenRouter replaces `anthropic_api` as automatic fallback. New wave 2b/F2b before F3, with a usage card (tokens, cost, OpenRouter balance) and `GET /api/llm/usage`. ARCHITECTURE v0.13, FRONTEND v0.8, spike 05, AGENTS. No code yet. Found the 07:00 run failed because `serve` predates migration `0002` (not restarted, per the user). User added both OpenRouter keys; verified live, `.env.example` updated.
 - 2026-10-10: Jobber on PC: the filters under the search field now fold out with a "Filtre" toggle (active-filter count badge, open state in localStorage). Mobile sheet unchanged. FRONTEND §Jobber filters line.
+- 2026-10-11: Committed the Finn politeness pass; live Finn check OK (only `it_norge`, 0 new). Built wave 2b/F2b with two parallel subagents (backend, frontend) against a contract written first: OpenRouter backend, fallback with breaker, `fallback_from` (0003), `/api/llm/usage`, LLM-forbruk card; `anthropic_api` removed. Verified fallback live and compared DeepSeek with Haiku on 63 jobs (same order, +20 points). ARCHITECTURE v0.14, FRONTEND v0.9, spike 05 update, README. Opened PR to `main`.

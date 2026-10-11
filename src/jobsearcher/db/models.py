@@ -180,6 +180,9 @@ class AgentRun(SQLModel, table=True):
     job_ids: list = _json()
     application_id: int | None = None
     backend: str
+    """Backend that answered (or failed): claude_code | openrouter | mock."""
+    fallback_from: str | None = None
+    """Set when this call was the fallback for another backend (ARCHITECTURE §8.1)."""
     model: str
     prompt_version: str
     input_tokens: int = 0

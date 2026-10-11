@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/llm/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Llm Usage */
+        get: operations["get_llm_usage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs": {
         parameters: {
             query?: never;
@@ -953,6 +970,81 @@ export interface components {
              */
             status: "interessant" | "ikke_aktuell" | "ny";
         };
+        /** LlmBackendUsage */
+        LlmBackendUsage: {
+            /**
+             * Backend
+             * @enum {string}
+             */
+            backend: "claude_code" | "openrouter" | "mock";
+            /** Calls */
+            calls: number;
+            /**
+             * Fallback Calls
+             * @description Calls this backend made as the fallback for another backend (`agent_runs.fallback_from`).
+             */
+            fallback_calls: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Cost Usd */
+            cost_usd: number;
+            /**
+             * Estimated
+             * @description True for `claude_code`: the cost is an estimate, the subscription pays.
+             */
+            estimated: boolean;
+        };
+        /** LlmDailyUsage */
+        LlmDailyUsage: {
+            /**
+             * Date
+             * Format: date
+             * @description Oslo calendar day.
+             */
+            date: string;
+            /**
+             * Backend
+             * @enum {string}
+             */
+            backend: "claude_code" | "openrouter" | "mock";
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Cost Usd */
+            cost_usd: number;
+        };
+        /** LlmUsage */
+        LlmUsage: {
+            /**
+             * Month Start
+             * Format: date
+             * @description First day of the current Oslo calendar month.
+             */
+            month_start: string;
+            /** Cap Usd */
+            cap_usd: number;
+            /** Spent Usd */
+            spent_usd: number;
+            /**
+             * Warn
+             * @description True at ≥ `llm.warn_ratio` of the cap.
+             */
+            warn: boolean;
+            /**
+             * By Backend
+             * @description This month, one row per backend with calls (claude_code and openrouter always present).
+             */
+            by_backend: components["schemas"]["LlmBackendUsage"][];
+            /**
+             * Daily
+             * @description Last 30 days (today included), one row per day and backend with calls.
+             */
+            daily: components["schemas"]["LlmDailyUsage"][];
+            openrouter: components["schemas"]["OpenRouterBalance"];
+        };
         /** NewSinceLast */
         NewSinceLast: {
             /** Since */
@@ -963,6 +1055,31 @@ export interface components {
             };
             /** Top */
             top: components["schemas"]["JobListItem"][];
+        };
+        /** OpenRouterBalance */
+        OpenRouterBalance: {
+            /**
+             * Configured
+             * @description False when `OPENROUTER_API_KEY` is missing (fallback off).
+             */
+            configured: boolean;
+            /**
+             * Balance Usd
+             * @description Credit left: account balance (`account`) or the key's remaining limit (`key_limit`).
+             */
+            balance_usd: number | null;
+            /**
+             * Total Credits Usd
+             * @description Account credits bought, or the key's limit. Null when unknown.
+             */
+            total_credits_usd: number | null;
+            /**
+             * Balance Source
+             * @description Null when the balance is unknown (key without limit, no management key) or not configured.
+             */
+            balance_source: ("account" | "key_limit") | null;
+            /** Fetched At */
+            fetched_at: string | null;
         };
         /** Overview */
         Overview: {
@@ -1264,6 +1381,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Overview"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_llm_usage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmUsage"];
                 };
             };
             /** @description Not Found */

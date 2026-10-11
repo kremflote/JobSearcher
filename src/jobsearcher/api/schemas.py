@@ -43,6 +43,8 @@ TaskKind = Literal["run", "draft", "research", "revise", "rescore", "distill"]
 TaskStatus = Literal["queued", "running", "done", "failed", "cancelled"]
 DraftAuthor = Literal["agent", "user"]
 JobSort = Literal["deadline", "score", "newest"]
+LlmBackendName = Literal["claude_code", "openrouter", "mock"]
+BalanceSource = Literal["account", "key_limit"]
 
 
 class Model(BaseModel):
@@ -267,6 +269,53 @@ class CostStatus(Model):
     cap_usd: float
     warn: bool
     """True at ≥ 80 % of the cap."""
+
+
+class LlmBackendUsage(Model):
+    backend: LlmBackendName
+    calls: int
+    fallback_calls: int
+    """Calls this backend made as the fallback for another backend (`agent_runs.fallback_from`)."""
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    estimated: bool
+    """True for `claude_code`: the cost is an estimate, the subscription pays."""
+
+
+class LlmDailyUsage(Model):
+    date: date
+    """Oslo calendar day."""
+    backend: LlmBackendName
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+
+
+class OpenRouterBalance(Model):
+    configured: bool
+    """False when `OPENROUTER_API_KEY` is missing (fallback off)."""
+    balance_usd: float | None
+    """Credit left: account balance (`account`) or the key's remaining limit (`key_limit`)."""
+    total_credits_usd: float | None
+    """Account credits bought, or the key's limit. Null when unknown."""
+    balance_source: BalanceSource | None
+    """Null when the balance is unknown (key without limit, no management key) or not configured."""
+    fetched_at: datetime | None
+
+
+class LlmUsage(Model):
+    month_start: date
+    """First day of the current Oslo calendar month."""
+    cap_usd: float
+    spent_usd: float
+    warn: bool
+    """True at ≥ `llm.warn_ratio` of the cap."""
+    by_backend: list[LlmBackendUsage]
+    """This month, one row per backend with calls (claude_code and openrouter always present)."""
+    daily: list[LlmDailyUsage]
+    """Last 30 days (today included), one row per day and backend with calls."""
+    openrouter: OpenRouterBalance
 
 
 class Overview(Model):

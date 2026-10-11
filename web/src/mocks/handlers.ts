@@ -10,6 +10,7 @@ import type { ApplicationStatus, JobDetail, JobListItem, JobType, Task } from '@
 import { CLOSED_STATUSES } from '@/lib/status'
 import { createMockDb, toListItem, type MockDb } from './db'
 import type { MockCard } from './fixtures/applications'
+import { buildLlmUsage } from './fixtures/llm'
 
 type S = components['schemas']
 
@@ -233,6 +234,8 @@ export function createHandlers(db: MockDb = createMockDb()) {
     http.get('/api/health', () => json<S['HealthStatus']>({ status: 'ok', version: 'mock' })),
 
     http.get('/api/overview', () => json<S['Overview']>(buildOverview(db))),
+
+    http.get('/api/llm/usage', () => json<S['LlmUsage']>(buildLlmUsage(db.clock, db.llmState))),
 
     http.get('/api/jobs', ({ request }) => {
       const params = new URL(request.url).searchParams

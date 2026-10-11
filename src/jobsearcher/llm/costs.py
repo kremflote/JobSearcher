@@ -1,7 +1,7 @@
 """Cost tracking and the monthly cost cap (ARCHITECTURE §8.3).
 
-The month is the calendar month in Oslo, summed from `agent_runs.cost_usd` (both backends log
-`total_cost_usd` or the API price estimate).
+The month is the calendar month in Oslo, summed from `agent_runs.cost_usd` (`claude_code` logs
+the CLI's `total_cost_usd` estimate, `openrouter` the real `usage.cost`).
 """
 
 from __future__ import annotations
@@ -12,19 +12,6 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from jobsearcher.db.models import AgentRun
-
-# USD per million tokens: (input, output). Cache write = 1.25 x input, cache read = 0.1 x input.
-PRICES: dict[str, tuple[float, float]] = {
-    "claude-haiku-5-5": (0.10, 0.50),
-    "claude-sonnet-5-5": (2.00, 10.00),
-    "claude-opus-5-5": (4.00, 20.00),
-}
-
-
-def api_cost_usd(model: str, uncached_in: int, cache_write: int, cache_read: int, output: int) -> float:
-    price_in, price_out = PRICES.get(model, PRICES["claude-sonnet-5-5"])
-    total = (uncached_in + 1.25 * cache_write + 0.1 * cache_read) * price_in + output * price_out
-    return round(total / 1_000_000, 6)
 
 
 def month_start(now: datetime | None = None) -> datetime:

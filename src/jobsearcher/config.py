@@ -35,7 +35,10 @@ class Env(BaseSettings):
     """Daily run inside `serve` (§11). Tests turn it off."""
 
     nav_feed_token: str = ""
-    anthropic_api_key: str = ""
+    openrouter_api_key: str = ""
+    """OpenRouter key for the `openrouter` backend and fallback (§8.1). Empty = fallback off."""
+    openrouter_management_key: str = ""
+    """Optional management key: account balance via /api/v1/credits (§8.1)."""
     claude_code_oauth_token: str = ""
     gmail_address: str = ""
     gmail_app_password: str = ""
@@ -107,12 +110,27 @@ class ScheduleSettings(BaseModel):
     jitter_minutes: float = 0
 
 
+class OpenRouterSettings(BaseModel):
+    models: dict[str, str] = Field(
+        default_factory=lambda: {t: "deepseek/deepseek-v4.1-flash" for t in ("fast", "balanced", "best")}
+    )
+    timeout_s: int = 300
+
+
 class LlmSettings(BaseModel):
     backend: str
+    fallback: str | None = "openrouter"
     monthly_cap_usd: float
     warn_ratio: float
     max_budget_usd_per_call: float
     timeout_s: int
+    openrouter: OpenRouterSettings = Field(default_factory=OpenRouterSettings)
+
+    @property
+    def fallback_backend(self) -> str | None:
+        """`fallback` with `none`/empty normalised to None."""
+        fb = (self.fallback or "").strip().lower()
+        return None if fb in ("", "none", "null", "off") else fb
 
 
 class RetentionSettings(BaseModel):

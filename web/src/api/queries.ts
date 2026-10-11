@@ -27,6 +27,14 @@ export function useOverview() {
   })
 }
 
+/** LLM usage, cost and OpenRouter balance (FRONTEND §5.1, F2b). */
+export function useLlmUsage() {
+  return useQuery({
+    queryKey: ['llm', 'usage'],
+    queryFn: () => unwrap(api.GET('/api/llm/usage')),
+  })
+}
+
 // --- Jobs ---------------------------------------------------------------------
 
 export type JobQuery = Omit<NonNullable<paths['/api/jobs']['get']['parameters']['query']>, 'cursor' | 'limit'>

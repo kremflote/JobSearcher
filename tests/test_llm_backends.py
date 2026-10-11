@@ -1,20 +1,18 @@
-"""LLM backends: claude_code (subprocess mocked), anthropic_api (client mocked), mock, costs."""
+"""LLM backends: claude_code (subprocess mocked), mock, factory, costs. OpenRouter: test_openrouter.py."""
 
 from __future__ import annotations
 
 import json
 import subprocess
 from datetime import UTC, datetime
-from types import SimpleNamespace
 
 import pytest
 
 from jobsearcher.agents.schemas import DistilledProfile, FilterBatchResult
 from jobsearcher.db.models import AgentRun
-from jobsearcher.llm import AgentRequest, LLMError, get_backend, output_json_schema
+from jobsearcher.llm import AgentRequest, LLMBackendError, LLMError, get_backend, output_json_schema
 from jobsearcher.llm import claude_code
-from jobsearcher.llm.anthropic_api import AnthropicApiBackend
-from jobsearcher.llm.costs import api_cost_usd, cost_status, month_cost_usd
+from jobsearcher.llm.costs import cost_status, month_cost_usd
 from jobsearcher.llm.mock import MockBackend
 
 
@@ -109,6 +107,36 @@ def test_parse_result_error_raises():
         )
 
 
+@pytest.mark.parametrize(
+    ("data", "backend_error"),
+    [
+        ({"is_error": True, "subtype": "success", "result": "Claude AI usage limit reached|1760000000"}, True),
+        ({"is_error": True, "subtype": "success", "result": "Invalid API key · Please run /login"}, True),
+        ({"is_error": True, "subtype": "error_during_execution", "result": None}, True),
+        ({"is_error": True, "subtype": "error_max_budget_usd", "result": None}, False),
+        ({"is_error": True, "subtype": "error_max_structured_output_retries", "result": None}, False),
+    ],
+)
+def test_parse_result_error_classification(data, backend_error):
+    with pytest.raises(LLMError) as exc:
+        claude_code.parse_result(data, structured=True, fallback_model="x")
+    assert isinstance(exc.value, LLMBackendError) is backend_error
+
+
+def test_missing_structured_output_is_not_a_backend_error():
+    data = dict(CLI_OK, structured_output=None, result="ikke json")
+    with pytest.raises(LLMError) as exc:
+        claude_code.parse_result(data, structured=True, fallback_model="x")
+    assert not isinstance(exc.value, LLMBackendError)
+
+
+def test_cli_not_found_is_a_backend_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(claude_code.shutil, "which", lambda _: None)
+    monkeypatch.setattr(claude_code, "FALLBACK_CLI", tmp_path / "nope.exe")
+    with pytest.raises(LLMBackendError, match="Fant ikke"):
+        claude_code.find_cli()
+
+
 def test_run_strips_api_key_and_uses_sandbox(monkeypatch, tmp_path):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-not-real")
     seen = {}
@@ -137,70 +165,8 @@ def test_run_timeout_becomes_llm_error(monkeypatch, tmp_path):
         raise subprocess.TimeoutExpired(cmd, 1)
 
     monkeypatch.setattr(claude_code.subprocess, "run", fake_run)
-    with pytest.raises(LLMError, match="mer enn"):
+    with pytest.raises(LLMBackendError, match="mer enn"):
         claude_code.ClaudeCodeBackend(cli="claude", sandbox_dir=tmp_path).run(_req(timeout_s=1))
-
-
-# --- anthropic_api -----------------------------------------------------------------------
-
-
-class FakeMessages:
-    def __init__(self, msg):
-        self.msg = msg
-        self.params = None
-
-    def create(self, **params):
-        self.params = params
-        return self.msg
-
-
-class FakeClient:
-    def __init__(self, msg):
-        self.messages = FakeMessages(msg)
-
-    def with_options(self, **_):
-        return self
-
-
-def _msg(text, stop="end_turn"):
-    return SimpleNamespace(
-        content=[SimpleNamespace(type="text", text=text)],
-        stop_reason=stop,
-        model="claude-haiku-5-5",
-        usage=SimpleNamespace(input_tokens=1000, output_tokens=2000, cache_creation_input_tokens=0,
-                              cache_read_input_tokens=10000),
-    )
-
-
-def test_api_backend_structured_output_and_caching():
-    client = FakeClient(_msg(json.dumps({"results": []})))
-    resp = AnthropicApiBackend(client=client).run(_req())
-    p = client.messages.params
-    assert p["model"] == "claude-haiku-5-5"
-    assert p["system"][0]["cache_control"] == {"type": "ephemeral"}
-    assert p["messages"][0]["content"][0]["cache_control"] == {"type": "ephemeral"}
-    assert "cache_control" not in p["messages"][0]["content"][1]
-    assert p["output_config"]["format"]["type"] == "json_schema"
-    assert p["output_config"]["effort"] == "low"
-    assert resp.parsed == {"results": []}
-    assert resp.usage.input_tokens == 11000
-    assert resp.cost_usd == pytest.approx(api_cost_usd("claude-haiku-5-5", 1000, 0, 10000, 2000))
-
-
-def test_api_backend_refusal_and_missing_key(monkeypatch):
-    from jobsearcher.config import env
-
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "")  # env beats .env
-    env.cache_clear()
-    with pytest.raises(LLMError, match="refusal"):
-        AnthropicApiBackend(client=FakeClient(_msg("", stop="refusal"))).run(_req())
-    with pytest.raises(LLMError, match="ANTHROPIC_API_KEY"):
-        AnthropicApiBackend().client()
-
-
-def test_api_cost_formula():
-    # 1M uncached input + 1M output on Sonnet = $2 + $10
-    assert api_cost_usd("claude-sonnet-5-5", 1_000_000, 0, 0, 1_000_000) == pytest.approx(12.0)
 
 
 # --- mock & factory ----------------------------------------------------------------------
@@ -218,7 +184,7 @@ def test_mock_outputs_validate():
 def test_get_backend_by_name():
     assert get_backend("mock").name == "mock"
     assert get_backend("claude_code").name == "claude_code"
-    assert get_backend("anthropic_api").name == "anthropic_api"
+    assert get_backend("openrouter").name == "openrouter"
     with pytest.raises(ValueError):
         get_backend("nope")
 

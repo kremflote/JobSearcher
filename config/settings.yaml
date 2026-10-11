@@ -111,15 +111,28 @@ schedule:
   jitter_minutes: 40
 
 llm:
-  # claude_code (abonnement via `claude -p`) | anthropic_api | mock (§8.1)
+  # Standard-backend (§8.1): claude_code (abonnement via `claude -p`) | openrouter (betalt
+  # kreditt, DeepSeek) | mock (faste svar, for tester og utvikling)
   backend: claude_code
+  # Reserve når standard-backenden feiler (CLI mangler, innlogging utløpt, bruksgrense,
+  # tidsavbrudd, prosessfeil). openrouter | none. Krever OPENROUTER_API_KEY i .env; uten nøkkel
+  # er reserven av. Etter en feil går kallene rett til reserven i 30 minutter.
+  fallback: openrouter
   # Kostnadstak per kalendermåned i USD (§8.3). Varsel ved warn_ratio.
   monthly_cap_usd: 25
   warn_ratio: 0.8
   # Maks kostnad per enkeltkall (sendes som --max-budget-usd).
   max_budget_usd_per_call: 1.0
-  # Tidsavbrudd per kall i sekunder.
+  # Tidsavbrudd per kall i sekunder (claude_code).
   timeout_s: 600
+  openrouter:
+    # Modell per tier (§8.2). Kan byttes uten kodeendring.
+    models:
+      fast: deepseek/deepseek-v4.1-flash
+      balanced: deepseek/deepseek-v4.1-flash
+      best: deepseek/deepseek-v4.1-flash
+    # Tidsavbrudd per kall i sekunder.
+    timeout_s: 300
 
 retention:
   # Rå cache i DATA_DIR/cache slettes etter så mange dager (§12).
