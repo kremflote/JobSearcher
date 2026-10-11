@@ -97,14 +97,21 @@ function SettingsSection({ id, title, intro, children }: { id: string; title: st
 function SettingRow({ item, save }: { item: SettingItem; save: Save }) {
   const id = useId()
   const inline = item.kind === 'bool'
+  // Word lists take the full width, so their label always sits above them.
+  const stacked = item.kind === 'string_list'
   return (
     <div className="py-3" data-testid={`setting-${item.key}`}>
-      <div className={cn('flex gap-3', inline ? 'items-center' : 'flex-col gap-1.5 sm:flex-row sm:items-center')}>
+      <div
+        className={cn(
+          'flex gap-3',
+          inline ? 'items-center' : stacked ? 'flex-col gap-1.5' : 'flex-col gap-1.5 sm:flex-row sm:items-center',
+        )}
+      >
         <label htmlFor={id} className="min-w-0 flex-1 text-sm">
           {item.label}
           {item.help && <span className="text-muted-foreground block text-xs">{item.help}</span>}
         </label>
-        <div className={cn(!inline && item.kind !== 'string_list' && 'sm:w-56', item.kind === 'string_list' && 'w-full')}>
+        <div className={cn(stacked ? 'w-full' : !inline && 'sm:w-56')}>
           <SettingInput id={id} item={item} save={save} />
         </div>
       </div>
