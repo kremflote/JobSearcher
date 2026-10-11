@@ -107,6 +107,57 @@
         }
       }
     },
+    "/api/llm/usage": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Llm Usage",
+        "operationId": "get_llm_usage",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmUsage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs": {
       "get": {
         "tags": [
@@ -3744,6 +3795,149 @@
         ],
         "title": "JobStatusUpdate"
       },
+      "LlmBackendUsage": {
+        "properties": {
+          "backend": {
+            "type": "string",
+            "enum": [
+              "claude_code",
+              "openrouter",
+              "mock"
+            ],
+            "title": "Backend"
+          },
+          "calls": {
+            "type": "integer",
+            "title": "Calls"
+          },
+          "fallback_calls": {
+            "type": "integer",
+            "title": "Fallback Calls",
+            "description": "Calls this backend made as the fallback for another backend (`agent_runs.fallback_from`)."
+          },
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens"
+          },
+          "cost_usd": {
+            "type": "number",
+            "title": "Cost Usd"
+          },
+          "estimated": {
+            "type": "boolean",
+            "title": "Estimated",
+            "description": "True for `claude_code`: the cost is an estimate, the subscription pays."
+          }
+        },
+        "type": "object",
+        "required": [
+          "backend",
+          "calls",
+          "fallback_calls",
+          "input_tokens",
+          "output_tokens",
+          "cost_usd",
+          "estimated"
+        ],
+        "title": "LlmBackendUsage"
+      },
+      "LlmDailyUsage": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date",
+            "description": "Oslo calendar day."
+          },
+          "backend": {
+            "type": "string",
+            "enum": [
+              "claude_code",
+              "openrouter",
+              "mock"
+            ],
+            "title": "Backend"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens"
+          },
+          "cost_usd": {
+            "type": "number",
+            "title": "Cost Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "backend",
+          "input_tokens",
+          "output_tokens",
+          "cost_usd"
+        ],
+        "title": "LlmDailyUsage"
+      },
+      "LlmUsage": {
+        "properties": {
+          "month_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Month Start",
+            "description": "First day of the current Oslo calendar month."
+          },
+          "cap_usd": {
+            "type": "number",
+            "title": "Cap Usd"
+          },
+          "spent_usd": {
+            "type": "number",
+            "title": "Spent Usd"
+          },
+          "warn": {
+            "type": "boolean",
+            "title": "Warn",
+            "description": "True at ≥ `llm.warn_ratio` of the cap."
+          },
+          "by_backend": {
+            "items": {
+              "$ref": "#/components/schemas/LlmBackendUsage"
+            },
+            "type": "array",
+            "title": "By Backend",
+            "description": "This month, one row per backend with calls (claude_code and openrouter always present)."
+          },
+          "daily": {
+            "items": {
+              "$ref": "#/components/schemas/LlmDailyUsage"
+            },
+            "type": "array",
+            "title": "Daily",
+            "description": "Last 30 days (today included), one row per day and backend with calls."
+          },
+          "openrouter": {
+            "$ref": "#/components/schemas/OpenRouterBalance"
+          }
+        },
+        "type": "object",
+        "required": [
+          "month_start",
+          "cap_usd",
+          "spent_usd",
+          "warn",
+          "by_backend",
+          "daily",
+          "openrouter"
+        ],
+        "title": "LlmUsage"
+      },
       "NewSinceLast": {
         "properties": {
           "since": {
@@ -3789,6 +3983,76 @@
           "top"
         ],
         "title": "NewSinceLast"
+      },
+      "OpenRouterBalance": {
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "title": "Configured",
+            "description": "False when `OPENROUTER_API_KEY` is missing (fallback off)."
+          },
+          "balance_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance Usd",
+            "description": "Credit left: account balance (`account`) or the key's remaining limit (`key_limit`)."
+          },
+          "total_credits_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Credits Usd",
+            "description": "Account credits bought, or the key's limit. Null when unknown."
+          },
+          "balance_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "account",
+                  "key_limit"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance Source",
+            "description": "Null when the balance is unknown (key without limit, no management key) or not configured."
+          },
+          "fetched_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetched At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "configured",
+          "balance_usd",
+          "total_credits_usd",
+          "balance_source",
+          "fetched_at"
+        ],
+        "title": "OpenRouterBalance"
       },
       "Overview": {
         "properties": {

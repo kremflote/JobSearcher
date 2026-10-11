@@ -1,12 +1,15 @@
 # JobSearcher: design- og arkitekturdokument
 
-> Status: v0.11 (2026-10-10). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F2 og backend-fase 1 og 2 er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), og dashboardets oversikt, jobbliste og tracker går mot ekte data. Neste: F3.
+> Status: v0.14 (2026-10-11). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F2, backend-fase 1 og 2 og bølge 2b/F2b er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), dashboardets oversikt, jobbliste og tracker går mot ekte data, og `openrouter` tar over når `claude -p` feiler. Neste: F3.
 > Dokumentet er "source of truth" for designet. UI-designet står i [FRONTEND.md](FRONTEND.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato       | Endring                                                                                                                                                                                                                                                                           |
 | ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v0.14   | 2026-10-11 | Bølge 2b bygget. Presisert etter implementering (§8.1): hvilke feil som gir bytte til reserven, en bryter som sender alle kall til reserven i 30 min etter en backendfeil, egen `llm.openrouter.timeout_s`, og saldo uten `usage_monthly`. `anthropic_api` og `anthropic`-pakken er fjernet (§2, §15). Migrasjon `0003` (§9). |
+| v0.13   | 2026-10-11 | LLM-reserve: `anthropic_api` erstattes av en ny backend `openrouter` med DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash`). `claude_code` er fortsatt standard; feiler et kall på grunn av backenden (CLI mangler, innlogging, bruksgrense, tidsavbrudd), kjøres det på nytt med `openrouter` (§2, §8.1). Ny kolonne `agent_runs.fallback_from` (§9). Nytt API `GET /api/llm/usage` og et forbrukskort i dashboardet med tokens, kostnad og saldo hos OpenRouter. Bygges i bølge 2b før F3 (§17). Bakgrunn og priser: spike 05. |
+| v0.12   | 2026-10-10 | Hensyn til Finn (§4.2 punkt 8): annonsesider hentes som appens WebView (ikke `python-httpx`), tilfeldig avstand per vert (søk 2–4 s, annonsesider 5–10 s), maks 40 annonsesider per kjøring, stopp ved 403/429, 404/410 gjør jobben inaktiv, nye forsøk etter 1, 3 og 7 dager (nye kolonner i `job_sources`, §9), 3 timers pause mellom Finn-hentinger (`run --force` overstyrer), filter-metadata caches i 7 dager. `it_oslo` er fjernet (delmengde av `it_norge`), og typesøkene kjøres ukentlig. Planlagt kjøring starter 0–40 min etter `daily_at` (§11). Appheaderne har enhetsinfo og `Ab-Test-Device-Id`. Bakgrunn: gjennomgang i spike 04 §Oppdatering "Hensyn til Finn". |
 | v0.11   | 2026-10-10 | Veikartet (§17): backend-fase 1 og 2 går foran F3 og F4, så de prøvde skjermene får ekte data nå. Fase 1 og 2 er bygget; tracker-API og planlegger er trukket frem fra fase 4. Presisert etter implementering: kildegrensesnitt og cursorer (§4.1), NAV i to steg med tittelregel før detaljhenting (§4.3, §5.1), dedupe-score og repost (§4.5), hva filter-agenten scorer og fyller inn (§5.2), profilhash (§6.1), verifiserte `claude -p`-flagg (§8.1), nye kolonner (§9), planlegger (§11), filhierarki (§15). |
 | v0.10   | 2026-10-10 | Statusovergangene i §9.1 er en eksplisitt tabell (bygget i F2). Nytt: Interessant → Søkt uten utkast (søkt utenfor appen), Tilbud → Trukket (takket nei), Ikke aktuell → Interessant (gjenåpne). Angre = tilbake til forrige status, som sletter siste hendelse. API-et sender lovlige neste statuser på hvert kort. Status `ny` heter "Ikke vurdert" i UI-et. |
 | v0.9    | 2026-10-10 | Fase 0b: Finn-signeringen er verifisert mot levende API. Søkeresponsen har ikke annonsetekst, så Finn blir to steg (§4.2): signert søk, så `JobPosting` JSON-LD fra den offentlige annonsesiden for nye jobber etter hardfilteret. Searchkey er enum-navnet (`SEARCH_ID_JOB_FULLTIME`). Trainee- og sommersøk filtreres serverside med `job_duration`. Se spike 04 §Oppdatering. |
@@ -64,7 +67,7 @@ Et frittstående Python-program som kjører på brukerens egen maskin (PC under 
 | Tilgang | Utvikling: `127.0.0.1`. Drift: bare via Tailscale på `jobb.mariuskristensen.no`. Ingen innlogging i appen. |
 | Database | SQLite via SQLModel, migrasjoner med Alembic |
 | E-post | Gmail SMTP for utsending av digest. Ingen IMAP. |
-| LLM | Claude. Standard: `claude_code` (abonnement via `claude -p`). Alternativ: `anthropic_api`. |
+| LLM | Standard: Claude via `claude_code` (abonnement via `claude -p`). Reserve: DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash`) via OpenRouter, backend `openrouter`, som tar over kall som feiler i `claude_code` (§8.1, spike 05). `anthropic_api` er fjernet (bølge 2b). |
 | Finn | Mobil-API på `https://appsgw.finn.no/` med HMAC-SHA512-signering (egen implementasjon fra spike 04 §Signering, verifisert i fase 0b) for søk. Annonsetekst fra `JobPosting` JSON-LD på den offentlige annonsesiden, bare for nye jobber etter hardfilteret. Søk defineres i `config/sources.yaml`. Endepunkter er reverse-engineert fra Android-APK (v`261006-ec709768`). Se spike 04. |
 | NAV | pam-stilling-feed med privat token |
 | Trainee/graduate | NAV + Teamtailor-RSS + kuratert selskapsliste med sideovervåker |
@@ -128,9 +131,9 @@ class JobSource(Protocol):                       # sources/base.py
   - rate-limiting per domene
   - retry med backoff
   - `If-None-Match` og `If-Modified-Since`
-  - respekt for `robots.txt`
+  - respekt for `robots.txt` (forespørselen etter `robots.txt` sendes med kallerens headere)
   - rå respons lagres i `data/cache/<kilde>/<dato>/`
-  - `appsgw.finn.no` har 2,5 s mellom kall
+  - avstand mellom kall per vert, fast eller tilfeldig i `[min, maks]`. Kildene setter avstanden for sine egne verter (`HttpClient.set_interval`); standard er 1 s. Finn: se §4.2 punkt 8.
 
 ### 4.2 Finn via mobil-API (spike 04)
 
@@ -140,26 +143,40 @@ Finn har ikke et offisielt tredjeparts-API, men mobilappen snakker med et HMAC-s
    - *Utdanning (`education`):* ingen utdanning (`465`), høyskole/universitet lavere nivå (`464`)
    - *Arbeidserfaring (`work_experience`):* ingen erfaring (`455`), junior (`456`)
 
-   | Søk-id | `searchkey` | Ekstra filter | Geografi |
-   |---|---|---|---|
-   | `it_oslo` | `SEARCH_ID_JOB_FULLTIME` | — | `oslo_omegn` |
-   | `it_norge` | `SEARCH_ID_JOB_FULLTIME` | — | `norge` |
-   | `trainee` | `SEARCH_ID_JOB_FULLTIME` | `job_duration=8098` (trainee) | `norge` |
-   | `graduate` | `SEARCH_ID_JOB_FULLTIME` | `q=graduate` | `norge` |
-   | `summer` | `SEARCH_ID_JOB_FULLTIME` | `job_duration=1816` (sommer/sesong) | `norge` |
+   | Søk-id | `searchkey` | Ekstra filter | Geografi | Hvor ofte |
+   |---|---|---|---|---|
+   | `it_norge` | `SEARCH_ID_JOB_FULLTIME` | — | `norge` | hver kjøring |
+   | `trainee` | `SEARCH_ID_JOB_FULLTIME` | `job_duration=8098` (trainee) | `norge` | ukentlig |
+   | `graduate` | `SEARCH_ID_JOB_FULLTIME` | `q=graduate` | `norge` | ukentlig |
+   | `summer` | `SEARCH_ID_JOB_FULLTIME` | `job_duration=1816` (sommer/sesong) | `norge` | ukentlig |
 
-   Alle går mot `GET /search/{searchkey}?client=android-finn&sort=PUBLISHED_DESC&<filtre>` med `FINN-GW-Service: Search-Quest-JB`. Filter-ID-ene (`occupation`, `location`, `work_experience`, `education`, `job_duration`) står i spike 04 §Oppdatering og i fixtures `tests/fixtures/finn/filters_*.json`. De ligger i `config/sources.yaml`; ved kjøring sjekkes de mot ferske filter-metadata (`include_results=false&include_filters=true`), og ukjente ID-er gir en kildehelse-advarsel (§12).
+   Oslo/Akershus har ikke eget søk: `it_norge` dekker dem, og geografien avgjøres lokalt (§5.1). Typesøkene er delmengder av `it_norge` og gir bare jobbtype-hint (§5.4). Tittelregelen fanger de fleste typene samme dag, så ukentlig (`every_days: 7`) holder.
+
+   Alle går mot `GET /search/{searchkey}?client=android-finn&sort=PUBLISHED_DESC&<filtre>` med `FINN-GW-Service: Search-Quest-JB`. Filter-ID-ene (`occupation`, `location`, `work_experience`, `education`, `job_duration`) står i spike 04 §Oppdatering og i fixtures `tests/fixtures/finn/filters_*.json`. De ligger i `config/sources.yaml` og sjekkes mot Finns filter-metadata (`include_results=false&include_filters=true`, cachet i `DATA_DIR/finn_filters.json` i `filter_check_days`, standard 7). Ukjente ID-er gir en kildehelse-advarsel (§12).
 2. **`FinnApiSource`** gjør to steg:
    - **Søk:** `GET /search/{searchkey}?client=android-finn&<filtre>&page=N` (signert) → 50 annonser per side med Finn-kode, tittel, stillingstittel, bedrift, sted, publisert, frist, antall stillinger og erfaring/utdanning-ID-er. **Ingen annonsetekst.** Samme Finn-kode fra flere søk blir én jobb.
-   - **Detalj:** for nye jobber som har passert hardfilteret (§5.1) hentes `https://www.finn.no/job/ad/{finnkode}` (vanlig GET, ingen HMAC), og `JobPosting` fra JSON-LD-blokken gir annonsetekst (`description`, HTML), arbeidsgiver, sted og frist. Det er samme side som appens WebView viser. Bare nye jobber hentes, så volumet er lavt (typisk 10–30 per døgn). Feiler detaljhentingen, beholdes jobben med `ad_text_status = missing` og prøves igjen neste kjøring.
+   - **Detalj:** for nye jobber som har passert hardfilteret (§5.1) hentes `https://www.finn.no/job/ad/{finnkode}` (vanlig GET, ingen HMAC), og `JobPosting` fra JSON-LD-blokken gir annonsetekst (`description`, HTML), arbeidsgiver, sted og frist. Det er samme side som appens WebView viser. Bare nye jobber hentes, så volumet er lavt (typisk 10–30 per døgn). Feiler detaljhentingen, beholdes jobben med `ad_text_status = missing` og prøves igjen senere (punkt 5).
 3. **Cursor** per søk-id lagres i `source_state` som høyeste sette `published` (ms). Med `sort=PUBLISHED_DESC` blas det side for side til en annonse er eldre enn cursoren. Finn gir maks 50 sider, så søkene må være filtrert. Rate-limit og retry håndteres av det felles HTTP-laget (§4.1).
 4. **Finn-annonser er forhåndsfiltrert og regnes som gyldige.** API-kallet filtrerer serverside på erfaring og utdanning, så de slipper senioritetsfilteret (§5.1) og blir aldri skjult på grunn av senioritet. Står det likevel et eksplisitt erfaringskrav i teksten, legges det inn som en `concern`, men jobben vises. Rolle-ekskludering (f.eks. cybersikkerhet) og geografi gjelder fortsatt.
-5. Jobben opprettes med `prefiltered = true` og `ad_text_status = present` når detaljhentingen lyktes. Ingen LLM-berikelse trengs. Søknadslenken står ikke i JSON-LD, men i annonsesidens søk-knapp (`/job-apply/{id}/apply`, Finns videresending). Mangler teksten, prøves detaljhentingen igjen i 14 dager (maks 30 per kjøring), og kildehelsen er `warn` så lenge noen mangler.
+5. Jobben opprettes med `prefiltered = true` og `ad_text_status = present` når detaljhentingen lyktes. Ingen LLM-berikelse trengs. Søknadslenken står ikke i JSON-LD, men i annonsesidens søk-knapp (`/job-apply/{id}/apply`, Finns videresending). Mangler teksten, prøves detaljhentingen igjen etter 1, 3 og 7 dager (`job_sources.detail_attempts`/`detail_next_at`, §9), så gis den opp. Maks 30 slike forsøk per kjøring, bare jobber fra de siste 14 dagene. Svarer annonsesiden 404/410, er annonsen borte: jobben blir inaktiv og hentes ikke igjen. Kildehelsen er `warn` så lenge noen mangler tekst.
    - `work_locations` er `[land, fylke, kommune, sted]`; i Oslo er tredje ledd en bydel, så kommunen settes til Oslo.
    - Finn-overskriften (`heading`) er ofte reklametekst. Stillingstittelen (`job_title`) lagres i `meta` og brukes også ved fuzzy-match mot andre kilder (§4.5).
-   - Første kjøring per søk henter maks `initial_max_pages` sider, senere maks `max_pages`. Filter-ID-ene sjekkes mot ferske filter-metadata hver kjøring (`validate_filters`).
-6. **App-identitet:** `User-Agent`, `x-nmp-app-version-name` og tilhørende headere låses til appversjon `261006-ec709768` (fra APK-en), slik at trafikken ser realistisk ut og endepunkter ikke flyter mellom versjoner.
+   - Første kjøring per søk henter maks `initial_max_pages` sider, senere maks `max_pages`. Filter-ID-ene sjekkes mot cachede filter-metadata (`validate_filters`, `filter_check_days`).
+6. **App-identitet:** `User-Agent`, `x-nmp-app-version-name` og tilhørende headere låses til appversjon `261006-ec709768` (fra APK-en), slik at endepunkter ikke flyter mellom versjoner. Én enhet, lagret i `DATA_DIR/finn_device.json` som en app-installasjon: installasjons-/visitor-ID og `Ab-Test-Device-Id` (UUID-er), og enhetsinfo fra `sources.yaml` (`os_version`, `device_model`) i `x-nmp-os-version`/`x-nmp-device`. Ny `Session-Id` per kjøring. Annonsesidene hentes som appens WebView ville åpnet dem: Android WebView-`User-Agent` for samme enhet (`; wv`), `X-Requested-With: no.finn.android`, vanlige `Accept`/`Accept-Language`/`Sec-Fetch-*`-headere. Formatet på appens egen `User-Agent` og WebView-versjonen er ikke verifisert mot en ekte enhet (§19 #12).
 7. **Fallback om API-et blir ubrukelig** (signaturen brytes, endepunkt forsvinner): brukeren limer inn annonsetekst via `manual`-kilden (§4.1 / §9 `job_sources.source`). IMAP-flyten er ikke en lett vei tilbake.
+8. **Hensyn til Finn.** Målet er at trafikken er liten og ser ut som én vanlig appbruker. Typisk døgn: 1–4 søkekall, 10–30 annonsesider, én `robots.txt`.
+
+   | Tiltak | Verdi (`sources.yaml` → `finn_api`) |
+   |---|---|
+   | Tilfeldig avstand mellom søkekall | `gateway_interval_s: [2, 4]` |
+   | Tilfeldig avstand mellom annonsesider | `ad_page_interval_s: [5, 10]` |
+   | Maks annonsesider per kjøring (resten neste kjøring) | `max_details_per_run: 40` |
+   | Pause mellom Finn-hentinger: hentet Finn for under så mange timer siden, hoppes kilden over (ingen kall, ingen kjøringsrad). `jobsearcher run --force` overstyrer. | `min_hours_between_runs: 3` |
+   | Filter-metadata caches | `filter_check_days: 7` |
+   | Søk som bare gir hint kjøres sjeldnere | `every_days` per søk |
+   | Planlagt start varierer (§11) | `settings.yaml` → `schedule.jitter_minutes: 40` |
+
+   Ingen parallelle kall. Søk: 429 eller 401/403 stopper alle gjenstående søk i kjøringen (5xx prøves på nytt med backoff i HTTP-laget). Annonsesider: ingen automatiske nye forsøk; 403/429 stopper resten av annonsesidene i kjøringen og gir kildehelse `warn`.
 
 ### 4.3 NAV pam-stilling-feed (spike 01)
 
@@ -538,21 +555,43 @@ claude -p --output-format json --json-schema '<schema>' --model <haiku|sonnet|op
 - Kostnad fra `total_cost_usd`. Målt: filter-batch med 3 annonser (Haiku) ~$0.0025, destillering (Sonnet) ~$0.12.
 - **I container:** Claude Code CLI installeres i imaget (linux-arm64). Innlogging på abonnementet gjøres én gang med `claude setup-token`, og tokenet legges i `.env` som `CLAUDE_CODE_OAUTH_TOKEN`. Verifiseres når fase 4b starter.
 
-**`anthropic_api`:** offisiell `anthropic`-SDK med strukturert output (`output_config.format`), prompt caching på systemprompten og profilkonteksten, og server-verktøy for research. Kostnad fra en lokal pristabell i `llm/anthropic_api.py`. Bare testet mot mock-klient.
+**`openrouter` (reserve, spike 05):** OpenRouters OpenAI-kompatible API (`https://openrouter.ai/api/v1/chat/completions`) med `httpx`, nøkkel i `OPENROUTER_API_KEY`. Modell `deepseek/deepseek-v4.1-flash` for alle tiers. Erstatter `anthropic_api` (fjernet i bølge 2b).
+- Strukturert output med `response_format: {type: json_schema, json_schema: {strict: true, schema}}`. Svaret valideres mot Pydantic-skjemaet, og ugyldig JSON gir ett nytt forsøk.
+- `provider: {require_parameters: true, data_collection: "deny"}`: bare leverandører som støtter skjemaet og ikke lagrer eller trener på data.
+- `effort` sendes som `reasoning.effort` (`xhigh`/`max` blir `high`). `max_budget_usd` har ingen motpart hos OpenRouter. Tidsavbrudd: `llm.openrouter.timeout_s` (300 s). Research-agenten bruker OpenRouters websøk (`plugins: [{id: web}]`), de andre ingen verktøy.
+- Kostnad fra `usage.cost` i svaret (ekte penger, i motsetning til `claude_code`-estimatet). Systemprompt og profilkontekst først i meldingen, så leverandørenes automatiske prompt-cache treffer.
+
+**Reserve-regel (`llm.fallback`, standard `openrouter`):** `get_backend()` i `llm/base.py` pakker standard-backenden i `FallbackBackend` når `llm.fallback` er satt til en annen backend, standarden ikke er `mock` og `OPENROUTER_API_KEY` finnes. Ellers er reserven av. `llm.fallback` leses fra `settings.yaml`, ikke fra dashboardets overstyringer.
+
+| Feil i `claude_code` | Bytter til reserven? |
+|---|---|
+| CLI ikke funnet, prosessen starter ikke, tidsavbrudd, output som ikke er JSON, `is_error` med annen subtype enn under (innlogging utløpt, bruksgrense, API-feil, `error_during_execution`) | Ja (`LLMBackendError`) |
+| `error_max_budget_usd`, `error_max_structured_output_retries`, `error_max_turns`, ingen strukturert output | Nei |
+| Ugyldig svar mot Pydantic-skjemaet eller `check` | Nei: ett nytt forsøk på samme backend (`agents/base.py`) |
+| Kostnadstaket | Nei: sjekkes før kallet |
+
+- **Bryter:** etter en backendfeil går alle kall rett til reserven i 30 minutter (i prosessen), så en batch med filter-kall ikke venter ut tidsavbruddet ett kall om gangen. Etterpå prøves standarden igjen.
+- **Logging:** det feilede forsøket blir en `error`-rad i `agent_runs` med `backend = claude_code` (0 tokens). Svaret fra reserven får `backend = openrouter` og `fallback_from = claude_code`. Mens bryteren er åpen skrives bare reserveraden. Feiler reserven også, blir det to feilrader.
+- HTTP-feil fra OpenRouter (401, 402 for lite kreditt, 429, 5xx), tidsavbrudd og manglende nøkkel er backendfeil. Ugyldig JSON to ganger er en modellfeil.
+- På Pi-en kan `llm.backend: openrouter` settes direkte hvis `claude -p` ikke virker i containeren (§19 #8).
+
+**Saldo:** `llm/openrouter.py` leser saldoen til forbrukskortet (FRONTEND §5.1). Med `OPENROUTER_MANAGEMENT_KEY` (valgfri) brukes `GET /api/v1/credits` (`total_credits` − `total_usage` = kontosaldo). Uten den brukes `GET /api/v1/key` med vanlig nøkkel: `limit_remaining` gir det som er igjen hvis nøkkelen har en kredittgrense; uten grense er saldoen ukjent. Svaret caches i 10 minutter, også når hentingen feiler (da er saldoen ukjent). Tidsavbrudd 5 s.
 
 **`mock`:** faste svar for tester og dashboardutvikling.
 
 ### 8.2 Modeller (`model_tier`)
 
-| Tier | `claude_code` | `anthropic_api` |
+| Tier | `claude_code` (standard) | `openrouter` (reserve) |
 |---|---|---|
-| `fast` | `haiku` | `claude-haiku-5-5` |
-| `balanced` | `sonnet` | `claude-sonnet-5-5` |
-| `best` | `opus` | `claude-opus-5-5` |
+| `fast` | `haiku` | `deepseek/deepseek-v4.1-flash` |
+| `balanced` | `sonnet` | `deepseek/deepseek-v4.1-flash` |
+| `best` | `opus` | `deepseek/deepseek-v4.1-flash` |
+
+OpenRouter-modellen per tier settes i `config/settings.yaml` (`llm.openrouter.models`), så modellen kan byttes uten kodeendring.
 
 ### 8.3 Kostnad
 
-Med `anthropic_api` estimeres ca. $15–25/mnd (filter ~$0.05/dag, utkast ~$0.10–0.15 stk, research ~$0.05–0.10). Med `claude_code` trekkes bruken fra abonnementet, men `total_cost_usd` logges likevel.
+Med `claude_code` trekkes bruken fra abonnementet, men `total_cost_usd` logges likevel som estimat. `openrouter` koster ekte penger fra forhåndsbetalt kreditt: med DeepSeek V4.1 Flash ($0.15/$0.60 per million tokens hos DeepSeek, spike 05) under $1/mnd selv om alt skulle gå via reserven. Forbrukskortet viser de to hver for seg.
 
 **Kostnadstak:** $25/mnd (kalendermåned i Oslo-tid, sum av `agent_runs.cost_usd`, `llm/costs.py`).
 - Ved 80 %: advarsel i dashboardet og digesten.
@@ -572,7 +611,8 @@ jobs                 id, fingerprint, title, company, company_slug, org_number, 
                      filtered_out                                  ← skjult av hardfilter/filter-agent
 
 job_sources          id, job_id, source (finn_api|nav|teamtailor|page_watch|manual),
-                     source_id, url, raw_path, fetched_at
+                     source_id, url, raw_path, fetched_at,
+                     detail_attempts, detail_next_at              ← mislykkede annonsesideforsøk, neste forsøk (§4.2)
 
 job_contacts         id, job_id, name, role, email, phone, source (feed|llm|manual)
 
@@ -594,7 +634,8 @@ drafts               id, application_id, version, content, author (agent|user),
                      instruction, change_summary, claims_to_verify (json), agent_run_id, created_at
 
 agent_runs           id, agent, job_ids (json), application_id, backend, model, prompt_version,
-                     input_tokens, output_tokens, cost_usd, duration_ms, status, error, created_at
+                     input_tokens, output_tokens, cost_usd, duration_ms, status, error,
+                     fallback_from (backend som feilet, migrasjon 0003), created_at
 
 scrape_runs          id, trigger (schedule|manual), source, started_at, finished_at,
                      found, new, updated, filtered_out, errors (json), health (ok|warn|fail)
@@ -671,7 +712,7 @@ Filnavn: `Soknad_<Bedrift>_<Stilling>.docx` i `data/exports/`.
 
 ## 11. Planlegging og varsling
 
-- **Planlegger:** `jobsearcher serve` starter uvicorn og APScheduler i samme prosess (`scheduler.py`, bygget i fase 2). Kjøringen legges i kø som en vanlig `run`-task med `trigger = schedule`. `SCHEDULER_ENABLED=false` slår planleggeren av (brukes i tester). Klokkeslett i `settings.yaml` (`schedule.daily_at`, standard `07:00`, tidssone `Europe/Oslo`).
+- **Planlegger:** `jobsearcher serve` starter uvicorn og APScheduler i samme prosess (`scheduler.py`, bygget i fase 2). Kjøringen legges i kø som en vanlig `run`-task med `trigger = schedule`. `SCHEDULER_ENABLED=false` slår planleggeren av (brukes i tester). Klokkeslett i `settings.yaml` (`schedule.daily_at`, standard `07:00`, tidssone `Europe/Oslo`). Selve kjøringen starter et tilfeldig antall minutter (0 til `schedule.jitter_minutes`, standard 40) etter klokkeslettet, så kildene ikke ser samme starttid hver dag.
   - Ved oppstart: har dagens klokkeslett passert uten at noen kjøring (planlagt eller manuell) har startet etter det, startes en med en gang.
   - I drift holder Docker (`restart: unless-stopped`) prosessen i live. Under utvikling går planleggeren når `serve` kjører.
   - Ingen avhengighet til Windows Task Scheduler eller cron.
@@ -696,7 +737,7 @@ Filnavn: `Soknad_<Bedrift>_<Stilling>.docx` i `data/exports/`.
 | Backup | Etter hver kjøring: SQLite backup-API → `data/backups/jobsearcher-YYYY-MM-DD.db`, beholder 14. På hjemmeserveren ligger datavolumet under `infra/config/jobsearcher/`, som Pi-ens daglige Restic-backup allerede dekker. Restic tar de konsistente kopiene i `backups/`, ikke den levende DB-filen. |
 | Nettverk | Utvikling: uvicorn på `127.0.0.1:8765`. Drift: uvicorn på `0.0.0.0:8765` inne i containeren, ingen publisert port på verten. Nginx Proxy Manager når `jobsearcher:8765` over `shared-network`. Cloudflare DNS `jobb.mariuskristensen.no` → Pi-ens Tailscale-IP (DNS only). |
 | Distribusjon | Multi-stage `Dockerfile` (Node bygger `web/dist`, Python-image kjører appen), bygget for `linux/arm64` og `linux/amd64`. Tjenesten `jobsearcher` legges i Pi-ens `infra`-stack, likt Matflote. Volum: `config/jobsearcher/` → `/data` (DB, profil, cache, eksporter, Claude-sandbox). `GET /api/health` brukes av Docker healthcheck og Uptime Kuma. |
-| Hemmeligheter | `.env`: `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD` (bare SMTP), `NAV_FEED_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` (drift, §8.1), valgfri `ANTHROPIC_API_KEY`. På Pi-en ligger filen i `infra/config/jobsearcher/jobsearcher.env`. Finn-HMAC-nøkkelen (`d45ff03c-b783-44d9-b94a-bb28dbc016a6`) er bakt inn i `finn_sig.py` som konstant — den finnes åpent i APK-en og trenger ingen env-variabel, men må oppdateres hvis Finn roterer den. |
+| Hemmeligheter | `.env`: `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD` (bare SMTP), `NAV_FEED_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` (drift, §8.1), `OPENROUTER_API_KEY` (reserve, §8.1), valgfri `OPENROUTER_MANAGEMENT_KEY` (bare saldo). På Pi-en ligger filen i `infra/config/jobsearcher/jobsearcher.env`. Finn-HMAC-nøkkelen (`d45ff03c-b783-44d9-b94a-bb28dbc016a6`) er bakt inn i `finn_sig.py` som konstant — den finnes åpent i APK-en og trenger ingen env-variabel, men må oppdateres hvis Finn roterer den. |
 | Personvern | Kontaktpersoner fra annonser slettes 90 dager etter at jobben er inaktiv, med mindre det finnes en søknad. Rå cache slettes etter 30 dager. |
 
 ---
@@ -716,7 +757,7 @@ Filnavn: `Soknad_<Bedrift>_<Stilling>.docx` i `data/exports/`.
 
 | Fil | Innhold | I git? |
 |---|---|---|
-| `config/settings.yaml` | Søk (roller, ekskluderinger, jobbtyper, senioritet, geo-modus), terskler, planlegging, LLM-backend, kostnadstak | Ja |
+| `config/settings.yaml` | Søk (roller, ekskluderinger, jobbtyper, senioritet, geo-modus), terskler, planlegging, LLM-backend, reserve og OpenRouter-modeller, kostnadstak | Ja |
 | `config/agents.yaml` | Kontekstmanifest, modell-tier og effort per agent | Ja |
 | `config/locations.yaml` | Geo-moduser → kommuner | Ja |
 | `config/sources.yaml` | Aktive kilder, Finn-søk (parametere per søk-id), Teamtailor-feeder, sideovervåkede selskaper | Ja |
@@ -788,7 +829,7 @@ JobSearcher/
 │   ├── db/            models.py, session.py, repo.py (effective_settings), migrations/
 │   ├── sources/
 │   │   ├── base.py                    JobSource, RawJob, CursorState, CollectResult
-│   │   ├── http.py                    HttpClient (rate-limit, retry, robots), save_raw
+│   │   ├── http.py                    HttpClient (rate-limit med jitter per vert, retry, robots), save_raw
 │   │   ├── registry.py                build_sources() fra sources.yaml
 │   │   ├── finn_api.py                Finn: signert søk → RawJob, så annonsetekst fra JSON-LD på annonsesiden
 │   │   ├── finn_sig.py                HMAC-SHA512-signering, egen impl. (se spike 04)
@@ -801,7 +842,7 @@ JobSearcher/
 │   ├── agents/        base.py, schemas.py, filter.py, distiller.py
 │   │                  (fase 3: researcher.py, writer.py, reviser.py; fase 5: extractor.py)
 │   │   (ingen enricher — Finn-annonsesiden gir full annonsetekst)
-│   ├── llm/           base.py, claude_code.py, anthropic_api.py, mock.py, costs.py
+│   ├── llm/           base.py (protokoll, FallbackBackend, bryter), claude_code.py, openrouter.py (+ saldo), mock.py, costs.py
 │   ├── tracking/      status.py       Overgangstabell §9.1, triage, angre
 │   ├── notify/        email.py, templates/digest.html
 │   ├── export/        docx.py, template.docx
@@ -810,7 +851,7 @@ JobSearcher/
 │       ├── queries.py                 DB → API-skjema, cursor-paging
 │       ├── errors.py                  Feilformat `{detail, code}`, 501 for ruter uten backend
 │       └── routes/    overview.py, jobs.py, applications.py, drafts.py, profile.py,
-│                      settings.py, logs.py, tasks.py
+│                      settings.py, logs.py, tasks.py, llm.py (/api/llm/usage)
 │
 ├── web/                               Frontend (FRONTEND.md)
 │   ├── package.json, vite.config.ts, tsconfig*.json, components.json, playwright.config.ts
@@ -842,7 +883,7 @@ JobSearcher/
     ├── conftest.py                    Egen DATA_DIR per test, migrert temp-DB, planlegger av
     ├── fixtures/                      finn/ (søk, annonseside, filtre), nav/, profile/ (oppdiktet); private/ er gitignored
     ├── test_api_*.py                  Kontrakt (501, openapi.json oppdatert), jobber, oversikt, tracker, tasks
-    ├── test_finn_api.py, test_finn_sig.py, test_nav_feed.py
+    ├── test_finn_api.py, test_finn_sig.py, test_nav_feed.py, test_http.py
     ├── test_normalize.py, test_clean.py, test_dedupe.py, test_hardfilter.py, test_pipeline_run.py
     ├── test_llm_backends.py, test_context_builder.py, test_filter_agent.py, test_distiller.py
     ├── test_status_transitions.py, test_scheduler.py, test_db.py
@@ -867,7 +908,7 @@ JobSearcher/
 | Finn-signering | Egen impl. i `finn_sig.py` (bruker `hmac` + `hashlib` fra stdlib, se spike 04 §Signering) |
 | E-post | `smtplib` + `email` (stdlib). Ingen IMAP. |
 | Fuzzy-match | `rapidfuzz` |
-| LLM | Claude Code CLI (`claude -p`), `anthropic` |
+| LLM | Claude Code CLI (`claude -p`), OpenRouter (via `httpx`) |
 | CLI | `typer` |
 | Eksport | `python-docx` |
 | Test | `pytest`, `respx`; frontend: Vitest, Testing Library, Playwright |
@@ -878,7 +919,7 @@ JobSearcher/
 
 **Frontend først, så backend der den gir verdi.** F0–F2 (daglig sløyfe og tracker) er bygget mot mock og prøvd av brukeren. Fra v0.11 går backend-fasene 1 og 2 foran F3 og F4: de skjermene som allerede er prøvd får ekte data, så verktøyet kan brukes i jobbsøkingen nå. F3 (søknadseditor) bygges rett før fase 3, og F4 (profil, innstillinger, logg) før fase 4, siden kvaliteten på brev og profil bare kan vurderes med ekte LLM-output.
 
-Rekkefølge: fase 1 → fase 2 → F3 → fase 3 → F4 → fase 4 → 4b/F5 → 5 → 6.
+Rekkefølge: fase 1 → fase 2 → 2b/F2b → F3 → fase 3 → F4 → fase 4 → 4b/F5 → 5 → 6.
 
 | Fase | Innhold | Ferdig når |
 |---|---|---|
@@ -887,6 +928,7 @@ Rekkefølge: fase 1 → fase 2 → F3 → fase 3 → F4 → fase 4 → 4b/F5 →
 | ~~F0–F2. Frontend mot mock~~ | Skjelett, daglig sløyfe og tracker (FRONTEND §8) | ✅ 2026-10-10 |
 | ~~1. Fundament~~ | Repo-oppsett, config med `DATA_DIR`/`PROFILE_DIR`, DB + Alembic, HTTP-lag, NAV-kilde, Finn-API-kilde (`finn_api.py` + `finn_sig.py`, se spike 04), normalisering, dedupe, hardfilter, `jobsearcher run` uten LLM, `serve` med de første ekte endepunktene. Ingen Windows-spesifikk kode. | ✅ 2026-10-10 |
 | ~~2. Scoring + API v1~~ | LLM-backends, destiller, filter i batch, `/api` for oversikt, jobber, jobbdetalj, triage og tasks. Kobler F1. Trukket frem fra fase 4: tracker-API-et (kobler F2), logg-API-et og planleggeren i `serve`. | ✅ 2026-10-10 |
+| ~~2b. OpenRouter-reserve~~ | `llm/openrouter.py`, reserve-regel med bryter (§8.1), `anthropic_api` fjernet, migrasjon `0003`, `GET /api/llm/usage`, forbrukskortet (F2b). Sjekk mot Haiku: spike 05 §Oppdatering. | ✅ 2026-10-11 |
 | **F3. Søknadseditor** | FRONTEND §5.5 mot mock | Brev kan itereres mot mock-agent |
 | **3. Søknader** | Research, writer, revisjon, versjoner, `.docx`-eksport, `/api` for utkast. Kobler F3. | Brev kan lages, itereres og lastes ned |
 | **F4. Profil, innstillinger, logg** | FRONTEND §5.6–5.8 mot mock | Profilen kan redigeres uten filsystemtilgang |
@@ -907,6 +949,11 @@ F5 (drift i container) gjøres sammen med fase 4b.
 - [ ] Bestille privat token for NAV-feeden (e-post til nav.team.arbeidsplassen@nav.no)
 - [x] Gå gjennom selskapslisten i spike 03
 - [x] Fylle ut kontekstprofilen
+**Bølge 2b (OpenRouter-reserve):**
+- [x] Lage konto på openrouter.ai og fylle på kreditt ($10, 2026-10-11)
+- [x] Lage API-nøkkel → `OPENROUTER_API_KEY` i `.env`, med kredittgrense $10 (verifisert mot `/api/v1/key`)
+- [x] Lage management-nøkkel → `OPENROUTER_MANAGEMENT_KEY` i `.env` (verifisert mot `/api/v1/credits`)
+- [ ] Legge begge nøklene i Pi-ens `jobsearcher.env` (fase 4b)
 
 Finns lagrede søk og Gmail-etiketten `JobSearcher/Finn` trengs ikke lenger — de kan slettes.
 
@@ -922,14 +969,16 @@ Finns lagrede søk og Gmail-etiketten `JobSearcher/Finn` trengs ikke lenger — 
 
 | #   | Spørsmål / risiko                                                                                                                           | Håndtering                                                                                                                                                                                                               |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | **Finn-API-et er en gråsone.** Finns ToS forbyr automatisert innhenting uten skriftlig samtykke. Mobil-API-et er uoffisielt for tredjepart. | Bevisst risiko. Privat, lokal, lavvolum (1 bruker, ~5 søk per døgn, annonsesiden bare for nye jobber). Realistiske headere og rate-limit. Verktøyet publiseres ikke. Detaljer i spike 04.                                                                  |
+| 1   | **Finn-API-et er en gråsone.** Finns ToS forbyr automatisert innhenting uten skriftlig samtykke. Mobil-API-et er uoffisielt for tredjepart. | Bevisst risiko. Privat, lokal, lavvolum (1 bruker, 1–4 søkekall og 10–30 annonsesider per døgn). Tiltakene i §4.2 punkt 8: realistiske app- og WebView-headere, tilfeldig avstand, tak per kjøring, stopp ved 403/429, pause mellom hentinger. `robots.txt` på `www.finn.no` tillater `/job/ad/` for vår agent, men stenger AI-crawlere (GPTBot, ClaudeBot) ute fra `/job/`; vi crawler ikke, men annonseteksten sendes til en LLM for scoring. Verktøyet publiseres ikke. Detaljer i spike 04.                                                                  |
 | 2   | **Finn-signaturen eller endepunktene brytes** (nøkkelrotasjon, format- eller endepunktsendring, deteksjon).                                 | Pin appversjon (`261006-ec709768`) fra APK-en i `User-Agent`. Oppdater `finn_sig.py` eller dekompiler ny APK ved behov. Kildehelse (§12) oppdager 401/403 raskt. Manuell innliming (`manual`-kilden) som siste fallback. |
-| 3   | Anthropic kan endre vilkår eller fakturering for `claude -p`                                                                                | `anthropic_api` er klar som alternativ. Byttet er én linje i config.                                                                                                                                                     |
+| 3   | Anthropic kan endre vilkår eller fakturering for `claude -p` | `openrouter` er reserve og tar over kall som feiler (§8.1). Den kan også settes som standard med én linje i config. |
 | 4   | Strengt senioritetsfilter kan gå glipp av gode stillinger                                                                                   | Stillinger uten oppgitt senioritet vises med maks score 65. Hardfilteret følges opp via "Forkastet i dag".                                                                                                               |
 | 5   | NAV-token roterer eller utløper                                                                                                             | Privat token, og kildehelsevarsel ved 401                                                                                                                                                                                |
 | 6   | Karrieresider endrer struktur og gir støy i sideovervåkeren                                                                                 | Hash av hovedinnhold med CSS-selektor, og LLM-uttrekk bare ved endring                                                                                                                                                   |
 | 7   | Skrive-agenten finner på fakta                                                                                                              | Faktaregel og `claims_to_verify` i editoren                                                                                                                                                                              |
-| 8   | `claude -p` i container på arm64: innlogging med `CLAUDE_CODE_OAUTH_TOKEN`, isolasjonsflaggene og tokenets levetid er ikke verifisert       | Verifiseres først i fase 4b. Faller det, brukes `anthropic_api` på Pi-en.                                                                                                                                                |
+| 8   | `claude -p` i container på arm64: innlogging med `CLAUDE_CODE_OAUTH_TOKEN`, isolasjonsflaggene og tokenets levetid er ikke verifisert | Verifiseres først i fase 4b. Faller det, settes `llm.backend: openrouter` på Pi-en (bare HTTPS, ingen CLI). |
 | 9   | Profilen finnes bare i Pi-ens datavolum i drift. Restic-repoet ligger på samme disk som dataene (runbook §10).                              | `profile_revisions` gir historikk. Mulighet for eksport av profilen fra dashboardet. Følger Pi-ens plan for backup til ekstern disk.                                                                                     |
 | 11  | NAV-feeden er treg (13–60 s per side) og svarte 500/504 under første live-forsøk 2026-10-10 | 90 s tidsavbrudd, ingen raske nye forsøk, første vindu 7 dager. Cursoren står urørt ved feil, og neste daglige kjøring prøver igjen. Kildehelsen viser `fail`. |
+| 12  | Finn-identiteten er delvis gjettet: formatet på appens `User-Agent` (`HttpUserAgent.getUserAgent()`), WebView-Chrome-versjonen og enhetsbygget er ikke lest fra APK-en eller en ekte enhet, og appversjonen blir gammel over tid | Verdiene står i `sources.yaml` (`os_version`, `device_model`, `device_build`, `webview_chrome_version`, `app_version`). Neste gang en APK dekompileres (spike 04): les `HttpUserAgent` og oppdater appversjon og WebView-versjon samtidig, helst hvert par måneder. |
+| 13  | Reserven (DeepSeek via OpenRouter): annonsetekst og destillert profil går til tredjepartsleverandører, kvaliteten kan variere med leverandør og kvantisering, og promptene er skrevet for Claude | `data_collection: deny` og `require_parameters` i hvert kall (§8.1). Sammenlignet med Haiku 2026-10-11 (spike 05): samme rangering, men ~20 poeng høyere score, så absolutte terskler (`notify_min_score`) stemmer ikke for reservescorer. Reservekall er merket i `agent_runs` (`fallback_from`), så de kan scores på nytt med Claude (ikke automatisk ennå). |
 | 10  | Frontend og backend glir fra hverandre mens frontend bygges mot mock                                                                        | Kontrakten er Pydantic-modellene; TS-typer genereres og fixtures typesjekkes (FRONTEND §3.1)                                                                                                                             |

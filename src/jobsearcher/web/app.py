@@ -21,6 +21,7 @@ from jobsearcher.web.routes import (
     applications,
     drafts,
     jobs,
+    llm,
     logs,
     overview,
     profile,
@@ -70,6 +71,7 @@ def create_app(dist: Path | None = DIST) -> FastAPI:
 
     for module in (
         overview,
+        llm,
         jobs,
         applications,
         drafts,

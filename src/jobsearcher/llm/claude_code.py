@@ -26,7 +26,14 @@ import time
 from pathlib import Path
 from typing import Any
 
-from jobsearcher.llm.base import AgentRequest, AgentResponse, LLMError, Usage, output_json_schema
+from jobsearcher.llm.base import (
+    AgentRequest,
+    AgentResponse,
+    LLMBackendError,
+    LLMError,
+    Usage,
+    output_json_schema,
+)
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +43,13 @@ MODEL_ALIASES = {"fast": "haiku", "balanced": "sonnet", "best": "opus"}
 
 TOOL_NAMES = {"web_search": "WebSearch", "web_fetch": "WebFetch"}
 
+# Error subtypes caused by the request or the model's answer, not by the backend. These do not
+# trigger the fallback (ARCHITECTURE §8.1): the same request would fail the same way elsewhere.
+# Every other error result (login expired, usage limit, API/process errors) is a backend error.
+MODEL_ERROR_SUBTYPES = frozenset(
+    {"error_max_budget_usd", "error_max_structured_output_retries", "error_max_turns"}
+)
+
 
 def find_cli() -> str:
     found = shutil.which("claude")
@@ -43,7 +57,7 @@ def find_cli() -> str:
         return found
     if FALLBACK_CLI.exists():
         return str(FALLBACK_CLI)
-    raise LLMError("Fant ikke `claude` CLI. Installer Claude Code eller bytt llm.backend.")
+    raise LLMBackendError("Fant ikke `claude` CLI. Installer Claude Code eller bytt llm.backend.")
 
 
 def child_env() -> dict[str, str]:
@@ -92,7 +106,8 @@ def build_command(req: AgentRequest, cli: str, system_prompt_file: Path) -> list
 def parse_result(data: dict[str, Any], *, structured: bool, fallback_model: str) -> AgentResponse:
     if data.get("is_error") or data.get("subtype") not in (None, "success"):
         detail = data.get("result") or data.get("subtype") or "ukjent feil"
-        raise LLMError(f"claude -p feilet: {detail}")
+        error_cls = LLMError if data.get("subtype") in MODEL_ERROR_SUBTYPES else LLMBackendError
+        raise error_cls(f"claude -p feilet: {detail}")
     u = data.get("usage") or {}
     cache_write = int(u.get("cache_creation_input_tokens") or 0)
     cache_read = int(u.get("cache_read_input_tokens") or 0)
@@ -160,9 +175,9 @@ class ClaudeCodeBackend:
                     timeout=timeout,
                 )
             except subprocess.TimeoutExpired as e:
-                raise LLMError(f"claude -p brukte mer enn {timeout} s") from e
+                raise LLMBackendError(f"claude -p brukte mer enn {timeout} s") from e
             except OSError as e:
-                raise LLMError(f"Kunne ikke starte claude -p: {e}") from e
+                raise LLMBackendError(f"Kunne ikke starte claude -p: {e}") from e
             elapsed_ms = int((time.monotonic() - started) * 1000)
         finally:
             Path(prompt_path).unlink(missing_ok=True)
@@ -171,7 +186,7 @@ class ClaudeCodeBackend:
             data = json.loads(proc.stdout)
         except ValueError as e:
             tail = (proc.stderr or proc.stdout or "").strip()[-500:]
-            raise LLMError(f"claude -p ga ugyldig svar (exit {proc.returncode}): {tail}") from e
+            raise LLMBackendError(f"claude -p ga ugyldig svar (exit {proc.returncode}): {tail}") from e
         resp = parse_result(
             data, structured=req.output_schema is not None, fallback_model=MODEL_ALIASES[req.model_tier]
         )

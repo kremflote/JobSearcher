@@ -1,9 +1,9 @@
 # Kontekstmanifest per agent (ARCHITECTURE §6.2).
 #
 # model_tier: fast | balanced | best (→ haiku/sonnet/opus, §8.2)
-# effort:     low | medium | high (sendes som --effort / output_config.effort)
+# effort:     low | medium | high (sendes som --effort / reasoning.effort hos openrouter)
 # prompt:     systemprompt i context/prompts/ (versjonen i frontmatter lagres på resultatet)
-# context:    slices som er felles for kallet (caches på API-backend)
+# context:    slices som er felles for kallet (sendes først, så leverandørens prompt-cache treffer)
 # per_item:   slices per element i en batch (hver annonse pakkes i <job_ad id="…">)
 # priority:   1 kuttes aldri, deretter kuttes 3 før 2 når input_budget_tokens overskrides
 # input_budget_tokens: maks estimert input (tegn / 3.5), inkludert systemprompten

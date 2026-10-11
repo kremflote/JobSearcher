@@ -60,6 +60,9 @@ def _summary_message(summary: object) -> str:
     message = "Ferdig: ingen nye jobber" if new == 0 else f"Ferdig: {new} nye jobber"
     if failed:
         message += f" (feil: {', '.join(failed)})"
+    skipped = [src.source for src in sources if getattr(src, "skipped", False)]
+    if skipped:
+        message += f" ({', '.join(skipped)} hoppet over: hentet nylig)"
     return message
 
 

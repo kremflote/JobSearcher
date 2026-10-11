@@ -70,6 +70,10 @@ class JobSource(SQLModel, table=True):
     url: str | None = None
     raw_path: str | None = None
     fetched_at: datetime = Field(default_factory=utcnow)
+    detail_attempts: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    """Failed ad-page fetches so far (Finn, §4.2). Retries are spaced 1, 3, 7 days, then stop."""
+    detail_next_at: datetime | None = None
+    """Earliest next ad-page retry; None = due now (or never tried)."""
 
 
 class JobContact(SQLModel, table=True):
@@ -176,6 +180,9 @@ class AgentRun(SQLModel, table=True):
     job_ids: list = _json()
     application_id: int | None = None
     backend: str
+    """Backend that answered (or failed): claude_code | openrouter | mock."""
+    fallback_from: str | None = None
+    """Set when this call was the fallback for another backend (ARCHITECTURE §8.1)."""
     model: str
     prompt_version: str
     input_tokens: int = 0

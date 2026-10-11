@@ -10,9 +10,10 @@ import {
   buildSettings,
   buildSourceStatus,
 } from './fixtures/system'
+import type { LlmState } from './fixtures/llm'
 import { clock } from './fixtures/time'
 
-export function createMockDb(now = new Date()) {
+export function createMockDb(now = new Date(), { llmState = 'account' }: { llmState?: LlmState } = {}) {
   const c = clock(now)
   const jobs = buildJobs(c)
   const applications = buildApplications(jobs, c)
@@ -33,6 +34,8 @@ export function createMockDb(now = new Date()) {
     lastRunAt: c.at(0, 7, 2),
     costMonthUsd: 4.37,
     costCapUsd: 25,
+    /** Which `GET /api/llm/usage` variant to serve (fixtures/llm.ts). */
+    llmState,
   }
 }
 

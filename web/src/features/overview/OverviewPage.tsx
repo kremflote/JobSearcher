@@ -14,13 +14,15 @@ import { deadlineInfo } from '@/lib/format'
 import { JOB_TYPE_LABEL } from '@/lib/status'
 import { cn } from '@/lib/utils'
 import { SOURCE_OPTIONS } from '@/features/jobs/filters'
+import { Card } from './Card'
+import { LlmUsageCard } from './LlmUsageCard'
 
 const SOURCE_LABEL = Object.fromEntries(SOURCE_OPTIONS.map((o) => [o.value, o.label])) as Record<string, string>
 const TYPE_ORDER: JobType[] = ['permanent', 'trainee', 'graduate', 'summer', 'unknown']
 
 export const ago = (iso: string) => formatDistanceToNowStrict(parseISO(iso), { locale: nb, addSuffix: true })
 
-/** Oversikt `/` (FRONTEND §5.1). Source status and cost sit under "Mer" on mobile. */
+/** Oversikt `/` (FRONTEND §5.1). Source status and LLM usage sit under "Mer" on mobile. */
 export function OverviewPage() {
   const { data, isPending, isError, refetch } = useOverview()
 
@@ -46,36 +48,12 @@ export function OverviewPage() {
             <NewSinceCard data={data.new_since_last} className="hidden lg:flex" />
             <div className="hidden flex-col gap-4 md:flex">
               <SourcesCard sources={data.sources} lastRunAt={data.last_run_at} />
-              <CostCard cost={data.cost} />
+              <LlmUsageCard />
             </div>
           </div>
         </div>
       )}
     </Page>
-  )
-}
-
-export function Card({
-  title,
-  action,
-  children,
-  className,
-  testId,
-}: {
-  title: string
-  action?: ReactNode
-  children: ReactNode
-  className?: string
-  testId?: string
-}) {
-  return (
-    <section className={cn('bg-card flex flex-col rounded-lg border', className)} data-testid={testId}>
-      <header className="flex h-10 items-center gap-2 border-b px-3">
-        <h2 className="text-sm font-semibold">{title}</h2>
-        <div className="ml-auto flex items-center gap-1">{action}</div>
-      </header>
-      {children}
-    </section>
   )
 }
 
@@ -219,26 +197,6 @@ export function SourcesCard({ sources, lastRunAt }: { sources: SourceStatus[]; l
           ))}
       </ul>
       {lastRunAt && <p className="text-muted-foreground border-t px-3 py-1.5 text-xs">Siste kjøring {ago(lastRunAt)}</p>}
-    </Card>
-  )
-}
-
-export function CostCard({ cost }: { cost: Overview['cost'] }) {
-  const pct = Math.min(100, Math.round((cost.month_usd / cost.cap_usd) * 100))
-  return (
-    <Card title="Kostnad denne måneden" testId="cost">
-      <div className="px-3 py-2.5">
-        <div className="flex items-baseline justify-between text-sm">
-          <span className="font-semibold tabular-nums">${cost.month_usd.toFixed(2)}</span>
-          <span className="text-muted-foreground text-xs tabular-nums">
-            av ${cost.cap_usd.toFixed(0)} ({pct} %)
-          </span>
-        </div>
-        <div className="bg-muted mt-2 h-1.5 overflow-hidden rounded-full" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Andel av kostnadstaket">
-          <div className={cn('h-full rounded-full', cost.warn ? 'bg-warn' : 'bg-foreground/60')} style={{ width: `${pct}%` }} />
-        </div>
-        {cost.warn && <p className="text-warn mt-2 text-xs">Over 80 % av taket.</p>}
-      </div>
     </Card>
   )
 }

@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, Field
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
-from sqlmodel import Session, select
+from sqlmodel import Session, or_, select
 
 from jobsearcher.api.schemas import Health
 from jobsearcher.config import Locations, Settings, env, load_locations, load_settings
@@ -39,12 +39,15 @@ log = logging.getLogger(__name__)
 Progress = Callable[[float, str], None]
 Cancel = Callable[[], bool]
 
-FINN_RATE_LIMIT = {"appsgw.finn.no": 2.5}
-"""Seconds between requests to the Finn mobile API gateway (spike 04)."""
 OSLO = ZoneInfo("Europe/Oslo")
 DETAIL_RETRY_DAYS = 14
 """Jobs still missing ad text are retried by `fetch_details` for this many days."""
 DETAIL_RETRY_MAX = 30
+DETAIL_RETRY_DELAYS_DAYS = (1, 3, 7)
+"""Wait after the 1st, 2nd, 3rd failed ad-page attempt; after that the job is not retried.
+Counts only attempts the source reports (`RawJob.detail_attempted`)."""
+DETAIL_RETRY_SLACK = timedelta(hours=2)
+"""Retries fall due a little early, so the daily start jitter never pushes them a day."""
 BOILERPLATE_SAMPLE = 50
 """Max other ads from the same employer compared for boilerplate."""
 
@@ -59,6 +62,8 @@ class SourceSummary(BaseModel):
     health: Health = "ok"
     errors: list[str] = Field(default_factory=list)
     message: str | None = None
+    skipped: bool = False
+    """The source declined to run (cooldown); see `message`."""
 
 
 class RunSummary(BaseModel):
@@ -93,7 +98,10 @@ def load_effective_settings(session: Session) -> Settings:
 
 def _load_state(session: Session, source: str) -> dict[str, CursorState]:
     rows = session.exec(select(SourceState).where(SourceState.source == source))
-    return {r.key: CursorState(cursor=r.cursor, etag=r.etag) for r in rows}
+    return {
+        r.key: CursorState(cursor=r.cursor, etag=r.etag, last_success_at=_aware(r.last_success_at))
+        for r in rows
+    }
 
 
 def _save_state(session: Session, source: str, state: dict[str, CursorState], now: datetime) -> None:
@@ -277,7 +285,10 @@ def _retry_stubs(session: Session, source: str, exclude: set[str], now: datetime
             Job.filtered_out == False,  # noqa: E712
             Job.description_clean.is_(None),
             Job.first_seen >= since,
+            JobSource.detail_attempts <= len(DETAIL_RETRY_DELAYS_DAYS),
+            or_(JobSource.detail_next_at.is_(None), JobSource.detail_next_at <= now),
         )
+        .order_by(JobSource.detail_attempts, Job.first_seen)
         .limit(DETAIL_RETRY_MAX)
     ).all()
     out = []
@@ -368,23 +379,42 @@ def process_jobs(
     jobs_by_id = {r.source_id: j for j, r in pending}
     for raw in detailed:
         job = jobs_by_id.get(raw.source_id)
-        if job is None or not raw.description_html:
+        if job is None:
+            continue
+        js = session.exec(
+            select(JobSource).where(JobSource.source == raw.source, JobSource.source_id == raw.source_id)
+        ).first()
+        if not raw.active:
+            # The ad page is gone (Finn 404/410): stop asking for it.
+            job.active = False
+            session.add(job)
+            summary.updated += 1
+            continue
+        if not raw.description_html:
+            if raw.detail_attempted and js is not None:
+                js.detail_attempts += 1
+                n = js.detail_attempts
+                js.detail_next_at = (
+                    now + timedelta(days=DETAIL_RETRY_DELAYS_DAYS[n - 1]) - DETAIL_RETRY_SLACK
+                    if n <= len(DETAIL_RETRY_DELAYS_DAYS) else None
+                )
+                session.add(js)
             continue
         overwrite = SOURCE_PRIORITY.get(raw.source, 0) >= primary_priority(session, job)
         apply_raw(session, job, raw, settings, overwrite=overwrite)
         session.add(job)
         _add_contacts(session, job, raw)
-        if raw.raw_path:
-            js = session.exec(
-                select(JobSource).where(JobSource.source == raw.source, JobSource.source_id == raw.source_id)
-            ).first()
-            if js is not None:
-                js.raw_path = raw.raw_path
-                session.add(js)
+        if js is not None:
+            js.raw_path = raw.raw_path or js.raw_path
+            js.detail_next_at = None
+            session.add(js)
         summary.details_fetched += 1
         hits = H.pre_detail_rules(job, settings, locations) + H.post_detail_rules(job, settings)
         _filter(session, job, hits, summary)
-    missing = sum(1 for j, _ in pending if not j.description_clean)
+    detail_message = getattr(source, "detail_message", None)
+    if detail_message:
+        summary.errors.append(detail_message)
+    missing = sum(1 for j, _ in pending if j.active and not j.description_clean)
     if missing:
         summary.errors.append(f"{missing} annonser mangler fortsatt tekst")
 
@@ -410,6 +440,12 @@ def run_source(
         log.exception("collect failed", extra={"data": {"source": source.name}})
         summary.health = "fail"
         summary.errors.append(f"collect: {e}")
+
+    if result is not None and result.skipped:
+        # The source declined to run (e.g. Finn cooldown): no jobs, no retries, no run row.
+        summary.message, summary.skipped = result.message, True
+        log.info("source skipped", extra={"data": {"source": source.name, "message": result.message}})
+        return summary
 
     if result is not None:
         summary.found = result.found or len(result.jobs)
@@ -476,10 +512,12 @@ def run_pipeline(
     should_cancel: Cancel | None = None,
     source_objects: list[SourceProtocol] | None = None,
     engine: Engine | None = None,
+    force: bool = False,
 ) -> RunSummary:
     """Run the daily pipeline once. Raises `RunLockedError` if another run holds the lock.
 
-    `source_objects` replaces the configured sources (tests).
+    `source_objects` replaces the configured sources (tests). `force` skips source cooldowns
+    and weekly schedules (Finn, §4.2).
     """
     engine = engine or get_engine()
     t0 = time.monotonic()
@@ -508,8 +546,8 @@ def run_pipeline(
             from jobsearcher.sources.http import HttpClient
             from jobsearcher.sources.registry import build_sources
 
-            http = HttpClient(per_domain_interval_s=FINN_RATE_LIMIT)
-            source_objects = build_sources(http, sources)
+            http = HttpClient()  # sources set the spacing for their own hosts
+            source_objects = build_sources(http, sources, force=force)
         try:
             n = max(1, len(source_objects))
             for i, source in enumerate(source_objects):

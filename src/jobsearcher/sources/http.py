@@ -1,12 +1,13 @@
 """Shared HTTP layer for sources (ARCHITECTURE §4.1).
 
-Rate limit per domain, retry with backoff, conditional requests (ETag/Last-Modified),
+Rate limit per domain (with random jitter), retry with backoff, conditional requests (ETag/Last-Modified),
 robots.txt, and raw response caching in DATA_DIR/cache.
 """
 
 from __future__ import annotations
 
 import logging
+import random
 import threading
 import time
 from datetime import UTC, datetime
@@ -24,6 +25,9 @@ DEFAULT_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 RETRY_STATUS = {429, 500, 502, 503, 504}
 ROBOTS_AGENT = "JobSearcher"
 
+Interval = float | tuple[float, float]
+"""Seconds between requests to one host: fixed, or (min, max) drawn at random per request."""
+
 
 class RobotsDisallowed(Exception):
     pass
@@ -35,8 +39,8 @@ class HttpClient:
     def __init__(
         self,
         *,
-        min_interval_s: float = 1.0,
-        per_domain_interval_s: dict[str, float] | None = None,
+        min_interval_s: Interval = 1.0,
+        per_domain_interval_s: dict[str, Interval] | None = None,
         retries: int = 3,
         backoff_s: float = 2.0,
         headers: dict[str, str] | None = None,
@@ -49,7 +53,7 @@ class HttpClient:
             transport=transport,
         )
         self._min_interval = min_interval_s
-        self._per_domain = per_domain_interval_s or {}
+        self._per_domain = dict(per_domain_interval_s or {})
         self._retries = retries
         self._backoff = backoff_s
         self._last: dict[str, float] = {}
@@ -67,8 +71,19 @@ class HttpClient:
 
     # --- politeness ------------------------------------------------------------
 
-    def _wait_turn(self, host: str) -> None:
+    def set_interval(self, host: str, interval: Interval) -> None:
+        """Set the spacing for one host (sources call this for their own domains)."""
+        self._per_domain[host] = interval
+
+    def _interval(self, host: str) -> float:
         interval = self._per_domain.get(host, self._min_interval)
+        if isinstance(interval, tuple | list):
+            lo, hi = float(interval[0]), float(interval[1])
+            return random.uniform(lo, max(lo, hi))
+        return float(interval)
+
+    def _wait_turn(self, host: str) -> None:
+        interval = self._interval(host)
         with self._lock:
             now = time.monotonic()
             wait = self._last.get(host, 0.0) + interval - now
@@ -76,13 +91,16 @@ class HttpClient:
         if wait > 0:
             time.sleep(wait)
 
-    def allowed(self, url: str) -> bool:
+    def allowed(self, url: str, headers: dict[str, str] | None = None) -> bool:
+        """robots.txt check for ROBOTS_AGENT. The robots.txt request itself goes out with the
+        caller's headers, so it looks like the rest of that source's traffic."""
         parts = urlsplit(url)
         base = f"{parts.scheme}://{parts.netloc}"
         if base not in self._robots:
             rp: RobotFileParser | None = RobotFileParser()
             try:
-                r = self._client.get(f"{base}/robots.txt")
+                self._wait_turn(parts.netloc)
+                r = self._client.get(f"{base}/robots.txt", headers=headers or {})
                 if r.status_code >= 400:
                     rp = None  # no robots.txt → everything allowed
                 else:
@@ -109,7 +127,7 @@ class HttpClient:
         retries: int | None = None,
     ) -> httpx.Response:
         """Send a request with rate limit and retry. 304 and 4xx are returned, not raised."""
-        if respect_robots and not self.allowed(url):
+        if respect_robots and not self.allowed(url, headers):
             raise RobotsDisallowed(url)
         hdrs = dict(headers or {})
         if etag:

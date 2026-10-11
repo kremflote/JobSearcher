@@ -134,16 +134,53 @@ function Fields({ filters, setFilters }: Pick<Props, 'filters' | 'setFilters'>) 
   )
 }
 
-/** PC (≥ 768 px): filters as a row above the list. */
+const FILTERS_OPEN_KEY = 'jobs.filtersOpen'
+
+function readFiltersOpen() {
+  try {
+    return localStorage.getItem(FILTERS_OPEN_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** PC (≥ 768 px): search above the list; the other filters fold out under it with a toggle. */
 export function FilterRow({ filters, setFilters, reset }: Props) {
+  const [open, setOpen] = useState(readFiltersOpen)
+  const count = activeFilterCount(filters)
+  const toggle = () => {
+    const next = !open
+    setOpen(next)
+    try {
+      localStorage.setItem(FILTERS_OPEN_KEY, next ? '1' : '0')
+    } catch {
+      // Storage unavailable: the toggle still works for this session.
+    }
+  }
   return (
-    <div className="flex flex-wrap items-center gap-1.5 border-b px-3 pb-2" data-testid="filter-row">
-      <SearchInput value={filters.q} onChange={(q) => setFilters({ q })} className="w-full" />
-      <Fields filters={filters} setFilters={setFilters} />
-      {activeFilterCount(filters) > 0 && (
-        <Button size="sm" variant="ghost" onClick={reset}>
-          <X /> Nullstill
+    <div className="flex flex-col gap-1.5 border-b px-3 pb-2" data-testid="filter-row">
+      <div className="flex items-center gap-1.5">
+        <SearchInput value={filters.q} onChange={(q) => setFilters({ q })} className="flex-1" />
+        <Button
+          size="sm"
+          variant={open ? 'secondary' : 'ghost'}
+          onClick={toggle}
+          aria-expanded={open}
+          aria-controls="job-filter-fields"
+        >
+          <SlidersHorizontal /> Filtre
+          {count > 0 && <span className="bg-primary text-primary-foreground rounded-full px-1.5 text-[10px]">{count}</span>}
         </Button>
+        {count > 0 && (
+          <Button size="sm" variant="ghost" onClick={reset}>
+            <X /> Nullstill
+          </Button>
+        )}
+      </div>
+      {open && (
+        <div id="job-filter-fields" className="flex flex-wrap items-center gap-1.5">
+          <Fields filters={filters} setFilters={setFilters} />
+        </div>
       )}
     </div>
   )

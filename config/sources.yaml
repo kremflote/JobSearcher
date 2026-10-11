@@ -6,26 +6,42 @@ finn_api:
   # sammen med ny APK.
   app_version: "261006-ec709768"
   app_build: "1005273389"
+  # Enheten appidentiteten later som den kjører på. Brukes både i app-headerne
+  # (x-nmp-os-version, x-nmp-device) og i WebView-User-Agent for annonsesidene, så de må
+  # henge sammen. Oppdateres sammen med appversjonen (spike 04).
+  os_version: "14"
+  device_model: "Pixel 8"
+  device_build: "AP2A.240805.005"
+  webview_chrome_version: "129.0.6668.100"
+
+  # --- Hensyn til Finn (ARCHITECTURE §4.2) ---
+  # Sekunder mellom kall, trukket tilfeldig i [min, maks] per kall.
+  gateway_interval_s: [2, 4]      # appsgw.finn.no (søk)
+  ad_page_interval_s: [5, 10]     # www.finn.no (annonsesider)
+  # Maks annonsesider per kjøring. Resten hentes neste kjøring.
+  max_details_per_run: 40
+  # Hopp over Finn hvis forrige vellykkede Finn-henting var for under så mange timer siden
+  # ("Kjør nå" flere ganger). `jobsearcher run --force` overstyrer. 0 = av.
+  min_hours_between_runs: 3
   # Første kjøring (ingen cursor): maks antall sider (à 50 annonser) per søk.
   initial_max_pages: 3
   # Senere kjøringer: sikkerhetsgrense; vi stopper normalt ved cursoren lenge før.
   max_pages: 10
-  # Sjekk filter-ID-ene under mot ferske filter-metadata (ett ekstra kall per searchkey).
-  # Ukjente ID-er gir kildehelse "warn".
+  # Sjekk filter-ID-ene under mot Finns filter-metadata. Ukjente ID-er gir kildehelse "warn".
   validate_filters: true
+  # Filter-metadata caches i DATA_DIR/finn_filters.json så mange dager (ett kall per searchkey
+  # per periode).
+  filter_check_days: 7
   # Felles filtre for alle søk (spike 04 §Oppdatering). Flere verdier = gjentatt parameter.
   common_params:
     occupation: ["0.23"]            # IT utvikling
     work_experience: ["455", "456"] # ingen erfaring, junior
     education: ["465", "464"]       # ingen, høyskole/universitet lavere nivå
-  # Søk per id (§4.2). `job_type` er hint til normaliseringen; `geography` er dokumentasjon,
-  # selve stedsfilteret er `location`-parameteren.
+  # Søk per id (§4.2). `job_type` er hint til normaliseringen; selve stedsfilteret er
+  # `location`-parameteren. Oslo/Akershus trenger ikke eget søk: it_norge dekker dem, og
+  # geografien avgjøres lokalt (§5.1). `every_days`: søket kjøres bare så ofte (mangler = hver
+  # kjøring). Typesøkene er delmengder av it_norge og gir bare jobbtype-hint, så ukentlig holder.
   searches:
-    it_oslo:
-      searchkey: SEARCH_ID_JOB_FULLTIME
-      job_type: permanent
-      params:
-        location: ["1.20001.20061", "1.20001.20003"]  # Oslo, Akershus
     it_norge:
       searchkey: SEARCH_ID_JOB_FULLTIME
       job_type: permanent
@@ -37,18 +53,21 @@ finn_api:
       params:
         location: ["0.20001"]
         job_duration: ["8098"]
+      every_days: 7
     graduate:
       searchkey: SEARCH_ID_JOB_FULLTIME
       job_type: graduate
       params:
         location: ["0.20001"]
         q: ["graduate"]
+      every_days: 7
     summer:
       searchkey: SEARCH_ID_JOB_FULLTIME
       job_type: summer
       params:
         location: ["0.20001"]
         job_duration: ["1816"]
+      every_days: 7
 
 nav:
   enabled: true

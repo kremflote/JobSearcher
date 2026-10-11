@@ -5,9 +5,10 @@ import { IS_MOCK, MockBadge } from '@/components/AppShell'
 import { MORE_ITEMS } from '@/components/nav'
 import { Page } from '@/components/Page'
 import { ThemeMenu } from '@/components/ThemeMenu'
-import { CostCard, SourcesCard } from '@/features/overview/OverviewPage'
+import { LlmUsageCard } from '@/features/overview/LlmUsageCard'
+import { SourcesCard } from '@/features/overview/OverviewPage'
 
-/** "Mer" on mobile (FRONTEND §4.2): the remaining pages, source status with "Kjør nå", and cost. */
+/** "Mer" on mobile (FRONTEND §4.2): the remaining pages, source status with "Kjør nå", and LLM usage. */
 export function MorePage() {
   const { data } = useOverview()
   return (
@@ -23,12 +24,10 @@ export function MorePage() {
           </li>
         ))}
       </ul>
-      {data && (
-        <div className="mt-4 flex flex-col gap-4">
-          <SourcesCard sources={data.sources} lastRunAt={data.last_run_at} />
-          <CostCard cost={data.cost} />
-        </div>
-      )}
+      <div className="mt-4 flex flex-col gap-4">
+        {data && <SourcesCard sources={data.sources} lastRunAt={data.last_run_at} />}
+        <LlmUsageCard />
+      </div>
       <div className="mt-4 flex items-center justify-between rounded-lg border px-3 py-1.5 text-sm">
         Utseende
         <ThemeMenu />

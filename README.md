@@ -66,7 +66,7 @@ uv sync
 cd web && npm install
 ```
 
-**Fyll inn `.env`** (kopier `.env.example`). `NAV_FEED_TOKEN` trengs for NAV-kilden. Claude brukes via `claude`-CLI-en på abonnementet ditt (logg inn med `claude` først); alternativt `ANTHROPIC_API_KEY` og `llm.backend: anthropic_api` i `config/settings.yaml`.
+**Fyll inn `.env`** (kopier `.env.example`). `NAV_FEED_TOKEN` trengs for NAV-kilden. Claude brukes via `claude`-CLI-en på abonnementet ditt (logg inn med `claude` først). Valgfri reserve: `OPENROUTER_API_KEY` (DeepSeek via OpenRouter) tar over kall når `claude -p` feiler; uten nøkkelen er reserven av. `OPENROUTER_MANAGEMENT_KEY` (valgfri) viser kontosaldoen i forbrukskortet. `llm.backend: openrouter` i `config/settings.yaml` gjør OpenRouter til standard.
 
 **Kjør med ekte data:**
 
@@ -78,7 +78,7 @@ uv run jobsearcher serve
 cd web && npm run dev
 ```
 
-Åpne http://localhost:5173. `serve` starter API-et på port 8765 og kjører innhentingen hver dag kl. 07:00 (og tar igjen en tapt kjøring ved oppstart). "Kjør nå" i dashboardet starter en kjøring med en gang. Etter `npm run build` i `web/` serverer `serve` også dashboardet selv på http://127.0.0.1:8765.
+Åpne http://localhost:5173. `serve` starter API-et på port 8765 og kjører innhentingen hver dag mellom kl. 07:00 og 07:40 (tilfeldig starttid, og tar igjen en tapt kjøring ved oppstart). "Kjør nå" i dashboardet starter en kjøring med en gang. Etter `npm run build` i `web/` serverer `serve` også dashboardet selv på http://127.0.0.1:8765.
 
 Andre kommandoer:
 
@@ -86,7 +86,7 @@ Andre kommandoer:
 uv run jobsearcher run
 ```
 
-Én kjøring fra terminalen (`--no-score` hopper over AI-scoringen, `--source finn_api` begrenser til én kilde). `uv run jobsearcher distill` destillerer profilen på nytt. Data, logger og backuper ligger i `data/`.
+Én kjøring fra terminalen (`--no-score` hopper over AI-scoringen, `--source finn_api` begrenser til én kilde). Finn hoppes over hvis den ble hentet for under 3 timer siden, også fra "Kjør nå"; `--force` overstyrer pausen og kjører de ukentlige Finn-søkene med en gang. Bruk det sjelden. `uv run jobsearcher distill` destillerer profilen på nytt. Data, logger og backuper ligger i `data/`.
 
 **Prøv dashboardet med oppdiktede data** (ingen backend nødvendig):
 

@@ -3,6 +3,10 @@
 `run_agent` builds the context from the agent's manifest, calls the backend, validates the
 output against the Pydantic schema, retries once with the validation error in the prompt, and
 records one `agent_runs` row (tokens, cost and duration summed over both attempts).
+
+With the fallback (ARCHITECTURE §8.1) a failed primary attempt gets its own `error` row with the
+primary backend, and the row for the answer carries `backend` = the backend that answered and
+`fallback_from` = the primary.
 """
 
 from __future__ import annotations
@@ -20,7 +24,14 @@ from jobsearcher.agents.schemas import SCHEMAS
 from jobsearcher.context.builder import AgentManifest, BuiltContext, build_context, load_manifest
 from jobsearcher.context.loader import load_prompt
 from jobsearcher.db.models import AgentRun
-from jobsearcher.llm.base import AgentRequest, LLMBackend, LLMError, Usage, get_backend
+from jobsearcher.llm.base import (
+    AgentRequest,
+    FallbackError,
+    LLMBackend,
+    LLMError,
+    Usage,
+    get_backend,
+)
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +45,9 @@ class AgentOutcome:
     cost_usd: float
     run_id: int | None
     context: BuiltContext | None = None
+    backend: str = ""
+    """Backend that answered (the fallback when one was used)."""
+    fallback_from: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -93,6 +107,9 @@ def run_agent(
         timeout_s=settings.llm.timeout_s,
     )
 
+    backend_name = getattr(backend, "name", type(backend).__name__)
+    answered_by = backend_name
+    fallback_from: str | None = None
     usage = Usage()
     cost = 0.0
     duration = 0
@@ -102,10 +119,23 @@ def run_agent(
     for attempt in range(2):
         try:
             resp = backend.run(req)
+        except FallbackError as e:
+            if e.primary_error is not None:
+                _record_primary_failure(name, e.fallback_from, e.primary_error, e.primary_duration_ms,
+                                        model, prompt.version, job_ids, application_id, session)
+            answered_by, fallback_from = e.backend, e.fallback_from
+            error = str(e)
+            output = None
+            break
         except LLMError as e:
             error = str(e)
             output = None
             break
+        if resp.primary_error is not None and resp.fallback_from:
+            _record_primary_failure(name, resp.fallback_from, resp.primary_error, resp.primary_duration_ms,
+                                    model, prompt.version, job_ids, application_id, session)
+        answered_by = resp.backend or backend_name
+        fallback_from = resp.fallback_from
         usage = usage + resp.usage
         cost += resp.cost_usd
         duration += resp.duration_ms
@@ -124,7 +154,8 @@ def run_agent(
         agent=name,
         job_ids=list(job_ids or []),
         application_id=application_id,
-        backend=getattr(backend, "name", type(backend).__name__),
+        backend=answered_by,
+        fallback_from=fallback_from,
         model=model,
         prompt_version=prompt.version,
         input_tokens=usage.input_tokens,
@@ -143,6 +174,28 @@ def run_agent(
         cost_usd=cost,
         run_id=run_id,
         context=built,
+        backend=answered_by,
+        fallback_from=fallback_from,
+    )
+
+
+def _record_primary_failure(agent: str, backend: str, error: str, duration_ms: int, model: str,
+                            prompt_version: str, job_ids: list[int] | None, application_id: int | None,
+                            session: Session | None) -> None:
+    """The failed primary attempt before a fallback, as its own `error` row."""
+    _record(
+        AgentRun(
+            agent=agent,
+            job_ids=list(job_ids or []),
+            application_id=application_id,
+            backend=backend,
+            model=model,
+            prompt_version=prompt_version,
+            duration_ms=duration_ms,
+            status="error",
+            error=error,
+        ),
+        session,
     )
 
 

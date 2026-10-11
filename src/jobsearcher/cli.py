@@ -33,6 +33,9 @@ def init_db_cmd() -> None:
 def run(
     no_score: bool = typer.Option(False, "--no-score", help="Skip the filter agent (no LLM)."),
     source: list[str] = typer.Option(None, "--source", help="Only these sources (finn_api, nav)."),
+    force: bool = typer.Option(
+        False, "--force", help="Ignore source cooldowns and weekly searches (Finn). Use sparingly."
+    ),
 ) -> None:
     """Collect, normalize, dedupe, filter and (unless --no-score) score jobs once."""
     from jobsearcher.db.session import init_db
@@ -43,7 +46,7 @@ def run(
     setup_logging()
     init_db()
     try:
-        summary = run_pipeline(trigger="manual", score=not no_score, sources=source or None)
+        summary = run_pipeline(trigger="manual", score=not no_score, sources=source or None, force=force)
     except RunLockedError:
         typer.echo("En kjøring pågår allerede (data/run.lock).", err=True)
         raise typer.Exit(1)
