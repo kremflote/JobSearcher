@@ -16,7 +16,7 @@ from sqlmodel import Session, select
 
 from jobsearcher.agents import writer as writer_mod
 from jobsearcher.agents.distiller import distill
-from jobsearcher.agents.writer import write_first_draft
+from jobsearcher.agents.writer import clean_letter, write_first_draft
 from jobsearcher.config import env
 from jobsearcher.context.projects import rank_projects
 from jobsearcher.db.models import (
@@ -364,3 +364,10 @@ def test_docx_markdown():
     assert [t for t, s in paras if s == "List Bullet"] == ["punkt 1", "punkt 2"]
     bold = [r.text for p in doc.paragraphs for r in p.runs if r.bold]
     assert "fet" in bold and "Tittel" in bold
+
+
+def test_clean_letter_removes_dashes():
+    text = "Jeg bygde Matflote – en app for rester.\n– punkt\nStudert 2022–2025 — med A."
+    out = clean_letter(text)
+    assert "–" not in out and "—" not in out
+    assert out == "Jeg bygde Matflote, en app for rester.\n- punkt\nStudert 2022-2025, med A."

@@ -526,6 +526,7 @@ Ugyldig output → ett nytt forsøk med valideringsfeilen i prompten → derette
 - Språket følger `ad_language`, og kan overstyres i dashboardet.
 - Lengde og stil fra `style_overrides.md`. Stemme fra `voice.md`.
 - **Faktaregel:** Brevet kan bare påstå ting om brukeren som finnes i profilen. Alt annet skal i `claims_to_verify`, og vises som advarsel i editoren.
+- Kort form: prosjekter nevnes med én setning (navn, relevant teknologi, resultat), ikke forklart i detalj. Ingen tankestrek (– eller —): prompten forbyr den, og `clean_letter` bytter den ut i alt skriveren og revisoren lagrer (komma, eller bindestrek i tallintervaller og punktlister). Brukerens egne redigeringer røres ikke.
 - Skriveeksemplene ga ikke intervju. De brukes for stemmen, ikke for strukturen (står i `style_overrides.md`).
 - **Flyt** (`agents/writer.py`, oppgaven `draft`): destiller ved behov → research → skriver. Hvert steg har egen DB-transaksjon, så ingen skrivelås holdes under et LLM-kall. Søknaden opprettes (triage til Interessant) og flyttes til Utkast først når første versjon er lagret, så et mislykket utkast lar jobben være som den var. Agentmeldingen for første utkast nevner prosjektene og `notes_for_user`.
 - **Revisjon** (`agents/reviser.py`, oppgaven `revise`): et svar med `kind: revision` uten brevtekst gir ett nytt forsøk; en «revisjon» med uendret tekst lagres som svar.
