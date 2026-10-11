@@ -93,6 +93,7 @@
 - Live Finn check 2026-10-11 after the politeness pass: only `it_norge` ran (weekly searches not due), one gateway call, 0 new ads since the cursor, so ad-page spacing is still unobserved live.
 
 ### Waiting on the user
+- [ ] Add the Uptime Kuma monitor in its UI (no clean API without your Kuma login): HTTP(s), name "JobSearcher", URL `http://jobsearcher:8765/api/health`, 60 s, status 200, same notifications as the others.
 - [ ] (Postponed by the user 2026-10-11) NAV private token → `NAV_FEED_TOKEN` in `.env` (email in ARCHITECTURE §18). `.env` currently has NAV's **public** dev token, which rotates. NAV has not completed a live run yet: its gateway returned 500/504 on 2026-10-10 (spike 01 §Oppdatering). The daily run retries; check `GET /api/logs/runs` or Oversikt › Kildestatus.
 - [x] Wave 2b setup: OpenRouter account with $10 credit; `OPENROUTER_API_KEY` (limit $10) and `OPENROUTER_MANAGEMENT_KEY` in `.env`, both verified live 2026-10-11. Copied to the Pi's `jobsearcher.env` 2026-10-11.
 - [ ] NAV token, when it arrives: put it in the Pi's `~/infra/config/jobsearcher/jobsearcher.env` (and the PC `.env`), then `ssh pi 'cd ~/infra && docker compose up -d jobsearcher'` to reload it.
