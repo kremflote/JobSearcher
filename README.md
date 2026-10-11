@@ -78,7 +78,7 @@ uv run jobsearcher serve
 cd web && npm run dev
 ```
 
-Åpne http://localhost:5173. `serve` starter API-et på port 8765 og kjører innhentingen hver dag mellom kl. 07:00 og 07:40 (tilfeldig starttid, og tar igjen en tapt kjøring ved oppstart). "Kjør nå" i dashboardet starter en kjøring med en gang. Etter `npm run build` i `web/` serverer `serve` også dashboardet selv på http://127.0.0.1:8765.
+Åpne http://localhost:5173. `serve` starter API-et på port 8765 og kjører innhentingen hver dag mellom kl. 07:00 og 07:40 (tilfeldig starttid, og tar igjen en tapt kjøring ved oppstart). "Kjør nå" i dashboardet starter en kjøring med en gang. `serve` serverer også dashboardet selv på http://127.0.0.1:8765, og bygger det på nytt ved oppstart hvis frontenden er endret siden forrige build (slå av med `--no-build`). Etter en frontend-endring holder det å starte `serve` på nytt.
 
 Andre kommandoer:
 
