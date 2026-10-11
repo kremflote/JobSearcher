@@ -55,7 +55,8 @@ class TaskContext:
 
 
 TaskFn = Callable[[TaskContext], dict[str, Any] | str | None]
-"""Returns the task result (dict with application_id/draft_id), a final message, or None."""
+"""Returns the task result (dict with application_id/draft_id, plus an optional final `message`
+that is stored as the task message, not in the result), a final message, or None."""
 
 
 class TaskRunner:
@@ -139,7 +140,8 @@ class TaskRunner:
         try:
             out = fn(ctx)
             if isinstance(out, dict):
-                result = out
+                result = dict(out)
+                message = result.pop("message", None)
             elif isinstance(out, str):
                 message = out
             if ctx.should_cancel():

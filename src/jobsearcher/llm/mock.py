@@ -91,9 +91,48 @@ def _from_schema(schema: dict[str, Any]) -> Any:
     return None
 
 
+_TAG = r"<{0}>\n?(.*?)\n?</{0}>"
+
+
+def _tag(req: AgentRequest, name: str) -> str:
+    m = re.search(_TAG.format(name), req.full_user_content(), re.S)
+    return m.group(1).strip() if m else ""
+
+
+def _draft(req: AgentRequest) -> dict[str, Any]:
+    english = "engelsk" in req.user_content
+    letter = (
+        "Dear hiring team,\n\nThis is a mock draft.\n\nBest regards"
+        if english
+        else "Hei!\n\nDette er et mock-utkast.\n\nVennlig hilsen"
+    )
+    return {
+        "language": "en" if english else "no",
+        "letter_markdown": letter,
+        "used_projects": [],
+        "claims_to_verify": ["Mock-påstand"],
+        "notes_for_user": None,
+    }
+
+
+def _revision(req: AgentRequest) -> dict[str, Any]:
+    message = _tag(req, "user_message")
+    if message.rstrip().endswith("?"):
+        return {"kind": "answer", "reply": "Mock-svar på spørsmålet.", "letter_markdown": "", "claims_to_verify": []}
+    draft = _tag(req, "current_draft")
+    return {
+        "kind": "revision",
+        "reply": f"Endret etter: {message[:60]}",
+        "letter_markdown": f"{draft}\n\n(Revidert: {message})",
+        "claims_to_verify": [],
+    }
+
+
 BUILTIN: dict[str, Callable[[AgentRequest], dict[str, Any]]] = {
     "FilterBatchResult": _filter_batch,
     "DistilledProfile": _distilled,
+    "DraftResult": _draft,
+    "RevisionResult": _revision,
 }
 
 

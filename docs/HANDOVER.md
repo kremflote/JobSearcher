@@ -3,7 +3,7 @@
 > Keep this file short. Update it at the end of every session: status, next task, open questions, and one line in the log.
 
 **Last updated:** 2026-10-11
-**Phase:** 0, 0b, F0–F2, backend phases 1 + 2, the Finn politeness pass, wave 2b/F2b, the switch to DeepSeek as the only model and **F3 (søknadseditor, mock)** done. Open PRs: #9 (cost-cap commit, `feat/backend-phase1-2`) and the DeepSeek switch (`feat/deepseek-primary`); F3 is on `feat/frontend-f3`, branched from `feat/deepseek-primary`, uncommitted. The user merges. Roadmap (ARCHITECTURE §17): … → F3 → **phase 3 next** → F4 → 4 (ARCHITECTURE v0.18, FRONTEND v0.12).
+**Phase:** 0, 0b, F0–F3, backend phases 1–3, the Finn politeness pass, wave 2b/F2b and the switch to DeepSeek as the only model done. Open PRs: #9 (cost-cap commit, `feat/backend-phase1-2`) and the DeepSeek switch (`feat/deepseek-primary`); F3 is committed on `feat/frontend-f3`; phase 3 is on `feat/backend-phase3` (branched from `feat/frontend-f3`), uncommitted. The user merges. Roadmap (ARCHITECTURE §17): … → phase 3 → **F4 next** → 4 (ARCHITECTURE v0.19, FRONTEND v0.13).
 
 ## Status
 
@@ -75,12 +75,19 @@
   - Mock: generic task specs in `handlers.ts` (run/draft/revise), `mocks/drafts.ts` (writer 5 s, reviser 3 s), `mocks/docx.ts` writes a real stored-zip `.docx`.
   - Tests: pytest 236, Vitest 86, Playwright 32 (+8 skipped), typecheck and build OK.
   - After the user's first try (a question about a claim was pasted into the letter by the mock reviser): the chat now separates questions from edits. New table `draft_messages` (model + Alembic `0004`, route `GET /api/applications/{id}/messages` still 501), `RevisionResult.kind/reply` in ARCHITECTURE §7.2, prompt `reviser` v0.2. The mock answers questions without a new version. Tests now: pytest 237, Vitest 89, Playwright 34 (+8 skipped).
+- **Backend phase 3 (søknader) done** (2026-10-11), see ARCHITECTURE v0.19 §6.2/§6.4/§7.3/§7.4/§10.2, FRONTEND v0.13 §7.1:
+  - Agents: `researcher.py` (note in `data/companies/<slug>.md`, `full` cached 90 d, `limited` from the ad's employer description when research fails), `writer.py` (`draft` task: distill if needed → research → writer; the application is created/moved to Utkast only after the draft exists), `reviser.py` (`kind: answer|revision`). Phase-3 slices in `context/slices.py`, project ranking in `context/projects.py`, versions/messages in `tracking/drafts.py`, `.docx` in `export/docx.py` (python-docx, no template).
+  - API: all draft routes live (`POST /api/jobs/{id}/draft`, drafts, autosave with the 10-min rule, revise, messages, docx). Task results can carry a message (`web/tasks.py`). Mock backend has writer/reviser outputs. Prompts `reviser` v0.3, `researcher` v0.2.
+  - Verified end to end in the real UI against a DB copy with `llm.backend: mock`: draft → question answered without a version → edit makes v2 → `.docx` download.
+  - **Not tried live with DeepSeek yet** except one accidental researcher call (see session log).
+  - Tests: pytest 248 (new `tests/test_drafts.py`), web typecheck OK, `schema.d.ts` regenerated.
 - Live Finn check 2026-10-11 after the politeness pass: only `it_norge` ran (weekly searches not due), one gateway call, 0 new ads since the cursor, so ad-page spacing is still unobserved live.
 
 ### Waiting on the user
 - [ ] (Postponed by the user 2026-10-11) NAV private token → `NAV_FEED_TOKEN` in `.env` (email in ARCHITECTURE §18). `.env` currently has NAV's **public** dev token, which rotates. NAV has not completed a live run yet: its gateway returned 500/504 on 2026-10-10 (spike 01 §Oppdatering). The daily run retries; check `GET /api/logs/runs` or Oversikt › Kildestatus.
 - [x] Wave 2b setup: OpenRouter account with $10 credit; `OPENROUTER_API_KEY` (limit $10) and `OPENROUTER_MANAGEMENT_KEY` in `.env`, both verified live 2026-10-11. Still to do at phase 4b: copy them to the Pi's `jobsearcher.env`.
 - [ ] Merge PR #9 and the DeepSeek PR, then `git checkout main && git pull` and restart `serve` so it runs with `llm.backend: openrouter` (the 07:00 run otherwise uses the code the process started with). Run `uv sync` once if `anthropic` is still installed.
+- [ ] **Run `uv sync` once after stopping `serve`.** On 2026-10-11 `uv add python-docx` failed halfway because the running `serve` held `.venv/Scripts/jobsearcher.exe`. It uninstalled most packages; they were reinstalled with `uv pip install` from the lockfile and the project's editable install was restored, so things work, but `uv sync` puts the venv back in a clean state.
 - [ ] Keep OpenRouter credit topped up: it now pays for all scoring (~$0.001/job). The card warns under $1.
 - [ ] NAV now answers **401** (the public dev token expired, run 2026-10-11 07:00), so the private `NAV_FEED_TOKEN` is required.
 - [x] Geography per job type (ARCHITECTURE §5.3) confirmed: permanent = `oslo_omegn`, trainee/graduate/summer = `norge`.
@@ -91,16 +98,16 @@
 - (No longer needed: Finn saved searches, Gmail label `JobSearcher/Finn`, sample `.eml` fixture. The user can delete them.)
 
 ## Next task
-1. **User test of F3** in mock mode (`npm run dev:mock -- --host`): write a letter end to end on PC and phone. Then **backend phase 3** below (writer/reviser on DeepSeek too, tiers `balanced`/`best` all map to it). The UI is ready; phase 3 only has to fill the 501 routes per FRONTEND §7 (incl. the 10-min in-place rule and `draft_exists`/`no_draft`).
+1. **First live letter with DeepSeek** (needs the user's go-ahead, it costs a few cents): restart `serve` on `feat/backend-phase3`, press "Lag søknadsutkast" on a good job, ask a question and request an edit in the chat, download the `.docx`. Judge the letter quality, then tune `writer.md`/`reviser.md` (bump `version`). Check the `.docx` sender block matches the keys in the user's `profile.yaml` (ARCHITECTURE §10.2). Then **F4** (profil, innstillinger, logg) against mock.
 2. Collect the user's feedback on the new DeepSeek scores while they triage; check `notify_min_score: 70` against triage before the digest (phase 4). The first Finn run with new ads should show ad pages ~5–10 s apart in the log.
 3. NAV: postponed until the user has the private token. Then `uv run jobsearcher run --source nav --no-score` and tune `search.title_require_any` from `GET /api/logs/discarded`.
 
-Known small things: the API's `is_new` groups `scrape_runs` within 1 h as one run (no run id column; add one if it misbehaves). `agents.filter.rescore()` has no UI/CLI yet (F4). Phase-3 context slices are not written. `llm.fallback` is read from `settings.yaml` only (dashboard overrides don't apply). `by_backend.calls` for `claude_code` counts failed attempts too.
+Known small things: the API's `is_new` groups `scrape_runs` within 1 h as one run (no run id column; add one if it misbehaves). `agents.filter.rescore()` has no UI/CLI yet (F4). `llm.fallback` is read from `settings.yaml` only (dashboard overrides don't apply). `by_backend.calls` for `claude_code` counts failed attempts too.
 
 The F1 user test (triage a mock day in < 2 min on mobile) has not been reported; the user gave F1 feedback and asked to start F2. Known small things: the main JS chunk is > 500 kB (code-split in F5); the PC filter row on Jobber wraps to three lines.
 
-### Next: backend phase 3 (søknader)
-Research, writer and reviser agents, the phase-3 context slices + `context/projects.py`, drafts and chat API (`web/routes/drafts.py` incl. `messages`, `POST /api/jobs/{id}/draft` in `routes/jobs.py`; writer and reviser write `draft_messages`, reviser returns `kind: answer|revision`), `.docx` export with python-docx (`Content-Disposition` filename). Connects F3; the mock in `web/src/mocks/drafts.ts` shows the expected behaviour. Known F3 gaps: the editor only locks the text during a revision it started itself (after a reload mid-revision it is editable); the main JS chunk is still > 500 kB.
+### Next: F4 (profil, innstillinger, logg)
+FRONTEND §5.6–5.8 against mock, then phase 4 connects it. Known phase-3 gaps: at the cost cap, drafts and revisions fail with a message instead of asking for confirmation (ARCHITECTURE §8.3); a failed revision leaves the user's chat message without an answer; the editor only locks the text during a revision it started itself; the main JS chunk is still > 500 kB.
 
 ## Open questions and risks (details in ARCHITECTURE §19)
 1. **Finn mobile API is a ToS grey area.** Deliberate, informed decision; low-volume, private use. See spike 04.
@@ -138,3 +145,4 @@ Research, writer and reviser agents, the phase-3 context slices + `context/proje
 - 2026-10-11: Opened PR #9 for the unmerged cost-cap commit (auto-merge needs the user). Switched to DeepSeek via OpenRouter as the only model (no fallback), filter prompt v0.3 calibrated against Haiku over three runs (spike 05), added `jobsearcher rescore [--all]`, rescored all 63 live jobs. User postponed NAV. ARCHITECTURE v0.16, spike 05 update, README, AGENTS.
 - 2026-10-11: Built frontend wave F3 (søknadseditor) against mock on `feat/frontend-f3`: `/soknader`, editor with autosave, revision chat, versions with word diff/restore, claims, copy, `.docx`, "Merk som søkt"; "Lag søknadsutkast" live in the job detail. Contract: latest draft on tracker cards (backend filled), `base_draft_id`/`draft_id`, in-place autosave < 10 min. FRONTEND v0.11, ARCHITECTURE v0.17.
 - 2026-10-11: User tried F3 in mock mode and asked the chat a question, which the mock pasted into the letter (the letter text is a template, not DeepSeek). Chat now separates questions from edits: `draft_messages` table (`0004`), `GET /api/applications/{id}/messages`, `RevisionResult.kind`, reviser prompt v0.2, mock answers questions. ARCHITECTURE v0.18, FRONTEND v0.12.
+- 2026-10-11: Built backend phase 3 on `feat/backend-phase3`: researcher/writer/reviser agents, phase-3 slices, project ranking, drafts/chat API, `.docx` export (python-docx). ARCHITECTURE v0.19, FRONTEND v0.13, prompts reviser v0.3 / researcher v0.2. Incident: a UI test server meant for a DB copy ignored its `--env-file` and ran against the real `data/` with `openrouter`; it made one real researcher call (Nav, $0.008, `agent_runs` #15, `data/companies/nav.md` kept) and was stopped mid-writer call (likely billed but not logged; no application or draft written). The orphaned task row was marked failed. The retest used a launcher that sets env vars in Python and a canary row.

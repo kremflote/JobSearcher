@@ -1,8 +1,12 @@
 """Context slices (ARCHITECTURE §6.2 "Kilder for alle slices").
 
 A slice is a function `(SliceContext, spec) -> str | None`. `None` means "nothing to add".
-Slices that need a missing derived file raise `ContextMissing`. Slices for later phases
-(company_note, relevant_projects, current_draft, ...) are added with their agents.
+Slices that need a missing derived file raise `ContextMissing`.
+
+The phase-3 slices read what the caller puts in `extras` (agents/researcher.py, writer.py,
+reviser.py): `evaluation` (latest Evaluation row), `company` (Company row), `company_note`
+(markdown), `draft` (Draft row), `instruction` (the user's chat message) and `history`
+(earlier DraftMessage rows, oldest first). `extras["job"]` becomes `SliceContext.job`.
 """
 
 from __future__ import annotations
@@ -175,3 +179,115 @@ def job_ad(ctx: SliceContext, spec: dict[str, Any]) -> str:
     if max_tokens:
         text = truncate(text, int(max_tokens))
     return escape_untrusted(text)
+
+
+def escape_tag(text: str, tag: str) -> str:
+    """Stop untrusted or user text from closing the `<tag>` wrapper the builder puts around it."""
+    return text.replace(f"</{tag}", f"&lt;/{tag}")
+
+
+# --- Phase 3: applications ---------------------------------------------------------------
+
+
+def _bullets(items: list[str]) -> str:
+    return "\n".join(f"- {x}" for x in items)
+
+
+@register("company_meta")
+def company_meta(ctx: SliceContext, spec: dict[str, Any]) -> str:
+    job = ctx.job
+    meta = job.meta or {}
+    company = ctx.extras.get("company")
+    lines = [f"Navn: {job.company}"]
+    org = getattr(company, "org_number", None) or job.org_number
+    if org:
+        lines.append(f"Organisasjonsnummer: {org}")
+    homepage = getattr(company, "homepage", None) or meta.get("employer_homepage")
+    if homepage:
+        lines.append(f"Hjemmeside: {homepage}")
+    if job.location_text:
+        lines.append(f"Sted (fra annonsen): {job.location_text}")
+    if meta.get("employer_description"):
+        lines.append(f"Beskrivelse fra annonsen:\n{meta['employer_description']}")
+    return escape_tag(escape_untrusted("\n".join(lines)), "company_meta")
+
+
+@register("job_ad_summary")
+def job_ad_summary(ctx: SliceContext, spec: dict[str, Any]) -> str:
+    job = ctx.job
+    ev = ctx.extras.get("evaluation")
+    lines = [f"Stilling: {job.title}", f"Arbeidsgiver: {job.company}"]
+    if job.location_text:
+        lines.append(f"Sted: {job.location_text}")
+    if ev is None:
+        # Not scored (yet): a short cut of the ad itself.
+        text = truncate((job.description_clean or "").strip(), int(spec.get("max_tokens") or 600))
+        if text:
+            lines.append(f"Annonse (forkortet):\n{text}")
+    else:
+        lines.append(f"Sammendrag: {ev.summary}")
+        if ev.key_requirements:
+            lines.append("Viktigste krav:\n" + _bullets(ev.key_requirements))
+        if ev.tech:
+            lines.append(f"Teknologi: {', '.join(ev.tech)}")
+    return escape_tag(escape_untrusted("\n".join(lines)), "job_ad_summary")
+
+
+@register("company_note")
+def company_note(ctx: SliceContext, spec: dict[str, Any]) -> str | None:
+    note = ctx.extras.get("company_note")
+    return escape_tag(escape_untrusted(note.strip()), "company_note") if note else None
+
+
+@register("evaluation")
+def evaluation(ctx: SliceContext, spec: dict[str, Any]) -> str | None:
+    ev = ctx.extras.get("evaluation")
+    if ev is None:
+        return None
+    lines = [f"Score: {ev.score}/100 ({ev.role_category})"]
+    if ev.match_reasons:
+        lines.append("Hvorfor den passer:\n" + _bullets(ev.match_reasons))
+    if ev.concerns:
+        lines.append("Bekymringer:\n" + _bullets(ev.concerns))
+    return "\n".join(lines)
+
+
+@register("relevant_projects")
+def relevant_projects(ctx: SliceContext, spec: dict[str, Any]) -> str | None:
+    from jobsearcher.context.projects import rank_projects
+
+    ev = ctx.extras.get("evaluation")
+    ranked = rank_projects(list(getattr(ev, "tech", None) or []), getattr(ev, "role_category", None))
+    if not ranked:
+        return None
+    top_k = int(spec.get("top_k") or 3)
+    return "\n\n".join(
+        f'<project title="{p.title}" match_score="{p.score}">\n{p.body}\n</project>' for p in ranked[:top_k]
+    )
+
+
+@register("current_draft")
+def current_draft(ctx: SliceContext, spec: dict[str, Any]) -> str:
+    draft = ctx.extras["draft"]
+    return escape_tag(draft.content.strip(), "current_draft")
+
+
+@register("user_message")
+def user_message(ctx: SliceContext, spec: dict[str, Any]) -> str:
+    return escape_tag(str(ctx.extras["instruction"]).strip(), "user_message")
+
+
+@register("revision_log")
+def revision_log(ctx: SliceContext, spec: dict[str, Any]) -> str | None:
+    history = list(ctx.extras.get("history") or [])
+    max_items = int(spec.get("max_items") or 5)
+    if not history:
+        return None
+    lines = []
+    for msg in history[-max_items:]:
+        who = "Søker" if msg.role == "user" else "Du"
+        text = " ".join(msg.text.split())
+        if len(text) > 400:
+            text = text[:400] + " …"
+        lines.append(f"- {who}: {text}")
+    return escape_tag("\n".join(lines), "revision_log")

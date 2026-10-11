@@ -567,6 +567,7 @@
           "jobs"
         ],
         "summary": "Start Draft",
+        "description": "Research + writer as a task (ARCHITECTURE §9.1 \"Utkast\"). 409 `draft_exists` if the\napplication has drafts or a draft for the job is already being written.",
         "operationId": "start_draft",
         "parameters": [
           {

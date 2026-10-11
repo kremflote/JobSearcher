@@ -77,25 +77,28 @@ class DistilledProfile(BaseModel):
 
 class CompanyNote(BaseModel):
     what_they_do: str
-    size_and_locations: str | None
-    tech_and_engineering: str | None
-    recent_news: Annotated[list[str], _max_items(3)]
-    culture_and_values: str | None
-    hooks_for_letter: list[str]
-    sources: list[str]
+    size_and_locations: OptStr
+    tech_and_engineering: OptStr = Field(description="stack, techblogg, open source")
+    recent_news: Annotated[list[str], _max_items(3)] = Field(description="maks 3, med måned og år")
+    culture_and_values: OptStr
+    hooks_for_letter: Annotated[list[str], _max_items(4)] = Field(
+        description="2–4 konkrete ting brevet kan koble seg til"
+    )
+    sources: list[str] = Field(description="URL-er du faktisk brukte")
 
 
 class DraftResult(BaseModel):
     language: Literal["no", "en"]
-    letter_markdown: str
-    used_projects: list[str]
-    claims_to_verify: list[str]
-    notes_for_user: str | None
+    letter_markdown: str = Field(description="Bare brevteksten, uten adresse- og datoblokk")
+    used_projects: list[str] = Field(description="Titler på prosjektene brevet bruker")
+    claims_to_verify: list[str] = Field(description="Påstander om søkeren som ikke er dekket av profilen")
+    notes_for_user: OptStr = Field(description="F.eks. at annonsen ber om vitnemål")
 
 
 class RevisionResult(BaseModel):
-    letter_markdown: str
-    change_summary: str
+    kind: Literal["revision", "answer"] = Field(description="answer = bare svar, ingen ny versjon")
+    reply: str = Field(description="Svaret i chatten; ved revision én setning om hva som ble endret")
+    letter_markdown: str = Field(description="Hele det reviderte brevet ved revision, ellers tom")
     claims_to_verify: list[str]
 
 

@@ -2,7 +2,7 @@ from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from sqlmodel import Session
+from sqlmodel import Session, col, select
 
 from jobsearcher.api.schemas import (
     JobDetail,
@@ -20,7 +20,7 @@ from jobsearcher.db import models as m
 from jobsearcher.db.session import get_session
 from jobsearcher.tracking.status import InvalidTransition, local_today, triage
 from jobsearcher.web import queries
-from jobsearcher.web.errors import ApiError, not_implemented
+from jobsearcher.web.errors import ApiError
 
 router = APIRouter(tags=["jobs"])
 
@@ -120,5 +120,33 @@ def set_job_status(
 
 
 @router.post("/jobs/{job_id}/draft", status_code=202)
-def start_draft(job_id: int) -> TaskRef:
-    raise not_implemented()
+def start_draft(job_id: int, session: SessionDep) -> TaskRef:
+    """Research + writer as a task (ARCHITECTURE §9.1 "Utkast"). 409 `draft_exists` if the
+    application has drafts or a draft for the job is already being written."""
+    from jobsearcher.agents.writer import DraftExists, check_can_draft, write_first_draft
+    from jobsearcher.web.routes.drafts import run_agent_task
+    from jobsearcher.web.tasks import get_runner
+
+    _get_job(session, job_id)
+
+    def guard() -> None:
+        from jobsearcher.db.session import session_scope
+
+        with session_scope() as s:
+            try:
+                check_can_draft(s, job_id)
+            except DraftExists as e:
+                raise ApiError(409, "draft_exists", str(e)) from e
+            for task in s.exec(
+                select(m.Task).where(m.Task.kind == "draft", col(m.Task.status).in_(("queued", "running")))
+            ):
+                if (task.params or {}).get("job_id") == job_id:
+                    raise ApiError(409, "draft_exists", "Et utkast til denne jobben lages allerede.")
+
+    def task(ctx) -> dict:
+        return run_agent_task(
+            ctx,
+            lambda c: write_first_draft(job_id, progress=c.progress, should_cancel=c.should_cancel),
+        )
+
+    return TaskRef(task_id=get_runner().submit("draft", {"job_id": job_id}, task, guard=guard))
