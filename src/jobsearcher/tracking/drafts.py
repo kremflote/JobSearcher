@@ -129,6 +129,7 @@ def add_message(
     *,
     draft_id: int | None = None,
     agent_run_id: int | None = None,
+    style_rule: str | None = None,
 ) -> DraftMessage:
     msg = DraftMessage(
         application_id=application_id,
@@ -136,6 +137,7 @@ def add_message(
         text=text,
         draft_id=draft_id,
         agent_run_id=agent_run_id,
+        style_rule=style_rule,
     )
     session.add(msg)
     session.flush()

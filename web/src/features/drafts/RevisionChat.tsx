@@ -1,4 +1,4 @@
-import { Bot, Loader2, Send } from 'lucide-react'
+import { Bot, Check, Loader2, Send } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import type { DraftMessage, DraftSummary, Task } from '@/api/types'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,7 @@ export function RevisionChat({
   pending,
   onSend,
   onSelectVersion,
+  onSaveRule,
   disabled,
   className,
 }: {
@@ -29,6 +30,7 @@ export function RevisionChat({
   pending: PendingRevision | null
   onSend: (instruction: string) => void
   onSelectVersion: (id: number) => void
+  onSaveRule: (messageId: number) => void
   disabled: boolean
   className?: string
 }) {
@@ -81,6 +83,7 @@ export function RevisionChat({
                       </button>
                     </>
                   )}
+                  {item.style_rule && <StyleRule message={item} onSave={() => onSaveRule(item.id)} />}
                 </AgentBubble>
               )}
             </li>
@@ -148,6 +151,28 @@ export function RevisionChat({
 function history(messages: DraftMessage[], versions: DraftSummary[]): (DraftMessage | DraftSummary)[] {
   return [...messages, ...versions.filter((v) => v.author === 'user')].sort((a, b) =>
     a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0,
+  )
+}
+
+/** A rule the reviser suggests for all letters; saving appends it to style_overrides.md. */
+function StyleRule({ message, onSave }: { message: DraftMessage; onSave: () => void }) {
+  return (
+    <div className="bg-background mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border px-2 py-1.5">
+      <span className="flex-1 basis-40">
+        <span className="text-muted-foreground text-xs">Stilregel for alle brev: </span>
+        {message.style_rule}
+      </span>
+      {message.style_rule_saved ? (
+        <span className="text-muted-foreground flex items-center gap-1 text-xs">
+          <Check className="size-3.5" aria-hidden />
+          Lagret
+        </span>
+      ) : (
+        <Button type="button" size="xs" variant="outline" onClick={onSave}>
+          Lagre som stilregel
+        </Button>
+      )}
+    </div>
   )
 }
 

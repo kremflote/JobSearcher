@@ -1,12 +1,13 @@
 # JobSearcher: design- og arkitekturdokument
 
-> Status: v0.19 (2026-10-11). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F3, backend-fase 1–3 og bølge 2b/F2b er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), dashboardets oversikt, jobbliste, tracker og søknadseditor går mot ekte data, og alle LLM-kall går til DeepSeek via `openrouter`. Søknadsutkast er ikke prøvd live med DeepSeek ennå. Neste: F4.
+> Status: v0.20 (2026-10-11). Fase 0 og 0b (Finn-sjekk) er gjennomført, se `docs/spikes/`. Frontend-bølgene F0–F3, backend-fase 1–3 og bølge 2b/F2b er ferdige: Finn hentes, filtreres og scores (NAV-kilden er bygget, men ikke kjørt live ennå, §19 #11), dashboardets oversikt, jobbliste, tracker og søknadseditor går mot ekte data, og alle LLM-kall går til DeepSeek via `openrouter`. Søknadsutkast er ikke prøvd live med DeepSeek ennå. Neste: F4.
 > Dokumentet er "source of truth" for designet. UI-designet står i [FRONTEND.md](FRONTEND.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato       | Endring                                                                                                                                                                                                                                                                           |
 | ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v0.20   | 2026-10-11 | «Lagre som stilregel»: revisoren foreslår en stilregel (`RevisionResult.style_rule`, §7.2) når chatmeldingen er en generell preferanse, og brukeren lagrer den med én knapp i `style_overrides.md` (§6.1, §7.4). Forslaget lagres på chatmeldingen (migrasjon `0005`, §9). Faktaregelen strammet inn (§7.4): påstander uten dekning i profilen skal ikke stå i brevet, heller ikke oppdiktede koblinger mellom teknologi og prosjekt; `claims_to_verify` er for dekkede, men kanskje for sterke formuleringer. Grunn: første live brev med DeepSeek koblet Azure fra annonsen til hjemmeserveren, og var 325 ord. Prompt `writer` v0.3, `reviser` v0.5. |
 | v0.19   | 2026-10-11 | Fase 3 bygget: research-, skrive- og revisjonsagentene, bitene for fase 3 (§6.2), prosjektvalg (§6.4), utkast-API og `.docx`-eksport. Presisert etter implementering: research bruker OpenRouters web-plugin, bare `full`-notater caches og et mislykket søk gir et `limited`-notat fra annonsen (§7.3); skriveren oppretter søknaden først når utkastet finnes (§7.4); utkast og revisjon avvises ved kostnadstaket i stedet for å be om bekreftelse (§8.3); eksporten bruker ingen mal og lagrer ikke fil (§10.2). Prompt `reviser` v0.3, `researcher` v0.2. |
 | v0.18   | 2026-10-11 | Revisjonschatten skiller spørsmål fra endringer: revisoren svarer i chatten uten ny versjon når meldingen er et spørsmål (`RevisionResult.kind`, §7.2; prompt `reviser` v0.2). Chatten lagres i ny tabell `draft_messages` (migrasjon `0004`, §9). Grunn: i brukertesten av F3 ble et spørsmål om en påstand limt inn i brevet. |
 | v0.17   | 2026-10-11 | F3 bygget mot mock (FRONTEND §5.5, §17). Utkastregler presisert (§9.1): et utkast flytter Interessant → Utkast og oppretter søknaden for en jobb som ikke er vurdert; autosave oppdaterer en brukerversjon yngre enn 10 min på plass i stedet for å lage en ny; brukerversjoner arver `claims_to_verify` fra versjonen de bygger på. Tracker-kortet har nyeste utkast. |
@@ -315,7 +316,7 @@ context/
 | `profile.yaml` | Fakta: kontakt, utdanning med karakterer, ferdigheter med nivå 1–3, språk, praktisk |
 | `cv.md` | Full CV |
 | `motivation.md` | Hva brukeren vil, hvorfor utvikler, egenskaper, dealbreakers |
-| `style_overrides.md` | Eksplisitte stilregler. Overstyrer alt annet. |
+| `style_overrides.md` | Eksplisitte stilregler. Overstyrer alt annet. Regler lagret fra revisjonschatten havner under `## Fra revisjonschatten`. |
 | `projects/*.md` | Ett prosjekt per fil. Frontmatter: `tech`, `categories`, `role`, `link`, `highlight` |
 | `experience/*.md` | Én jobb per fil |
 | `writing_samples/*.md` | Egne tekster. Frontmatter `outcome` sier om de ga intervju. |
@@ -508,6 +509,7 @@ class RevisionResult(BaseModel):
     reply: str                    # chatsvaret; ved revision også change_summary (én linje)
     letter_markdown: str          # tom ved answer
     claims_to_verify: list[str]
+    style_rule: str | None        # foreslått stilregel når meldingen gjelder alle brev, ellers null
 ```
 
 Ugyldig output → ett nytt forsøk med valideringsfeilen i prompten → deretter markeres kallet som feilet.
@@ -525,11 +527,13 @@ Ugyldig output → ett nytt forsøk med valideringsfeilen i prompten → derette
 - Ett vanlig søknadsbrev per stilling, også når stillingen har søknadsskjema. Brevet er da grunnlag for skjemautfyllingen.
 - Språket følger `ad_language`, og kan overstyres i dashboardet.
 - Lengde og stil fra `style_overrides.md`. Stemme fra `voice.md`.
-- **Faktaregel:** Brevet kan bare påstå ting om brukeren som finnes i profilen. Alt annet skal i `claims_to_verify`, og vises som advarsel i editoren.
+- **Faktaregel:** Brevet kan bare påstå ting om brukeren som finnes i profilen, også koblinger (at en teknologi er brukt i et bestemt prosjekt). Det som mangler i profilen, utelates eller sies ærlig ("har ikke jobbet med X ennå"), uten oppdiktet bro. `claims_to_verify` er for dekkede formuleringer som kanskje er for sterke, og vises som advarsel i editoren.
+- **Lengde:** grensen i `style_overrides.md` er en øvre grense. Prompten ber modellen telle ord og kutte svakeste avsnitt heller enn å korte hver setning.
 - Kort form: prosjekter nevnes med én setning (navn, relevant teknologi, resultat), ikke forklart i detalj. Ingen tankestrek (– eller —): prompten forbyr den, og `clean_letter` bytter den ut i alt skriveren og revisoren lagrer (komma, eller bindestrek i tallintervaller og punktlister). Brukerens egne redigeringer røres ikke.
 - Skriveeksemplene ga ikke intervju. De brukes for stemmen, ikke for strukturen (står i `style_overrides.md`).
 - **Flyt** (`agents/writer.py`, oppgaven `draft`): destiller ved behov → research → skriver. Hvert steg har egen DB-transaksjon, så ingen skrivelås holdes under et LLM-kall. Søknaden opprettes (triage til Interessant) og flyttes til Utkast først når første versjon er lagret, så et mislykket utkast lar jobben være som den var. Agentmeldingen for første utkast nevner prosjektene og `notes_for_user`.
 - **Revisjon** (`agents/reviser.py`, oppgaven `revise`): et svar med `kind: revision` uten brevtekst gir ett nytt forsøk; en «revisjon» med uendret tekst lagres som svar.
+- **Stilregler fra chatten:** er meldingen en preferanse for alle brev ("aldri tankestrek", "mindre formelt"), foreslår revisoren en kort regel i `style_rule`. Den lagres på agentmeldingen og vises med knappen «Lagre som stilregel» (FRONTEND §5.5). Lagring legger regelen til i `style_overrides.md` (`context/style_rules.py`) og skriver en rad i `profile_revisions`. Ingenting lagres automatisk: brukeren godkjenner hver regel, så listen ikke vokser med motstridende eller stillingsspesifikke regler.
 
 ### 7.5 Destiller
 
@@ -643,7 +647,8 @@ drafts               id, application_id, version, content, author (agent|user),
                      instruction, change_summary, claims_to_verify (json), agent_run_id, created_at
 
 draft_messages       id, application_id, role (user|agent), text, draft_id (versjonen svaret laget,
-                     null for spørsmål og brukermeldinger), agent_run_id, created_at   ← chatten, migrasjon 0004
+                     null for spørsmål og brukermeldinger), style_rule (foreslått stilregel),
+                     style_rule_saved_at, agent_run_id, created_at   ← chatten, migrasjon 0004 og 0005
 
 agent_runs           id, agent, job_ids (json), application_id, backend, model, prompt_version,
                      input_tokens, output_tokens, cost_usd, duration_ms, status, error,
@@ -852,7 +857,7 @@ JobSearcher/
 │   │   ├── page_watch.py
 │   │   └── manual.py                  import av limt inn annonsetekst
 │   ├── pipeline/      run.py, normalize.py, clean.py, dedupe.py, hardfilter.py, lifecycle.py, lock.py
-│   ├── context/       loader.py, slices.py, builder.py, budget.py, projects.py (prosjektvalg §6.4)
+│   ├── context/       loader.py, slices.py, builder.py, budget.py, projects.py (prosjektvalg §6.4), style_rules.py (§7.4)
 │   ├── agents/        base.py, schemas.py, filter.py, distiller.py, researcher.py, writer.py, reviser.py
 │   │                  (fase 5: extractor.py)
 │   │   (ingen enricher — Finn-annonsesiden gir full annonsetekst)

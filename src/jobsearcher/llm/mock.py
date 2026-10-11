@@ -125,6 +125,8 @@ def _revision(req: AgentRequest) -> dict[str, Any]:
         "reply": f"Endret etter: {message[:60]}",
         "letter_markdown": f"{draft}\n\n(Revidert: {message})",
         "claims_to_verify": [],
+        # a general preference ("Aldri …") gets a suggested style rule
+        "style_rule": message.strip() if message.lower().startswith(("aldri", "alltid")) else None,
     }
 
 

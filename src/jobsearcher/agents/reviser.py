@@ -90,9 +90,12 @@ def revise(
         out: RevisionResult = outcome.output
         reply = out.reply.strip() or ("Endret." if out.kind == "revision" else "…")
         letter = clean_letter(out.letter_markdown)
+        rule = out.style_rule
 
         if out.kind == "answer" or letter == clean_letter(base.content):
-            drafts.add_message(session, application_id, "agent", reply, agent_run_id=outcome.run_id)
+            drafts.add_message(
+                session, application_id, "agent", reply, agent_run_id=outcome.run_id, style_rule=rule
+            )
             return DraftOutcome(application_id, None, "Ferdig: svar i chatten")
 
         draft = drafts.add_draft(
@@ -106,6 +109,12 @@ def revise(
             agent_run_id=outcome.run_id,
         )
         drafts.add_message(
-            session, application_id, "agent", reply, draft_id=draft.id, agent_run_id=outcome.run_id
+            session,
+            application_id,
+            "agent",
+            reply,
+            draft_id=draft.id,
+            agent_run_id=outcome.run_id,
+            style_rule=rule,
         )
         return DraftOutcome(application_id, draft.id, f"Ferdig: versjon {draft.version}")

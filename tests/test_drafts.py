@@ -19,6 +19,7 @@ from jobsearcher.agents.distiller import distill
 from jobsearcher.agents.writer import clean_letter, write_first_draft
 from jobsearcher.config import env
 from jobsearcher.context.projects import rank_projects
+from jobsearcher.context.style_rules import with_rule
 from jobsearcher.db.models import (
     AgentRun,
     Application,
@@ -28,6 +29,7 @@ from jobsearcher.db.models import (
     DraftMessage,
     Evaluation,
     Job,
+    ProfileRevision,
 )
 from jobsearcher.export.docx import filename, sender_from_profile
 from jobsearcher.llm.mock import MockBackend, _from_schema
@@ -313,6 +315,40 @@ def test_api_draft_flow(client, session):
     assert "filename*=UTF-8''S%C3%B8knad%20Eksempel%20AS%20v3.docx" in r.headers["content-disposition"]
     text = "\n".join(p.text for p in Document(io.BytesIO(r.content)).paragraphs)
     assert "Testa Testesen" in text and "Eksempel AS" in text and "Min tekst 2" in text
+
+
+def test_with_rule_appends_under_one_heading():
+    assert with_rule("", "Aldri tankestrek") == "## Fra revisjonschatten\n- Aldri tankestrek\n"
+    text = "# Stil\r\n\r\n## Form\r\n- Kort\r\n"
+    once = with_rule(text, "Aldri tankestrek")
+    assert once == "# Stil\n\n## Form\n- Kort\n\n## Fra revisjonschatten\n- Aldri tankestrek\n"
+    # a second rule goes in the same section, before the next heading; a duplicate is ignored
+    twice = with_rule(once + "\n## Annet\n- x\n", "Mindre formelt")
+    assert "- Aldri tankestrek\n- Mindre formelt\n\n## Annet" in twice
+    assert with_rule(twice, "Mindre formelt") == twice
+
+
+def test_api_style_rule_saved_to_profile(client, session, profile):
+    app, _ = _app_with_draft(session)
+    r = client.post(f"/api/applications/{app.id}/revise", json={"instruction": "Aldri start med «Jeg»"})
+    assert wait_for(client, r.json()["task_id"])["status"] == "done"
+    r = client.post(f"/api/applications/{app.id}/revise", json={"instruction": "Nevn Kotlin-appen"})
+    assert wait_for(client, r.json()["task_id"])["status"] == "done"
+    general, specific = [m for m in client.get(f"/api/applications/{app.id}/messages").json() if m["role"] == "agent"]
+    assert (general["style_rule"], general["style_rule_saved"]) == ("Aldri start med «Jeg»", False)
+    assert specific["style_rule"] is None
+
+    r = client.post(f"/api/applications/{app.id}/messages/{specific['id']}/style-rule")
+    assert r.status_code == 409 and r.json()["code"] == "no_style_rule"
+    assert client.post(f"/api/applications/999/messages/{general['id']}/style-rule").status_code == 404
+
+    for _ in range(2):  # saving twice is a no-op
+        r = client.post(f"/api/applications/{app.id}/messages/{general['id']}/style-rule")
+        assert r.status_code == 200 and r.json()["style_rule_saved"] is True
+    text = (profile / "style_overrides.md").read_text(encoding="utf-8")
+    assert text.count("- Aldri start med «Jeg»") == 1
+    [rev] = session.exec(select(ProfileRevision)).all()
+    assert rev.path == "style_overrides.md" and rev.content == text
 
 
 def test_api_errors(client, session):

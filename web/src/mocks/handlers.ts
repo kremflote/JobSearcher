@@ -330,6 +330,16 @@ export function createHandlers(db: MockDb = createMockDb()) {
       json<S['DraftMessage'][]>(db.applications.messages.filter((m) => m.application_id === Number(params.id))),
     ),
 
+    http.post('/api/applications/:id/messages/:messageId/style-rule', ({ params }) => {
+      const msg = db.applications.messages.find(
+        (m) => m.id === Number(params.messageId) && m.application_id === Number(params.id),
+      )
+      if (!msg) return error(404, 'not_found', 'Fant ikke meldingen.')
+      if (!msg.style_rule) return error(409, 'no_style_rule', 'Meldingen har ingen foreslått stilregel.')
+      msg.style_rule_saved = true
+      return json<S['DraftMessage']>(msg)
+    }),
+
     http.get('/api/drafts/:id', ({ params }) => {
       const draft = db.applications.drafts.find((d) => d.id === Number(params.id))
       return draft ? json<S['Draft']>(draft) : error(404, 'not_found', 'Fant ikke utkastet.')

@@ -9,7 +9,7 @@ import {
 import { useEffect } from 'react'
 import { api, ApiError, unwrap } from './client'
 import type { paths } from './schema'
-import type { ApplicationCard, ApplicationList, ApplicationPatch, Draft, DraftSummary, JobDetail, JobList, Task } from './types'
+import type { ApplicationCard, ApplicationList, ApplicationPatch, Draft, DraftMessage, DraftSummary, JobDetail, JobList, Task } from './types'
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -229,6 +229,23 @@ export function useRevise(applicationId: number) {
         qc.invalidateQueries({ queryKey: ['drafts', 'messages', applicationId] }),
         qc.invalidateQueries({ queryKey: ['tasks', 'active'] }),
       ]),
+  })
+}
+
+/** "Lagre som stilregel": appends a chat message's suggested rule to `style_overrides.md`. */
+export function useSaveStyleRule(applicationId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (messageId: number) =>
+      unwrap(
+        api.POST('/api/applications/{application_id}/messages/{message_id}/style-rule', {
+          params: { path: { application_id: applicationId, message_id: messageId } },
+        }),
+      ),
+    onSuccess: (msg) =>
+      qc.setQueryData<DraftMessage[]>(['drafts', 'messages', applicationId], (list) =>
+        list?.map((m) => (m.id === msg.id ? msg : m)),
+      ),
   })
 }
 

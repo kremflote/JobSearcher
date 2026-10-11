@@ -1115,6 +1115,88 @@
         }
       }
     },
+    "/api/applications/{application_id}/messages/{message_id}/style-rule": {
+      "post": {
+        "tags": [
+          "drafts"
+        ],
+        "summary": "Save Style Rule",
+        "description": "Append the message's suggested rule to `style_overrides.md`. Saving twice is a no-op.",
+        "operationId": "save_style_rule",
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Application Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftMessage"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/applications/{application_id}/revise": {
       "post": {
         "tags": [
@@ -3065,6 +3147,22 @@
             ],
             "title": "Draft Id"
           },
+          "style_rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style Rule",
+            "description": "Agent messages: a rule for all letters the reviser suggests, when the user's message\nwas a general preference. Saved to `style_overrides.md` with `POST …/style-rule`."
+          },
+          "style_rule_saved": {
+            "type": "boolean",
+            "title": "Style Rule Saved"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -3078,6 +3176,8 @@
           "role",
           "text",
           "draft_id",
+          "style_rule",
+          "style_rule_saved",
           "created_at"
         ],
         "title": "DraftMessage",

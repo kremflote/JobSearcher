@@ -1,12 +1,13 @@
 # JobSearcher: frontend-design
 
-> Status: v0.13 (2026-10-11). F0–F3 og F2b er bygget og koblet til ekte API (backend-fase 1–3 og bølge 2b). Neste bølge: F4.
+> Status: v0.14 (2026-10-11). F0–F3 og F2b er bygget og koblet til ekte API (backend-fase 1–3 og bølge 2b). Neste bølge: F4.
 > Dokumentet eier UI-designet: skjermer, layout, komponenter, API-kontrakt og frontend-bølger. Resten av systemet står i [ARCHITECTURE.md](ARCHITECTURE.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato | Endring |
 |---|---|---|
+| v0.14 | 2026-10-11 | «Lagre som stilregel» i revisjonschatten (§5.5): når meldingen er en preferanse for alle brev, viser agentsvaret en foreslått regel med knapp som legger den til i `style_overrides.md`. Kontrakt (§7): `DraftMessage.style_rule`/`style_rule_saved`, nytt `POST /api/applications/{id}/messages/{message_id}/style-rule`. Mock-revisoren foreslår en regel for meldinger som starter med «aldri»/«alltid»/«unngå». |
 | v0.13 | 2026-10-11 | Backend-fase 3 kobler F3: alle utkast-ruter er ekte (§7.1). Avvik fra mocken står i §7.1. |
 | v0.12 | 2026-10-11 | Etter brukertest av F3: chatten skiller spørsmål fra endringer. Et spørsmål får et svar i chatten uten ny versjon. Historikken kommer fra nytt endepunkt `GET /api/applications/{id}/messages` i stedet for versjonslisten (§5.5, §7). Mock-revisoren svarer på spørsmål (§3.2). |
 | v0.11 | 2026-10-11 | F3 bygget mot mock (§5.5): editor med autosave, revisjonschat, versjoner med ord-diff og "Gjenopprett", påstander som krysses av, "Kopier" (ren tekst), `.docx` og "Merk som søkt". `/soknader` lister utkast og interessante jobber uten utkast. Kontrakt (§7): kortet har `latest_draft_id`/`latest_draft_at`; autosave oppdaterer en fersk brukerversjon (< 10 min) i stedet for å lage en ny; `base_draft_id` og `draft_id` velger versjonen det bygges på; 409 `draft_exists` og `no_draft`. |
@@ -243,7 +244,7 @@ Jobbdetaljen lenker til panelet ("Endre status i Tracker") når jobben er forbi 
 
 PC (≥ 1024 px), tre soner:
 - **Venstre:** Markdown-tekstfelt med fanene "Rediger | Forhåndsvis" og ordtelling. Autosave 2 s etter siste tastetrykk → brukerversjon (`author=user`). En brukerversjon yngre enn 10 min oppdateres på plass, så en redigeringsøkt blir én versjon. Lagringsstatus ("Lagret", "Ikke lagret", "Lagrer …", "Kunne ikke lagre") står i tittellinjen. Teksten følger nyeste versjon så lenge det ikke finnes ulagrede endringer. Lukkes fanen med ulagret tekst, spør nettleseren først.
-- **Høyre:** chat med revisjonsagenten, alltid synlig (fast høyde). Historikken er de lagrede meldingene (`GET /api/applications/{id}/messages`): brukerens meldinger og agentens svar. Et svar som laget en versjon lenker til den; et svar på et spørsmål står alene, og brevet er uendret. Brukerversjoner flettes inn som "Du redigerte · versjon N". Forslagsknapper: "Gjør den kortere", "Mer formell tone", "Mer konkret om prosjektene mine". Enter sender, Shift+Enter gir ny linje. Sending lagrer først, starter en bakgrunnsjobb mot gjeldende versjon og låser tekstfeltet til agenten har svart (og en eventuell ny versjon er lastet).
+- **Høyre:** chat med revisjonsagenten, alltid synlig (fast høyde). Historikken er de lagrede meldingene (`GET /api/applications/{id}/messages`): brukerens meldinger og agentens svar. Et svar som laget en versjon lenker til den; et svar på et spørsmål står alene, og brevet er uendret. Brukerversjoner flettes inn som "Du redigerte · versjon N". Er meldingen en preferanse for alle brev ("aldri tankestrek"), har agentsvaret en boks "Stilregel for alle brev: …" med knappen "Lagre som stilregel"; etter lagring står det "Lagret" og en toast bekrefter. Forslagsknapper: "Gjør den kortere", "Mer formell tone", "Mer konkret om prosjektene mine". Enter sender, Shift+Enter gir ny linje. Sending lagrer først, starter en bakgrunnsjobb mot gjeldende versjon og låser tekstfeltet til agenten har svart (og en eventuell ny versjon er lastet).
 - **Over teksten:** `claims_to_verify` fra gjeldende versjon som gule advarsler som kan krysses av. Avkryssingen huskes i nettleseren (localStorage) per søknad og påstand.
 - **Verktøylinje:** bedrift, status, frist (før søkt), lenke til jobben; versjonsmeny, "Kopier" (ren tekst uten Markdown-tegn), ".docx" (lagrer først) og "Merk som søkt" (når overgangen er lovlig, med angre-toast som i Tracker).
 
@@ -305,7 +306,8 @@ Alle ruter under `/api`. JSON. Datoer i ISO 8601. Feil som `{"detail": "...", "c
 | `GET /api/drafts/{id}` | Én versjon med innhold og `claims_to_verify` | F3 |
 | `POST /api/applications/{id}/drafts` | Autosave: `{content, base_draft_id?}` → versjonen. Er nyeste versjon en brukerversjon yngre enn 10 min, oppdateres den på plass; ellers ny versjon. Brukerversjoner arver `claims_to_verify` fra `base_draft_id` (standard: nyeste). | F3 |
 | `POST /api/applications/{id}/revise` | Chatmelding `{instruction, draft_id?}` → `{task_id}`. Meldingen lagres med en gang. Jobben svarer med en agentmelding: på et spørsmål bare svar (`result.draft_id` null), ellers en ny agentversjon av `draft_id` (standard: nyeste). 409 `no_draft` uten utkast. | F3 |
-| `GET /api/applications/{id}/messages` | Chathistorikk: `role` (`user` \| `agent`), `text`, `draft_id` (versjonen svaret laget), `created_at`, eldste først | F3 |
+| `GET /api/applications/{id}/messages` | Chathistorikk: `role` (`user` \| `agent`), `text`, `draft_id` (versjonen svaret laget), `style_rule` (foreslått stilregel, agentmeldinger), `style_rule_saved`, `created_at`, eldste først | F3 |
+| `POST /api/applications/{id}/messages/{message_id}/style-rule` | Legger meldingens `style_rule` til i `style_overrides.md` → oppdatert melding. To ganger er en no-op. 404 ukjent melding, 409 `no_style_rule` uten forslag. | F3 |
 | `GET /api/drafts/{id}/docx` | Last ned `.docx`. Filnavnet kommer i `Content-Disposition`. | F3 |
 | `GET /api/profile/files` | Filtre + status (`profile_hash`, destillert utdatert?) | F4 |
 | `GET /api/profile/files/{path}` / `PUT` | Les / skriv én profilfil. Sti valideres mot `PROFILE_DIR`. | F4 |
