@@ -1,6 +1,6 @@
-import { Check, Copy, Download, ExternalLink, History, Loader2, Send } from 'lucide-react'
+import { Check, Copy, Download, ExternalLink, FilePlus, History, Loader2, PanelLeft, Send } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { ApiError } from '@/api/client'
 import { downloadDocx, draftQuery, useApplications, useDraft, useDrafts, useMessages, useRevise, useSaveStyleRule, useTask } from '@/api/queries'
@@ -18,15 +18,17 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useMove } from '@/features/tracker/useMove'
-import { useIsWide } from '@/lib/useMediaQuery'
+import { useIsWide, useMediaQuery } from '@/lib/useMediaQuery'
 import { cn } from '@/lib/utils'
-import { ClaimsBar } from './ClaimsBar'
+import { AdPanel } from './AdPanel'
+import { ClaimsBar, rejectInstruction } from './ClaimsBar'
 import { DraftPane } from './DraftPane'
 import { RevisionChat } from './RevisionChat'
 import { Segmented } from './Segmented'
 import { StartDraftButton } from './StartDraftButton'
 import { useDraftEditor, type SaveState } from './useDraftEditor'
 import { authorLabel, fmtVersionTime, VersionList, VersionView } from './Versions'
+import { WritingSampleDialog } from './WritingSampleDialog'
 
 type View = 'utkast' | 'chat' | 'versjoner'
 const VIEWS: { value: View; label: string }[] = [
@@ -49,14 +51,38 @@ export const toPlainText = (md: string) =>
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/\*([^*\s][^*]*)\*/g, '$1')
 
+const AD_KEY = 'jobsearcher.editor.ad'
+
+/** Whether the ad column is shown on wide screens; remembered per browser, on by default. */
+function useAdColumn() {
+  const [show, setShow] = useState(() => {
+    try {
+      return localStorage.getItem(AD_KEY) !== 'off'
+    } catch {
+      return true
+    }
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem(AD_KEY, show ? 'on' : 'off')
+    } catch {
+      // Storage blocked: the choice lasts until reload.
+    }
+  }, [show])
+  return [show, setShow] as const
+}
+
 /**
  * `/soknader/:applicationId` (FRONTEND §5.5). PC: text on the left, revision chat on the right,
- * version menu and actions in the toolbar. Mobile: Utkast | Chat | Versjoner (`?vis=`).
+ * version menu and actions in the toolbar; from 1440 px our stored ad text as a column to the
+ * left of the text. Mobile: Utkast | Chat | Versjoner (`?vis=`).
  * `?versjon=<id>` shows that version as a diff.
  */
 export function EditorPage() {
   const id = Number(useParams().applicationId)
   const wide = useIsWide()
+  const roomForAd = useMediaQuery('(min-width: 1440px)')
+  const [showAd, setShowAd] = useAdColumn()
   const qc = useQueryClient()
   const toast = useToast()
   const [params, setParams] = useSearchParams()
@@ -70,6 +96,7 @@ export function EditorPage() {
   const messages = useMessages(id)
   const revise = useRevise(id)
   const saveRule = useSaveStyleRule(id)
+  const [sampleOpen, setSampleOpen] = useState(false)
   const [pending, setPending] = useState<{ instruction: string; taskId: string | null } | null>(null)
   const task = useTask(pending?.taskId ?? null)
   const revising = !!pending && (!task.data || task.data.status === 'queued' || task.data.status === 'running')
@@ -169,15 +196,32 @@ export function EditorPage() {
   )
   const draftArea = (
     <div className="flex flex-col gap-3">
-      <ClaimsBar applicationId={id} claims={base.data?.claims_to_verify ?? []} />
+      <ClaimsBar
+        applicationId={id}
+        claims={base.data?.claims_to_verify ?? []}
+        onReject={(claim) => send(rejectInstruction(claim))}
+        disabled={revising || !editor.baseId}
+      />
       <DraftPane text={editor.text} onChange={editor.edit} revising={revising} />
     </div>
   )
 
+  const adColumn = roomForAd && showAd && card !== undefined
   return (
     <Page title={title} className="p-0" actions={<SaveStatus state={editor.state} />}>
+      <WritingSampleDialog open={sampleOpen} onOpenChange={setSampleOpen} card={card} />
       {wide ? (
-        <div className="grid grid-cols-[minmax(0,1fr)_24rem]">
+        <div
+          className={cn(
+            'grid',
+            adColumn ? 'grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_22rem]' : 'grid-cols-[minmax(0,1fr)_24rem]',
+          )}
+        >
+          {adColumn && (
+            <aside className="sticky top-12 h-[calc(100dvh-3rem)] overflow-y-auto border-r">
+              <AdPanel jobId={card.job_id} />
+            </aside>
+          )}
           <div className="flex min-w-0 flex-col gap-3 p-4">
             <Toolbar
               card={card}
@@ -185,7 +229,22 @@ export function EditorPage() {
               flush={editor.flush}
               baseId={editor.baseId}
               versions={
-                <VersionMenu versions={versions} currentId={editor.baseId} onSelect={selectVersion} />
+                <>
+                  {roomForAd && (
+                    <Button
+                      size="sm"
+                      variant={showAd ? 'secondary' : 'outline'}
+                      aria-pressed={showAd}
+                      onClick={() => setShowAd(!showAd)}
+                    >
+                      <PanelLeft /> Annonse
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" onClick={() => setSampleOpen(true)}>
+                    <FilePlus /> Skriveeksempel
+                  </Button>
+                  <VersionMenu versions={versions} currentId={editor.baseId} onSelect={selectVersion} />
+                </>
               }
             />
             {versionView || draftArea}

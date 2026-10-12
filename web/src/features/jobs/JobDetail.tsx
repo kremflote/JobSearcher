@@ -260,8 +260,11 @@ function TriageButtons({ job, onTriage, big }: { job: JobDetail; onTriage: Triag
 }
 
 /** The ad at its source (Finn, NAV, …); falls back to the apply link when no source has a URL. */
-function AdLink({ job }: { job: JobDetail }) {
-  const url = job.source_refs.find((r) => r.url)?.url ?? job.application_url
+/** The original ad: the first source with a URL, else the apply link. */
+export const adUrl = (job: JobDetail) => job.source_refs.find((r) => r.url)?.url ?? job.application_url
+
+export function AdLink({ job }: { job: JobDetail }) {
+  const url = adUrl(job)
   if (!url) return null
   return (
     <Button asChild size="sm" variant="outline">

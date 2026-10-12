@@ -22,6 +22,10 @@ DERIVED_FILES = ("profile_short.md", "profile_long.md", "voice.md")
 MANIFEST = "manifest.json"
 PREVIOUS_DIR = "previous"
 DISTILLER_PROMPT = "distiller.md"
+# Layer-1 files that only shape the writing voice. Changing only these keeps the scoring hash,
+# so the jobs are not marked for rescoring (§5.5).
+VOICE_ONLY_PREFIXES = ("writing_samples/",)
+VOICE_ONLY_FILES = frozenset({"style_overrides.md"})
 
 
 # --- Layer 1 -----------------------------------------------------------------------------
@@ -64,6 +68,16 @@ def hash_of(file_hashes: dict[str, str]) -> str:
 def profile_hash(profile_dir: Path | None = None) -> str:
     """Hash over all layer-1 files (path + content). Changes when any source file changes."""
     return hash_of(profile_file_hashes(profile_dir))
+
+
+def is_voice_only(rel: str) -> bool:
+    return rel in VOICE_ONLY_FILES or rel.startswith(VOICE_ONLY_PREFIXES)
+
+
+def voice_only_change(old: dict[str, str], new: dict[str, str]) -> bool:
+    """True when the two file-hash maps differ, and only in voice-only files."""
+    changed = {k for k in old.keys() | new.keys() if old.get(k) != new.get(k)}
+    return bool(changed) and all(is_voice_only(k) for k in changed)
 
 
 def read_profile(profile_dir: Path | None = None) -> dict[str, str]:
@@ -146,6 +160,15 @@ def derived_profile_hash() -> str | None:
     """The profile hash the current derived files were made from."""
     manifest = read_manifest()
     return manifest.get("profile_hash") if manifest else None
+
+
+def scoring_hash() -> str | None:
+    """The hash evaluations are stamped with: the profile hash of the last distillation that
+    changed more than voice-only files (manifests without the key use `profile_hash`)."""
+    manifest = read_manifest()
+    if not manifest:
+        return None
+    return manifest.get("scoring_hash") or manifest.get("profile_hash")
 
 
 def derived_outdated() -> bool:

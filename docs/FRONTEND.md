@@ -1,12 +1,13 @@
 # JobSearcher: frontend-design
 
-> Status: v0.17 (2026-10-11). F0–F5 og F2b er bygget og koblet til ekte API (backend-fase 1–4, 2b og 4b). Alle planlagte bølger er bygget.
+> Status: v0.18 (2026-10-12). F0–F5 og F2b er bygget og koblet til ekte API (backend-fase 1–4, 2b og 4b). Alle planlagte bølger er bygget.
 > Dokumentet eier UI-designet: skjermer, layout, komponenter, API-kontrakt og frontend-bølger. Resten av systemet står i [ARCHITECTURE.md](ARCHITECTURE.md). Regler for vedlikehold står i `AGENTS.md`.
 
 ## Endringslogg
 
 | Versjon | Dato | Endring |
 |---|---|---|
+| v0.18 | 2026-10-12 | Søknadseditoren: annonsekolonne til venstre fra 1440 px (av/på i verktøylinjen), «Skriveeksempel» (lim inn tekst → `writing_samples/`, destillering startes), og påstander har «Stemmer» / «Stemmer ikke» (sender en instruks til revisjonsagenten). |
 | v0.17 | 2026-10-11 | Søknader har «Slett utkast» per rad (bekreftelse); Tracker ber om bekreftelse før Utkast → Ikke aktuell, som sletter utkastene, og angre går til serverens `previous_status`. Jobbdetaljen har «Se annonsen ↗» (kildens annonse). Kontrakt (§7): `DELETE /api/applications/{id}/drafts`. |
 | v0.16 | 2026-10-11 | F5 bygget (§8): skjermene utenom Oversikt og Jobber lastes ved første besøk, så hovedbunten er under Vites grense på 500 kB. Dockerfile og deploy står i ARCHITECTURE §12. |
 | v0.15 | 2026-10-11 | F4 bygget og koblet (§5.6–5.8). Kontrakt (§7): `SettingItem` har `label`, `help`, `kind`, `options`, `min`, `max`, så skjemaet lages fra API-et; ny seksjon `notify`. `ProfileTree` har `folders` og `derived_at`; `base_hash: null` lager en ny fil (409 `file_exists`), feil hash gir 409 `conflict`, ugyldig YAML 422 `invalid_yaml`, ugyldig sti 400 `invalid_path`. Nye ruter: `GET /api/profile/derived`, `GET/POST /api/rescore`. Logg-fanen heter «Forkastet» og viser alle nylige, gruppert per dag. Mocken følger de samme reglene (`mocks/system.ts`). |
@@ -245,11 +246,14 @@ Jobbdetaljen lenker til panelet ("Endre status i Tracker") når jobben er forbi 
 
 ### 5.5 Søknadseditor `/soknader/:applicationId` (F3)
 
-PC (≥ 1024 px), tre soner:
+PC (≥ 1024 px), tre soner (fra 1440 px fire, se **Annonse**):
 - **Venstre:** Markdown-tekstfelt med fanene "Rediger | Forhåndsvis" og ordtelling. Autosave 2 s etter siste tastetrykk → brukerversjon (`author=user`). En brukerversjon yngre enn 10 min oppdateres på plass, så en redigeringsøkt blir én versjon. Lagringsstatus ("Lagret", "Ikke lagret", "Lagrer …", "Kunne ikke lagre") står i tittellinjen. Teksten følger nyeste versjon så lenge det ikke finnes ulagrede endringer. Lukkes fanen med ulagret tekst, spør nettleseren først.
 - **Høyre:** chat med revisjonsagenten, alltid synlig (fast høyde). Historikken er de lagrede meldingene (`GET /api/applications/{id}/messages`): brukerens meldinger og agentens svar. Et svar som laget en versjon lenker til den; et svar på et spørsmål står alene, og brevet er uendret. Brukerversjoner flettes inn som "Du redigerte · versjon N". Er meldingen en preferanse for alle brev ("aldri tankestrek"), har agentsvaret en boks "Stilregel for alle brev: …" med knappen "Lagre som stilregel"; etter lagring står det "Lagret" og en toast bekrefter. Forslagsknapper: "Gjør den kortere", "Mer formell tone", "Mer konkret om prosjektene mine". Enter sender, Shift+Enter gir ny linje. Sending lagrer først, starter en bakgrunnsjobb mot gjeldende versjon og låser tekstfeltet til agenten har svart (og en eventuell ny versjon er lastet).
-- **Over teksten:** `claims_to_verify` fra gjeldende versjon som gule advarsler som kan krysses av. Avkryssingen huskes i nettleseren (localStorage) per søknad og påstand.
-- **Verktøylinje:** bedrift, status, frist (før søkt), lenke til jobben; versjonsmeny, "Kopier" (ren tekst uten Markdown-tegn), ".docx" (lagrer først) og "Merk som søkt" (når overgangen er lovlig, med angre-toast som i Tracker).
+- **Annonse** (≥ 1440 px): vår lagrede annonsetekst (`description` fra `GET /api/jobs/{id}`) i en egen kolonne til venstre for teksten, med «Se annonsen ↗» (første kilde med URL, ellers søknadslenken). «Bare tittel kjent» når teksten mangler. Knappen «Annonse» i verktøylinjen skjuler og viser kolonnen; valget huskes i nettleseren (localStorage). Under 1440 px og på mobil vises ikke kolonnen.
+- **Over teksten:** `claims_to_verify` fra gjeldende versjon som gule advarsler med «Stemmer» og «Stemmer ikke». «Stemmer» krysser ut påstanden. «Stemmer ikke» sender en instruks til revisjonsagenten om å fjerne påstanden (som en vanlig chatmelding, så den gir en ny versjon). Begge kan angres. Valgene huskes i nettleseren (localStorage) per søknad og påstand.
+- **Verktøylinje:** bedrift, status, frist (før søkt), lenke til jobben; «Annonse» (≥ 1440 px), «Skriveeksempel», versjonsmeny, "Kopier" (ren tekst uten Markdown-tegn), ".docx" (lagrer først) og "Merk som søkt" (når overgangen er lovlig, med angre-toast som i Tracker).
+
+**Skriveeksempel:** et sidepanel der brukeren limer inn en tekst hen har skrevet selv. Type (søknad som standard), språk (gjettes fra teksten), stilling og bedrift (fra søknaden) og «Skrevet av meg» fylles ut på forhånd og kan endres. «Lagre» lager `writing_samples/<bedrift>-<stilling>.md` (med `-2`, `-3` … hvis navnet finnes) med frontmatteren fra `_template.md` (`outcome: ukjent`) og starter destilleringen, så `voice.md` oppdateres. Det gir ikke «Score på nytt» (ARCHITECTURE §6.1).
 
 Versjoner: valgt versjon (`?versjon=<id>`) vises i stedet for tekstfeltet som ord-diff (lagt til grønt, fjernet rødt og gjennomstreket) mot forrige versjon eller mot gjeldende, med antall ord lagt til og fjernet. "Gjenopprett" lagrer den som ny brukerversjon.
 
