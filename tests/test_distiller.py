@@ -78,3 +78,35 @@ def test_distill_invalid_output_fails_after_retry(profile_dir, session):
     assert not (env().derived_dir / "manifest.json").exists()
     run = session.exec(select(AgentRun)).one()
     assert run.status == "error"
+
+
+def test_voice_only_change_keeps_scoring_hash_and_profile_files(profile_dir):
+    backend = MockBackend()
+    assert distill(backend=backend) is True
+    first = loader.read_manifest()
+    assert first["scoring_hash"] == first["profile_hash"]
+    root = env().derived_dir
+    (root / "profile_short.md").write_text("Beholdt kort profil\n", encoding="utf-8")
+
+    (profile_dir / "writing_samples").mkdir(exist_ok=True)
+    (profile_dir / "writing_samples" / "ny.md").write_text("Et nytt skriveeksempel.", encoding="utf-8")
+    assert loader.derived_outdated()
+    assert distill(backend=backend) is True
+    second = loader.read_manifest()
+    assert second["profile_hash"] != first["profile_hash"]
+    assert second["scoring_hash"] == first["profile_hash"] == loader.scoring_hash()
+    assert (root / "profile_short.md").read_text(encoding="utf-8") == "Beholdt kort profil\n"
+
+    # Any other change gives a new scoring hash and replaces all files.
+    (profile_dir / "cv.md").write_text("Ny CV", encoding="utf-8")
+    assert distill(backend=backend) is True
+    third = loader.read_manifest()
+    assert third["scoring_hash"] == third["profile_hash"] != first["profile_hash"]
+    assert (root / "profile_short.md").read_text(encoding="utf-8") != "Beholdt kort profil\n"
+
+
+def test_voice_only_change():
+    assert loader.voice_only_change({"cv.md": "a"}, {"cv.md": "a", "writing_samples/x.md": "b"})
+    assert loader.voice_only_change({"style_overrides.md": "a"}, {"style_overrides.md": "b"})
+    assert not loader.voice_only_change({"cv.md": "a"}, {"cv.md": "b", "writing_samples/x.md": "b"})
+    assert not loader.voice_only_change({"cv.md": "a"}, {"cv.md": "a"})

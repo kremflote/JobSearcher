@@ -98,13 +98,13 @@ test('versions: diff against the previous version and restore', async ({ page },
   await expect(textArea(page)).toHaveValue(/Det dere skriver om kodegjennomgang/) // dropped in version 3
 })
 
-test('claims can be ticked off; copy and .docx download', async ({ page, context }, info) => {
+test('claims can be confirmed; copy and .docx download', async ({ page, context }, info) => {
   test.skip(isMobile(info.project.name), 'clipboard permissions are per browser; one viewport is enough')
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await openFirstDraft(page)
   const claims = page.getByTestId('claims')
   await expect(claims).toContainText('Sjekk 1 påstand')
-  await claims.getByRole('checkbox').check()
+  await claims.getByRole('button', { name: 'Stemmer', exact: true }).click()
   await expect(claims).toContainText('Alle påstander er sjekket')
 
   await page.getByRole('button', { name: 'Kopier' }).click()
@@ -133,4 +133,37 @@ test('Lag søknadsutkast from the job detail opens the editor via the toast', as
   await expect(page).toHaveURL(/\/soknader\/\d+$/)
   await expect(textArea(page)).toHaveValue(/Jeg søker på stillingen/)
   await expect(page.getByTestId('editor-toolbar').getByText('Utkast', { exact: true })).toBeVisible()
+})
+
+test('a wrong claim is sent to the revision agent', async ({ page }, info) => {
+  test.skip(isMobile(info.project.name), 'the chat is a separate segment on mobile')
+  await openFirstDraft(page)
+  const claims = page.getByTestId('claims')
+  await claims.getByRole('button', { name: 'Stemmer ikke' }).click()
+  await expect(claims).toContainText('sendt til agenten')
+  await expect(page.getByTestId('revision-chat')).toContainText('Denne påstanden stemmer ikke')
+})
+
+test('wide screens show the stored ad beside the letter; it can be hidden', async ({ page }, info) => {
+  test.skip(isMobile(info.project.name), 'PC only')
+  await page.setViewportSize({ width: 1600, height: 900 })
+  await openFirstDraft(page)
+  await expect(page.getByTestId('ad-panel')).toBeVisible()
+  await page.getByRole('button', { name: 'Annonse' }).click()
+  await expect(page.getByTestId('ad-panel')).toHaveCount(0)
+  await page.reload()
+  await expect(textArea(page)).toHaveValue(/Hei,/)
+  await expect(page.getByTestId('ad-panel')).toHaveCount(0)
+})
+
+test('a pasted writing sample is saved to the profile', async ({ page }, info) => {
+  test.skip(isMobile(info.project.name), 'PC only')
+  await openFirstDraft(page)
+  await page.getByRole('button', { name: 'Skriveeksempel' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Nytt skriveeksempel' })
+  await dialog.getByRole('textbox', { name: 'Tekst' }).fill('Jeg skriver kort og konkret, og jeg liker å lære.')
+  await dialog.getByRole('button', { name: 'Lagre' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /Lagret som writing_samples\/.+\.md/ })).toBeVisible()
+  await page.goto('/profil')
+  await expect(page.getByRole('main')).toContainText('writing_samples')
 })

@@ -66,7 +66,7 @@ def stale_jobs(session: Session) -> list[Job]:
     Active, published (or first seen) in the last 30 days, application status none, "ny" or
     "interessant".
     """
-    profile_hash = loader.derived_profile_hash()
+    profile_hash = loader.scoring_hash()
     prompt_version = loader.load_prompt(load_manifest("filter").prompt).version
     since = datetime.now(UTC) - timedelta(days=RESCORE_MAX_AGE_DAYS)
     jobs = session.exec(
@@ -206,7 +206,7 @@ def score_jobs(
         return summary
 
     manifest = load_manifest("filter")
-    profile_hash = loader.derived_profile_hash() or loader.profile_hash()
+    profile_hash = loader.scoring_hash() or loader.profile_hash()
     size = max(1, manifest.batch_size)
     batches = [jobs[i : i + size] for i in range(0, len(jobs), size)]
     for n, batch in enumerate(batches):

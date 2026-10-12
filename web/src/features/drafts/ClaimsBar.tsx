@@ -1,35 +1,58 @@
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Check, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+
+type Verdict = 'ok' | 'wrong'
 
 const key = (applicationId: number) => `jobsearcher.claims.${applicationId}`
 
-function load(applicationId: number): string[] {
+function load(applicationId: number): Record<string, Verdict> {
   try {
     const raw = localStorage.getItem(key(applicationId))
-    return raw ? (JSON.parse(raw) as string[]) : []
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as string[] | Record<string, Verdict>
+    // Older entries were a list of ticked claims.
+    return Array.isArray(parsed) ? Object.fromEntries(parsed.map((c) => [c, 'ok' as const])) : parsed
   } catch {
-    return []
+    return {}
   }
 }
 
+/** The instruction "Stemmer ikke" sends to the revision agent. */
+export const rejectInstruction = (claim: string) =>
+  `Denne påstanden stemmer ikke: «${claim}». Fjern den fra brevet, eller skriv om avsnittet uten den. Ikke erstatt den med en annen påstand som ikke står i profilen.`
+
 /**
- * `claims_to_verify` as yellow warnings that can be ticked off (FRONTEND §5.5). What is ticked is
- * a per-browser convenience, kept in localStorage per application and claim text.
+ * `claims_to_verify` as yellow warnings (FRONTEND §5.5). "Stemmer" marks a claim as checked;
+ * "Stemmer ikke" asks the revision agent to take it out. What was marked is a per-browser
+ * convenience, kept in localStorage per application and claim text.
  */
-export function ClaimsBar({ applicationId, claims }: { applicationId: number; claims: string[] }) {
-  const [checked, setChecked] = useState<string[]>(() => load(applicationId))
+export function ClaimsBar({
+  applicationId,
+  claims,
+  onReject,
+  disabled,
+}: {
+  applicationId: number
+  claims: string[]
+  onReject: (claim: string) => void
+  disabled: boolean
+}) {
+  const [verdicts, setVerdicts] = useState<Record<string, Verdict>>(() => load(applicationId))
 
   useEffect(() => {
     try {
-      localStorage.setItem(key(applicationId), JSON.stringify(checked))
+      localStorage.setItem(key(applicationId), JSON.stringify(verdicts))
     } catch {
-      // Storage blocked: ticks just don't survive a reload.
+      // Storage blocked: marks just don't survive a reload.
     }
-  }, [applicationId, checked])
+  }, [applicationId, verdicts])
 
   if (!claims.length) return null
-  const open = claims.filter((c) => !checked.includes(c)).length
+  const set = (claim: string, v: Verdict | null) =>
+    setVerdicts(({ [claim]: _, ...rest }) => (v ? { ...rest, [claim]: v } : rest))
+  const open = claims.filter((c) => !verdicts[c]).length
   return (
     <section
       aria-label="Påstander å sjekke"
@@ -42,18 +65,36 @@ export function ClaimsBar({ applicationId, claims }: { applicationId: number; cl
       </p>
       <ul className="flex flex-col gap-1">
         {claims.map((claim) => {
-          const done = checked.includes(claim)
+          const v = verdicts[claim]
           return (
-            <li key={claim}>
-              <label className="flex cursor-pointer items-start gap-2">
-                <input
-                  type="checkbox"
-                  className="accent-primary mt-0.5 size-4 shrink-0"
-                  checked={done}
-                  onChange={() => setChecked((c) => (done ? c.filter((x) => x !== claim) : [...c, claim]))}
-                />
-                <span className={cn(done && 'text-muted-foreground line-through')}>{claim}</span>
-              </label>
+            <li key={claim} className="flex items-start gap-2">
+              <span className={cn('flex-1', v === 'ok' && 'text-muted-foreground line-through')}>
+                {claim}
+                {v === 'wrong' && <span className="text-muted-foreground"> · sendt til agenten</span>}
+              </span>
+              {v ? (
+                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => set(claim, null)}>
+                  Angre
+                </Button>
+              ) : (
+                <span className="flex shrink-0 gap-1">
+                  <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => set(claim, 'ok')}>
+                    <Check className="size-3" /> Stemmer
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2 text-xs"
+                    disabled={disabled}
+                    onClick={() => {
+                      set(claim, 'wrong')
+                      onReject(claim)
+                    }}
+                  >
+                    <X className="size-3" /> Stemmer ikke
+                  </Button>
+                </span>
+              )}
             </li>
           )
         })}
