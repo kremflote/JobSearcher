@@ -852,6 +852,7 @@ Stier styres av miljøvariabler, så samme kode kjører på PC og i container:
 ```
 JobSearcher/
 ├── README.md
+├── portfolio.json                     Visning på mariuskristensen.no (CV-nettsiden): tittel, beskrivelse, skjermbilder
 ├── AGENTS.md                          Regler for AI-agenter, inkl. vedlikehold av dokumentasjon
 ├── CLAUDE.md                          Importerer AGENTS.md (for Claude Code)
 ├── .claude/
@@ -870,6 +871,7 @@ JobSearcher/
 │   ├── ARCHITECTURE.md
 │   ├── FRONTEND.md                    UI-design, API-kontrakt, frontend-bølger
 │   ├── HANDOVER.md                    Status og neste steg for neste agent
+│   ├── portfolio/                     Skjermbilder til CV-nettsiden, tatt fra dashboardet i mock-modus
 │   └── spikes/                        01-nav-feed, 02-claude-subscription, 03-trainee-sources, 04-finn-mobile-api
 │
 ├── config/
