@@ -1,0 +1,12 @@
+{
+  "title": "JobSearcher",
+  "description": "AI-basert verktøy som henter stillinger, rangerer dem mot profilen min, skriver utkast til søknadsbrev og holder oversikt over søknadene.",
+  "category": "personal",
+  "thumbnail": "docs/portfolio/jobsearcher-oversikt.jpg",
+  "screenshots": [
+    "docs/portfolio/jobsearcher-oversikt.jpg",
+    "docs/portfolio/jobsearcher-jobb.jpg",
+    "docs/portfolio/jobsearcher-tracker.jpg"
+  ],
+  "sections": ["Oversikt", "Hva det gjør", "Hvordan det fungerer"]
+}
